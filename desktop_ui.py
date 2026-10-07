@@ -240,7 +240,7 @@ def prepare_context(progress=print):
     progress('Đang nạp trạng thái module…')
     manager = ModuleManager(store, client, ROOT)
     cid = store.create(persist=False)
-    rows = store.list(limit=100)
+    rows = store.list(limit=30)
     return dict(cfg=cfg, store=store, client=client, manager=manager,
                 rows=rows, cid=cid, state=store.load(cid), jobs=manager.jobs())
 
@@ -1984,7 +1984,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def restore_login(self):
         if self.server_session:return
-        if self.busy():QTimer.singleShot(1500,self.restore_login);return
+        if self.busy():QTimer.singleShot(300,self.restore_login);return
         from assistant.accounts import load_login
         try:session=load_login()
         except Exception:

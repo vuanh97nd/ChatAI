@@ -135,16 +135,42 @@ class ApiDocumentClient:
         self.provider,self.key,self.model,self.opener=provider,key,model,opener
         self.small_model='meta/llama-3.1-8b-instruct' if provider=='nvidia' else model
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
+    def _build_payload(self,model,messages,options,stream):
+        payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':stream,
+                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),4096),
+                 'temperature':options.get('temperature',.2)}
+        if self.provider=='gemini':payload['reasoning_effort']='low';payload['max_tokens']+=1024
+        return payload
+    def _api_error(self,error):
+        hints={401:'API key không hợp lệ.',403:'API key chưa có quyền dùng model.',404:'Model không tồn tại hoặc chưa được cấp quyền.',429:'Hết hạn mức hoặc dịch vụ đang giới hạn yêu cầu.'}
+        raise CloudError(PROVIDER_NAMES[self.provider]+' HTTP '+str(error.code)+': '+hints.get(error.code,'Dịch vụ chưa xử lý được yêu cầu.')) from None
+    def stream_answer(self,model,messages,**kwargs):
+        """Yield text chunks progressively via SSE streaming."""
+        messages=[dict(m) for m in messages]
+        options=kwargs.get('options',{})
+        payload=self._build_payload(model,messages,options,stream=True)
+        request=Request(API_ENDPOINTS[self.provider],data=json.dumps(payload).encode(),
+            headers={'Content-Type':'application/json','Authorization':'Bearer '+self.key})
+        try:
+            with self.opener(request,timeout=120) as response:
+                for raw in response:
+                    line=raw.decode('utf-8').rstrip('\r\n') if isinstance(raw,bytes) else raw.rstrip('\r\n')
+                    if not line.startswith('data:'):continue
+                    chunk=line[5:].strip()
+                    if chunk=='[DONE]':break
+                    try:
+                        value=json.loads(chunk)
+                        delta=value['choices'][0].get('delta',{}).get('content','')
+                        if delta:yield delta
+                    except (ValueError,KeyError,IndexError,TypeError):continue
+        except HTTPError as error:self._api_error(error)
+        except (URLError,TimeoutError):raise CloudError('Không kết nối được '+PROVIDER_NAMES[self.provider]+'.') from None
     def chat(self,model,messages,**kwargs):
         messages=[dict(m) for m in messages]
         if kwargs.get('format'):
             messages.insert(0,{'role':'system','content':'Trả về một đối tượng JSON hợp lệ, không Markdown. Schema: '+json.dumps(kwargs['format'],ensure_ascii=False)})
         options=kwargs.get('options',{})
-        payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':False,
-                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),4096),
-                 'temperature':options.get('temperature',.2)}
-        if self.provider=='gemini':
-            payload['reasoning_effort']='low';payload['max_tokens']+=1024
+        payload=self._build_payload(model,messages,options,stream=False)
         request=Request(API_ENDPOINTS[self.provider],data=json.dumps(payload).encode(),
             headers={'Content-Type':'application/json','Authorization':'Bearer '+self.key})
         try:
@@ -157,10 +183,7 @@ class ApiDocumentClient:
             truncated=value['choices'][0].get('finish_reason')=='length'
             if truncated and model=='document-small':raise CloudError('Đoạn tổng hợp bị giới hạn token, chưa đọc/tổng hợp đầy đủ.')
             return {'message':{'role':'assistant','content':content},'truncated':truncated}
-        except HTTPError as error:
-            # Do not echo response bodies or Authorization headers: they may contain secrets.
-            hints={401:'API key không hợp lệ.',403:'API key chưa có quyền dùng model.',404:'Model không tồn tại hoặc chưa được cấp quyền.',429:'Hết hạn mức hoặc dịch vụ đang giới hạn yêu cầu.'}
-            raise CloudError(PROVIDER_NAMES[self.provider]+' HTTP '+str(error.code)+': '+hints.get(error.code,'Dịch vụ chưa xử lý được yêu cầu.')) from None
+        except HTTPError as error:self._api_error(error)
         except (URLError,TimeoutError):raise CloudError('Không kết nối được '+PROVIDER_NAMES[self.provider]+'.') from None
         except (ValueError,KeyError,IndexError,TypeError):raise CloudError('Phản hồi API không đúng định dạng.') from None
 
@@ -185,6 +208,18 @@ def api_answer_events(client,body):
             {'type':'image_url','image_url':{'url':'data:'+image['mime']+';base64,'+image['data']}}]
     messages.append(user_message)
     yield 'meta',{'provider':client.provider}
+    if hasattr(client,'stream_answer') and not body.get('deep_analysis'):
+        chunks=[]
+        for chunk in client.stream_answer(client.model,messages,options=body.get('options',{})):
+            chunks.append(chunk)
+            yield 'delta',{'text':chunk}
+        answer=''.join(chunks)
+        if not answer.strip():raise CloudError('API chưa trả nội dung; kiểm tra model hoặc token trả lời.')
+        answer,_=guard_answer(answer,{'messages':messages,'document_result':result},body.get('web_search',False))
+        footer=document_footer(result,answer) if result else ''
+        if footer:yield 'delta',{'text':footer}
+        yield 'done',{'success':True,'switch_required':False}
+        return
     response=client.chat(client.model,messages,options=body.get('options',{}))
     answer=response['message']['content']
     if response.get('truncated'):answer+='\n\nPhản hồi bị giới hạn token; có thể yêu cầu tiếp tục.'
