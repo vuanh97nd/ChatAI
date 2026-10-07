@@ -198,3 +198,10 @@ và áp dụng cho cả người dùng thường. Key riêng của các mục đ
 được thay bằng liên kết tới key chung; key chung và các AI khác được giữ nguyên.
 Các mã model cần được dịch vụ DeepSeek cấp quyền; kiểm thử giả lập không chứng
 minh tài khoản API thật có quyền dùng model.
+
+Chat DeepSeek thông thường qua key chung hỗ trợ `stream:true` tại
+`/api/provider/model`: desktop hiển thị từng đoạn nội dung ngay khi API gửi về.
+Không hiển thị reasoning_content. Agent/JSON vẫn dùng phản hồi đầy đủ; bật
+Phân tích sâu vẫn có lượt kiểm tra bổ sung. Để chat nhanh chọn DeepSeek Flash,
+tắt Phân tích sâu và Tìm web khi không cần. Pro/Suy luận có thể mất lâu hơn
+trước token trả lời đầu tiên. Không đảm bảo thời gian 1–2 giây của API thật.

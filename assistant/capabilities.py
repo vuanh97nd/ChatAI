@@ -129,6 +129,7 @@ class Capabilities:
         if action=='soilfirm_create':return self.soilfirm_app.commit_create(plan)
         if action=='borehole_dxf':return self.borehole_dxf.commit(plan)
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
+        if action=='geoslope_create':return self.geoslope_app.commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
         if action=='cad_create_open':return self.cad_app.commit(plan)
         if action=='word_create_open':return self.word_app.commit(plan)

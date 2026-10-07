@@ -1658,7 +1658,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    const modelsUrl={nvidia:'https://integrate.api.nvidia.com/v1/models',deepseek:'https://api.deepseek.com/models',groq:'https://api.groq.com/openai/v1/models'}[provider];
    const response=await fetch(modelsUrl,{headers:{Authorization:'Bearer '+key},signal:cancel.signal});
    if(!response.ok){await response.body?.cancel();return fail('Không lấy được danh sách AI: HTTP '+response.status+'.',502);}
-   const result=await response.json();
+  const result=await response.json();
    const models=(result.data||[]).map(x=>x.id).filter(x=>typeof x==='string'&&/^[A-Za-z0-9._/-]{1,160}$/.test(x)).sort();
    return reply({success:true,models});
   }catch{return fail('Không lấy được danh sách AI từ dịch vụ.',503);}finally{clearTimeout(timer);}
@@ -1694,6 +1694,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  }
  if(!/^[A-Za-z0-9._/-]{1,160}$/.test(selectedModel))return fail('Mã AI không hợp lệ.');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),110000);
+ let streaming=false;
  try{
   let url,payload,headers={'Content-Type':'application/json'};
   if(provider==='gemini'){
@@ -1715,8 +1716,8 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
-   payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:false};
-   if(provider==='deepseek')payload.thinking={type:!testing&&(stored.thinking_enabled===true||body.thinking_enabled===true||requestedProvider==='deepseek_pro'||requestedProvider==='deepseek_r1')?'enabled':'disabled'};
+   payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
+   if(provider==='deepseek')payload.thinking={type:!testing&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){
@@ -1729,6 +1730,23 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    let detail='';try{const errorBody=await response.json();detail=String(errorBody.error?.message||errorBody.message||'');}catch{}
    detail=detail.split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').replace(/nvapi-[A-Za-z0-9_-]+|gsk_[A-Za-z0-9_-]+/g,'[KEY]').slice(0,320);
    const hints={401:'API key không hợp lệ.',403:'Key chưa có quyền dùng AI này.',404:'Không tìm thấy mã AI '+selectedModel+'.',410:'AI '+selectedModel+' đã ngừng phục vụ. Đổi mã AI trong Cài đặt; lỗi này không xác định key sai.',429:'Dịch vụ đang giới hạn yêu cầu hoặc hết hạn mức.'};return fail('Dịch vụ '+provider.toUpperCase()+' HTTP '+response.status+'. '+(hints[response.status]||'Chưa xử lý được yêu cầu.')+(detail?' Chi tiết: '+detail:''),502);}
+   if(payload.stream===true){
+   const reader=response.body.getReader();let bytes=0;
+   streaming=true;
+   const stream=new ReadableStream({
+    async pull(out){
+     try{
+      const {done,value}=await reader.read();
+      if(done){clearTimeout(timer);out.close();return;}
+      bytes+=value.byteLength;
+      if(bytes>1000000)throw new Error('Oversized provider stream');
+      out.enqueue(value);
+     }catch{clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});out.error(new Error('Provider stream interrupted'));}
+    },
+    async cancel(){clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});}
+   });
+   return new Response(stream,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache'}});
+  }
   const result=await response.json();
   if(result.error)return fail('Dịch vụ AI trả lỗi. Kiểm tra mã AI '+selectedModel+' và quyền API của tài khoản.',502);
   const content=provider==='gemini'?result.candidates?.[0]?.content?.parts:result.choices?.[0]?.message?.content;
@@ -1741,7 +1759,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    return fail(limited?'AI đã dùng hết giới hạn token trước khi trả lời. Tăng Token trả lời tối đa hoặc đổi AI.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng. Hãy thử lại hoặc chọn AI khác.',502);
   }
   return reply({success:true,answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
- }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return fail((provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:''),503);}finally{clearTimeout(timer);}
+ }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return fail((provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:''),503);}finally{if(!streaming)clearTimeout(timer);}
 }
 
 async function cloudDocumentModel(env,body){

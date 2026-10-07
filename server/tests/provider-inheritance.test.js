@@ -38,6 +38,15 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
    assert.ok(!JSON.stringify(first).includes(shared));
    for(const entry of first.entries)await call('/api/provider/model',{provider:entry.id,messages:[{role:'user',content:'Xin chào'}]});
    assert.deepEqual(thinking.slice(-3),['disabled','enabled','enabled']);
+   globalThis.fetch=async(url,options)=>{
+    const payload=JSON.parse(options.body);assert.equal(payload.stream,true);assert.equal(payload.thinking.type,'disabled');
+    return new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Xin chào"}}]}\n\n'));}}),{headers:{'Content-Type':'text/event-stream'}});
+   };
+   const streamed=await worker.fetch(new Request('https://example.workers.dev/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'deepseek_flash',stream:true,messages:[{role:'user',content:'Chào'}]})}),env,{});
+   assert.equal(streamed.status,200);assert.match(streamed.headers.get('Content-Type'),/text\/event-stream/);
+   const reader=streamed.body.getReader();
+   const firstChunk=await reader.read();assert.match(new TextDecoder().decode(firstChunk.value),/Xin chào/);
+   await reader.cancel();
    const catalog=await call('/api/provider/catalog',{});
    for(const entry of first.entries)assert.equal(catalog.entries.find(e=>e.id===entry.id).thinking_enabled,entry.thinking_enabled);
   }finally{globalThis.fetch=original;env.DB.raw.close();}
