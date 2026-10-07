@@ -97,41 +97,33 @@ def _parse_problem(raw):
 
 def _build_geometry(slope_def, layers):
     """
-    Build points and lines for a simple layered slope.
+    Build points, lines, and per-region boundary line lists for a layered slope.
 
-    Profile (left to right, bottom to top):
-      A (0, bot_y) – B (toe_width, bot_y) – toe point
-      slope face from toe to crest
-      crest extends crest_width to the right
+    Each layer is a rectangular slab bounded by:
+      - left wall segment for its Y range
+      - bottom horizontal line
+      - right wall segment for its Y range
+      - top boundary: horizontal line for interior layers; slope surface for the topmost layer
 
-    For each layer we generate a horizontal boundary at top_y clipped to the
-    slope face and the extents.
+    Layers are processed sorted top-to-bottom so region line IDs are correct.
     """
     h = slope_def['height']
     angle_rad = math.radians(slope_def['angle'])
     crest_w = slope_def['crest_width']
     toe_w = slope_def['toe_width']
-    run = h / math.tan(angle_rad)  # horizontal distance of slope face
+    run = h / math.tan(angle_rad)
 
-    # Model extent
     x_left = 0.0
     x_toe = toe_w
     x_crest = toe_w + run
     x_right = x_crest + crest_w
+    ground_y = 0.0
 
-    # Global Y extents from layers
-    bottom_y = min(lyr['bottom_y'] for lyr in layers)
-    top_y = max(lyr['top_y'] for lyr in layers)
-    # top_y should equal h (slope height) or close
-    top_y_model = max(top_y, h)
+    sorted_layers = sorted(layers, key=lambda l: -l['top_y'])
+    top_y_model = max(max(l['top_y'] for l in sorted_layers), h)
 
-    # Helper: x on slope face for a given y (0 at toe base, h at crest)
-    def slope_x_at_y(y):
-        return x_toe + (y / h) * run if h > 0 else x_toe
-
-    # --- Build point list ---
-    pts = []  # list of (x, y)
-    pt_id = {}  # (x,y) -> 1-based id
+    pts = []
+    pt_id = {}
 
     def add_pt(x, y):
         x = round(x, 6)
@@ -142,75 +134,66 @@ def _build_geometry(slope_def, layers):
             pt_id[key] = len(pts)
         return pt_id[key]
 
-    # Outer boundary (counter-clockwise):
-    # bottom-left → bottom-right → slope toe → slope crest → top-right → top-left
-    p_bl = add_pt(x_left, bottom_y)
-    p_br = add_pt(x_right, bottom_y)
-    p_toe = add_pt(x_toe, bottom_y)   # toe at base level
-    # slope toe at ground level (y=0 if layers start at 0)
-    ground_y = 0.0
-    p_toe_ground = add_pt(x_toe, ground_y)
-    p_crest = add_pt(x_crest, top_y_model)
-    p_tr = add_pt(x_right, top_y_model)
-    p_tl = add_pt(x_left, top_y_model)
-
-    # Layer boundary points
-    layer_pts = {}  # layer_i -> list of point ids for top boundary
-    for i, lyr in enumerate(layers):
-        ty = lyr['top_y']
-        by = lyr['bottom_y']
-        # For each layer, top boundary is a horizontal line (or slope-intersected)
-        # intersect with slope face
-        if ty <= 0 or ty >= top_y_model:
-            # fully below or above slope; horizontal line
-            p_l = add_pt(x_left, ty)
-            p_r = add_pt(x_right, ty)
-            layer_pts[i] = {'top': (p_l, p_r), 'top_y': ty}
-        else:
-            # slope face intersects this level
-            sx = slope_x_at_y(ty)
-            p_l = add_pt(x_left, ty)
-            p_s = add_pt(sx, ty)
-            p_r = add_pt(x_right, ty)
-            layer_pts[i] = {'top': (p_l, p_s, p_r), 'top_y': ty, 'slope_x': sx}
-
-    # --- Build lines ---
-    lines = []  # list of (pt1_id, pt2_id)
+    lines = []
     line_id = {}
 
     def add_line(a, b):
+        if a == b:
+            return None
         key = (min(a, b), max(a, b))
         if key not in line_id:
             lines.append((a, b))
             line_id[key] = len(lines)
         return line_id[key]
 
-    # Outer boundary lines
-    add_line(p_bl, p_toe)
-    add_line(p_toe, p_toe_ground)
-    add_line(p_toe_ground, p_crest)   # slope face
-    add_line(p_crest, p_tr)
-    add_line(p_tr, p_br)
-    add_line(p_br, p_bl)
-    add_line(p_tl, p_tr)
-    add_line(p_bl, p_tl)
-
-    # Layer horizontal boundaries
-    for i, lyr in enumerate(layers):
-        ldata = layer_pts[i]
-        tp = ldata['top']
-        for j in range(len(tp) - 1):
-            add_line(tp[j], tp[j + 1])
-
-    # --- Build regions ---
     regions = []
-    for i, lyr in enumerate(layers):
-        # Determine bounding line IDs for this region (simplified: record all line ids)
+
+    for idx, lyr in enumerate(sorted_layers):
+        ty = lyr['top_y']
+        by = lyr['bottom_y']
         mat_idx = lyr['material_index']
-        # Region defined by enclosing boundary – collect relevant line ids
-        # (GeoSlope uses LineIDs list; we just list all line ids for now)
-        region_lines = list(range(1, len(lines) + 1))
-        regions.append({'material_index': mat_idx, 'line_ids': region_lines})
+        is_top_layer = (idx == 0)
+        lids = []
+
+        p_l_t = add_pt(x_left, ty)
+        p_l_b = add_pt(x_left, by)
+        p_r_b = add_pt(x_right, by)
+        p_r_t = add_pt(x_right, ty)
+
+        # Left wall segment
+        lid = add_line(p_l_t, p_l_b)
+        if lid: lids.append(lid)
+
+        # Bottom horizontal
+        lid = add_line(p_l_b, p_r_b)
+        if lid: lids.append(lid)
+
+        # Right wall segment
+        lid = add_line(p_r_b, p_r_t)
+        if lid: lids.append(lid)
+
+        if is_top_layer and ty >= ground_y:
+            # Top surface includes slope face:
+            # right edge → crest → slope face → toe_ground → left edge (at ground_y or ty)
+            p_crest = add_pt(x_crest, top_y_model)
+            p_toe_g = add_pt(x_toe, ground_y)
+            p_l_g = add_pt(x_left, ground_y)
+
+            lid = add_line(p_r_t, p_crest)
+            if lid: lids.append(lid)
+            lid = add_line(p_crest, p_toe_g)
+            if lid: lids.append(lid)
+            lid = add_line(p_toe_g, p_l_g)
+            if lid: lids.append(lid)
+            # left wall from ground_y up to ty (skipped when ground_y == ty)
+            lid = add_line(p_l_g, p_l_t)
+            if lid: lids.append(lid)
+        else:
+            # Horizontal top boundary
+            lid = add_line(p_r_t, p_l_t)
+            if lid: lids.append(lid)
+
+        regions.append({'material_index': mat_idx, 'line_ids': sorted(set(lids))})
 
     return pts, lines, regions
 

@@ -26,6 +26,8 @@ def _validate_soil_layer(layer, idx):
     name = layer.get('name', f'Layer{idx}')
     if not isinstance(name, str) or not name or len(name) > 100:
         raise ValueError(f'{prefix} name phải là chuỗi 1-100 ký tự.')
+    if any(c in name for c in ('\n', '\r', '\0')):
+        raise ValueError(f'{prefix} name chứa ký tự xuống dòng không hợp lệ.')
     thickness = _num(layer.get('thickness', -1), f'{prefix} thickness', 0.01, 1000.0)
     return {'name': name, 'E': E, 'nu': nu, 'gamma': gamma, 'c': c, 'phi': phi, 'thickness': thickness}
 
@@ -101,8 +103,10 @@ def _soil_lines(layers, version):
     lines = []
     for i, layer in enumerate(layers):
         vname = f'soil{i + 1}'
+        # Use repr() so any quotes or special chars in name are safely escaped
+        safe_name = repr(layer["name"])
         lines.append(f'{vname} = g.soilmat()')
-        lines.append(f'{vname}.setproperties("MaterialName", "{layer["name"]}")')
+        lines.append(f'{vname}.setproperties("MaterialName", {safe_name})')
         lines.append(f'{vname}.setproperties("SoilModel", 2)')  # Mohr-Coulomb
         lines.append(f'{vname}.setproperties("Eref", {layer["E"]})')
         lines.append(f'{vname}.setproperties("nu", {layer["nu"]})')

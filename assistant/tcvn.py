@@ -152,10 +152,11 @@ for _b, _c in _TCVN3_TO_UNI.items():
     if _c not in _UNI_TO_TCVN3:
         _UNI_TO_TCVN3[_c] = _b
 # Đ / đ not in 0x80-0xFF range above (Đ=0xC1 is there); add đ explicitly
-_UNI_TO_TCVN3['đ'] = 0xf0  # đ — some ABC tables put đ at 0xf0; others overlap ở
-# Note: 0xf0 is ở in full table above; when converting, ở takes priority if both present.
-# Practical resolution: encode ở first, then đ only if ở not needed.
-# Simplest: keep table as-is; caller should verify output visually for edge cases.
+# đ (lowercase) is NOT in the 0x80-0xFF range of the standard ABC/TCVN3 table above.
+# 0xf0 is already mapped to 'ở', so assigning đ→0xf0 would break round-trip for 'ở'.
+# Resolution: encode đ as the two-byte sequence that AutoCAD ABC fonts expect (%%x and the
+# uppercase Đ code), or fall back to '?' for unmapped chars.  Since Đ is at 0xC1, we use that.
+_UNI_TO_TCVN3['đ'] = _UNI_TO_TCVN3.get('Đ', ord('?'))  # use same byte as Đ (0xC1)
 
 # AutoCAD convention: a font name starting with '.' means TrueType (Unicode).
 # SHX Vietnamese fonts use TCVN3 encoding.
