@@ -225,3 +225,27 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Script sinh ra cần mở trong Plaxis bằng File > Run Script.',
     {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
     ['project_name', 'version', 'problem'])))
+
+WRITES.add('road_analyze')
+EXTRA_TOOLS.append(('road_pipeline', schema('road_analyze',
+    'Đọc DXF trắc dọc + danh sách lỗ khoan JSON → phân đoạn địa kỹ thuật → điền mẫu THSH. '
+    'profile_dxf: đường dẫn file DXF trắc dọc (TEXT nhãn lý trình và cao độ). '
+    'boreholes: chuỗi JSON mảng hố khoan, mỗi hố gồm name, station (m), ground_elev, hdy (chiều sâu đất yếu), '
+    'b_nen (m), layers (mảng {code, thickness, Cc, Cs, e0, Pc, Su, E, nu, p0}). '
+    'template_xlsx: đường dẫn file Excel mẫu có sheet THSH. '
+    'output_xlsx: đường dẫn file kết quả sẽ tạo. '
+    'segment_length: độ dài đoạn tính toán (m, mặc định 200). '
+    'Trả về danh sách đoạn với phương án xử lý, lún và Fs; ghi vào THSH sau khi duyệt.',
+    {'profile_dxf': TEXT, 'boreholes': TEXT, 'template_xlsx': TEXT,
+     'output_xlsx': TEXT, 'segment_length': {'type': 'number'}},
+    ['profile_dxf', 'template_xlsx', 'output_xlsx'])))
+
+WRITES.add('road_verify')
+EXTRA_TOOLS.append(('road_pipeline', schema('road_verify',
+    'Xác nhận lại và điền lại THSH với thông số xử lý người dùng điều chỉnh. '
+    'segments: chuỗi JSON mảng đoạn (từ road_analyze) có thể có thêm treatment_override. '
+    'template_xlsx: đường dẫn file mẫu THSH. '
+    'output_xlsx: đường dẫn file kết quả. '
+    'Tính lại lún và Fs rồi ghi vào THSH sau khi duyệt.',
+    {'segments': TEXT, 'template_xlsx': TEXT, 'output_xlsx': TEXT},
+    ['segments', 'template_xlsx', 'output_xlsx'])))
