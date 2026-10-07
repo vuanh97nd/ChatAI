@@ -89,7 +89,10 @@ def run(args):
             except Exception as exc:  # ghi lỗi, không dừng cả bộ
                 error = f'{type(exc).__name__}: {exc}'
             elapsed = round(time.perf_counter() - t0, 2)
-            answer = _last_answer(state)
+            if state.get('model_error'):
+                failure = state['model_error']
+                error = f"{failure['type']}: {failure['message']}"
+            answer = '' if error else _last_answer(state)
             trace = []
             for m in state.get('messages', [])[1:]:
                 if m.get('tool_calls'):
@@ -108,6 +111,7 @@ def run(args):
                 'seconds': elapsed, 'tool_events': tool_calls, 'trace': trace,
                 'has_chinese': bool(re.search(r'[㐀-䶿一-鿿]', answer)),
                 'used_web': bool(state.get('web_results')), 'auto_pass': auto,
+                'status': 'error' if error else 'answered' if answer else 'empty',
                 'manual_scores': {'accuracy': None, 'relevance': None, 'usefulness': None,
                                   'grounding': None, 'clarity': None},
             })
@@ -123,7 +127,8 @@ def run(args):
     out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     print('\nTÓM TẮT:', json.dumps(result['summary'], ensure_ascii=False, indent=2))
     print('Đã lưu:', out)
-    print('Mở file, điền manual_scores (0-4) cho từng câu, rồi chạy --compare.')
+    print('Chỉ chấm manual_scores cho câu có status=answered; lỗi kết nối không phải câu trả lời sai.')
+    return result
 
 
 def summarize(rows):
@@ -132,7 +137,7 @@ def summarize(rows):
     manual = []
     for r in rows:
         s = r.get('manual_scores') or {}
-        if s and all(isinstance(v, (int, float)) for v in s.values()):
+        if not r['error'] and r['answer'] and len(s) == 5 and all(type(v) in (int, float) and 0 <= v <= 4 for v in s.values()):
             manual.append(sum(s.values()))
     return {
         'cases': len(rows),
@@ -177,8 +182,9 @@ def main():
     if args.compare:
         compare(*args.compare)
     else:
-        run(args)
+        result = run(args)
+        return 1 if result['summary']['errors'] or result['summary']['empty_answers'] else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

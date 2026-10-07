@@ -1112,7 +1112,7 @@ async function streamChat(body,env,request,owner){
     }
     if(abort.signal.aborted)emit('error',{message:'Luồng đã ngắt hoặc quá 60 giây.'});
     else if(!length)emit('error',{message:'AI chưa trả về nội dung. Bạn có thể thử lại.'});
-    else {const quota=provider==='cloudflare'?await env.DB.prepare('SELECT used FROM cloud_trials WHERE owner=?').bind(owner).first():null;emit('done',{success:true,characters:length,switch_required:false});}
+    else {emit('done',{success:true,characters:length,switch_required:false});}
    }catch{try{emit('error',{message:'Luồng AI bị ngắt. Phần trả lời đã nhận vẫn được giữ.'});}catch{}}
    finally{if(provider==='cloudflare'&&!length)await releaseCloud(env,owner);abort.signal.removeEventListener('abort',stop);await reader.cancel().catch(()=>{});cleanup();try{controller.close();}catch{}}
   },
@@ -1136,8 +1136,6 @@ export async function ensureProductSchema(db){
 const cloudLimit=()=>reply({success:false,code:'CLOUD_LIMIT',message:'Vui lòng chuyển sang mô hình ngôn ngữ khác để tiếp tục trò chuyện.'},409);
 export async function reserveCloud(env,owner){
  await ensureProductSchema(env.DB);
- await env.DB.prepare('INSERT OR IGNORE INTO cloud_trials(owner,used) VALUES(?,0)').bind(owner).run();
- await env.DB.prepare('UPDATE cloud_trials SET used=used+1 WHERE owner=?').bind(owner).run();
  const day=new Date().toISOString().slice(0,10),cap=Math.max(1,Math.min(10000,Number(env.CLOUD_DAILY_REQUEST_LIMIT)||100));
  await env.DB.prepare('INSERT OR IGNORE INTO cloud_daily(day,used) VALUES(?,0)').bind(day).run();
  const budget=await env.DB.prepare('UPDATE cloud_daily SET used=used+1 WHERE day=? AND used<? RETURNING used').bind(day,cap).first();
@@ -1145,7 +1143,8 @@ export async function reserveCloud(env,owner){
  return null;
 }
 export async function releaseCloud(env,owner){
- await env.DB.prepare('UPDATE cloud_trials SET used=used-1 WHERE owner=? AND used>0').bind(owner).run();
+ // Daily reservations are retained: upstream requests can already have incurred cost.
+ // Legacy lifetime counters are intentionally left unchanged.
 }
 async function cloudOwner(env,body,actor){
  await ensureProductSchema(env.DB);
@@ -1157,9 +1156,7 @@ async function cloudOwner(env,body,actor){
  if(!actor)return linked?null:guest;
  if(linked&&linked.username!==actor.username)return actor.username;
  await env.DB.batch([
-  env.DB.prepare('INSERT OR IGNORE INTO cloud_trials(owner,used) VALUES(?,0)').bind(actor.username),
   env.DB.prepare('INSERT OR IGNORE INTO cloud_guest_links(guest,username,migrated) VALUES(?,?,0)').bind(guest,actor.username),
-  env.DB.prepare('UPDATE cloud_trials SET used=MIN(3,used+COALESCE((SELECT used FROM cloud_trials WHERE owner=?),0)) WHERE owner=? AND EXISTS(SELECT 1 FROM cloud_guest_links WHERE guest=? AND username=? AND migrated=0)').bind(guest,actor.username,guest,actor.username),
   env.DB.prepare('UPDATE cloud_guest_links SET migrated=1 WHERE guest=? AND username=?').bind(guest,actor.username)
  ]);
  return actor.username;

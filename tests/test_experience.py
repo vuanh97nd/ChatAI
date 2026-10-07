@@ -14,9 +14,7 @@ class ExperienceTest(unittest.TestCase):
     def test_cards_count_selection_and_budget(self):
         self.assertEqual(len(CARDS),32)
         chosen=select_cards('Ứng dụng khởi động rồi tự tắt',{'category':'coding'},evidence_record({}))
-        self.assertEqual(chosen[0]['id'],'startup')
-        self.assertLessEqual(len(chosen),2)
-        self.assertLessEqual(sum(len(c['guidance']) for c in chosen),1100)
+        self.assertEqual(chosen,[])  # No canned experience instructions are injected.
         self.assertEqual(select_cards('Xin chào',{'category':'conversation'},evidence_record({})),[])
 
     def test_discussion_does_not_mean_permission_or_claim_success(self):

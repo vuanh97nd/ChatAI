@@ -6,7 +6,7 @@ class CalculatorTest(unittest.TestCase):
         self.assertEqual(calculate('expression',expression='-3//2')['result'],'-2')
         self.assertEqual(calculate('expression',expression='-3%2')['result'],'1')
         self.assertEqual(calculate('expression',expression='sqrt(81)+2**3')['result'],'17')
-        self.assertEqual(calculate('convert',value=1.5,from_unit='km',to_unit='m')['result'],'1500.0')
+        self.assertEqual(calculate('convert',value=1.5,from_unit='km',to_unit='m')['result'],'1500')
         self.assertEqual(calculate('convert',value=32,from_unit='f',to_unit='c')['result'],'0')
         self.assertEqual(calculate('statistics',values=[1,2,8,9])['median'],'5')
         self.assertEqual(calculate('date_difference',start='2024-02-28',end='2024-03-01')['days'],2)

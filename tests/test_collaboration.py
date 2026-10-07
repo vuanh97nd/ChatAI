@@ -65,7 +65,7 @@ class CollaborationTest(unittest.TestCase):
             def commit(self,plan):return {'ok':True,'images':[str(outer.image)]}
         client=Client();client.requests=[]
         agent=Agent(client,None,self.cfg,self.store,self.cid,Caps())
-        state=self.store.load(self.cid);agent.start(state,'Tạo ảnh logo và viết code Python dùng ảnh đó','qwen2.5:7b');state['ui_mode']=2
+        state=self.store.load(self.cid);agent.start(state,'Tạo ảnh logo và viết code Python dùng ảnh đó','qwen2.5:7b');state['ui_mode']=2;state['media_prompt_en']='a robot logo'
         events=list(agent.run(state))
         self.assertIsNotNone(state['pending']);self.assertEqual(state['collaboration']['stage'],'media')
         self.assertFalse(any(e['type']=='token' for e in events))

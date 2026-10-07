@@ -90,7 +90,7 @@ class Agent:
                     raise ValueError('Ảnh cần PNG hoặc JPEG hợp lệ.')
             message['images']=list(images)
         state["messages"].append(message)
-        state.update(running=True, rounds=0, model=model, code_attempts=0, tools_enabled=bool(self.schemas), routing=None, research_prepared=False, memory_prepared=False, rag_prepared=False, rag_results=None, document_prepared=False, prepared_documents=[], document_intent=None, followups=[], review_status=None, web_results=None, memory_write_status=None, web_search_requested=False, collaboration=None, expert_mode=bool(expert_mode), expert_override=expert_override, orchestration=None, expert_fallback_used=False, video_source_paths=[], media_prompt_en=None)
+        state.update(running=True, rounds=0, model=model, code_attempts=0, tools_enabled=bool(self.schemas), routing=None, research_prepared=False, memory_prepared=False, rag_prepared=False, rag_results=None, document_prepared=False, prepared_documents=[], document_intent=None, followups=[], review_status=None, model_error=None, web_results=None, memory_write_status=None, web_search_requested=False, collaboration=None, expert_mode=bool(expert_mode), expert_override=expert_override, orchestration=None, expert_fallback_used=False, video_source_paths=[], media_prompt_en=None)
         self.save(state)
 
     def translate_media_prompt(self, state):
@@ -129,6 +129,7 @@ class Agent:
 
     def finish_media_only(self,state,name,result,artifacts):
         """Direct image/video modes return the created media without a code/prose follow-up."""
+        if (state.get('collaboration') or {}).get('enabled'):return False
         if not result.get('ok') or state.get('ui_mode') not in (2,3):return False
         if name not in {'image_generate','video_generate','video_from_images'}:return False
         wanted='image' if state['ui_mode']==2 else 'video'
@@ -405,7 +406,7 @@ class Agent:
                     yield {'type':'status','text':'Đang phân tích code…' if state['orchestration']['plan']['need_code'] else 'Đang tổng hợp…'}
                 calculation_turn=state["routing"]["category"] == "calculation" or bool((state.get("orchestration") or {}).get("plan",{}).get("need_calculation"))
                 document_turn=bool((state.get("document_intent") or {}).get("target_type")=="document" and state["routing"]["category"]!="coding")
-                review_needed=bool(state.get('deep_analysis'))
+                review_needed=bool(state.get('deep_analysis') or state['routing'].get('complex') or state['routing'].get('high_accuracy'))
                 internal_stage=bool((plan.get('enabled') and plan['stage'] in ('media','vision')) or state.get('ui_mode') in (2,3))
                 instruction = SYSTEM if self.schemas else FAST_SYSTEM
                 if not self.web_allowed(state):
@@ -641,7 +642,8 @@ class Agent:
                 partial = "" if locals().get("internal_stage",False) else "".join(pieces)
                 state["messages"].append({"role": "assistant", "content":
                     (partial + "\n\n" if partial else "") + text})
-                state.update(running=False, queue=[])
+                state.update(running=False, queue=[], model_error={"type":type(exc).__name__,"message":str(exc),"model":failed_model})
                 self.save(state)
+                yield {"type": "error", "error":state["model_error"]}
                 yield {"type": "token", "text": "\n\n" + text}
                 return

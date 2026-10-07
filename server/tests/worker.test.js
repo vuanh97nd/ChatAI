@@ -56,7 +56,7 @@ function memoryEnvironment(){
   return {meta:{changes:1}};
  },async all(){return {results:sql.includes('FROM personal_memory_index')?[...index.values()].filter(i=>i.owner===this.args[0]&&!i.deleted_at):[]};},async first(){
   if(sql.includes('SELECT hits'))return {hits:1};
-  if(sql.includes('FROM users'))return ['alice','bob'].includes(this.args[0])?{username:this.args[0],key:'test-memory-password',password_hash:'',salt:'',tier:'pro',expires_at:'Vĩnh viễn'}:null;
+  if(sql.includes('FROM users'))return ['alice','bob'].includes(this.args[0])?{username:this.args[0],key:'test-memory-password',password_hash:'',salt:'',tier:'pro',expires_at:'Vĩnh viễn',account_status:'active',session_epoch:0}:null;
   if(sql.includes('COUNT(*) AS total FROM personal_memory_index'))return {total:[...index.values()].filter(i=>i.owner===this.args[0]&&!i.deleted_at).length};
   if(sql.includes('SELECT kv_key FROM personal_memory_index')){const item=index.get(this.args[0]+'|'+this.args[1]);return item&&!item.deleted_at?item:null;}
   return null;

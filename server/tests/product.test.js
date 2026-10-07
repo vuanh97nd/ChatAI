@@ -8,34 +8,39 @@ function database(){
 }
 function environment(){return {DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',AI:{async run(){return new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"response":"Xin chào"}\n\ndata: [DONE]\n\n'));c.close();}});}}};}
 function req(path,body){return new Request('https://example.workers.dev'+path,{method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.1'},body:JSON.stringify(body)});}
-test('persistent lifetime limit is atomic with parallel requests and isolated by account',async()=>{
- const env=environment();const reservations=await Promise.all(Array.from({length:6},()=>reserveCloud(env,'alice')));
- assert.equal(reservations.filter(r=>r===null).length,3);assert.equal(reservations.filter(r=>r?.status===409).length,3);
- assert.equal(await reserveCloud(env,'bob'),null);
- await releaseCloud(env,'alice');assert.equal(await reserveCloud(env,'alice'),null);assert.equal((await reserveCloud(env,'alice')).status,409);
+test('daily budget is atomic with parallel requests and legacy counters stay unchanged',async()=>{
+ const env=environment();env.CLOUD_DAILY_REQUEST_LIMIT=4;
+ await env.DB.batch([env.DB.prepare('CREATE TABLE cloud_trials(owner TEXT PRIMARY KEY,used INTEGER CHECK(used BETWEEN 0 AND 3))')]);
+ env.DB.raw.prepare('INSERT INTO cloud_trials VALUES(?,?)').run('alice',3);
+ const reservations=await Promise.all(Array.from({length:6},()=>reserveCloud(env,'alice')));
+ assert.equal(reservations.filter(r=>r===null).length,4);assert.equal(reservations.filter(r=>r?.status===429).length,2);
+ assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_trials WHERE owner=?').get('alice').used,3);
+ assert.equal((await reserveCloud(env,'bob')).status,429);
+ await releaseCloud(env,'alice');assert.equal((await reserveCloud(env,'alice')).status,429);
 });
-test('global request budget fails closed and restores personal slot',async()=>{
+test('global request budget fails closed without writing legacy counters',async()=>{
  const env=environment();env.CLOUD_DAILY_REQUEST_LIMIT=1;
  assert.equal(await reserveCloud(env,'alice'),null);assert.equal((await reserveCloud(env,'bob')).status,429);
- assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_trials WHERE owner=?').get('bob').used,0);
+ assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM cloud_trials').get().n,0);
 });
-test('guest gets three answers then account login does not grant extra trial',async()=>{
+test('guest can receive more than three answers and cannot reuse identity after account linking',async()=>{
  const env=environment(),body={guest_token:'a'.repeat(64),text:'Xin chào'};
- for(let i=0;i<3;i++){
+ for(let i=0;i<5;i++){
   const response=await worker.fetch(req('/api/cloud/chat',body),env,{});assert.equal(response.status,200);
-  const frames=await response.text();assert.match(frames,/Xin chào/);assert.equal(frames.includes('"switch_required":true'),i===2);
+  const frames=await response.text();assert.match(frames,/Xin chào/);assert.ok(!frames.includes('"switch_required":true'));
  }
- const fourth=await worker.fetch(req('/api/cloud/chat',body),env,{});assert.equal(fourth.status,409);assert.equal((await fourth.json()).code,'CLOUD_LIMIT');
- const logged=await worker.fetch(req('/api/cloud/chat',{...body,username:'admin',key:env.ADMIN_KEY}),env,{});assert.equal(logged.status,409);
+ const logged=await worker.fetch(req('/api/cloud/chat',{...body,username:'admin',key:env.ADMIN_KEY}),env,{});assert.equal(logged.status,200);await logged.text();
  const anonymousAgain=await worker.fetch(req('/api/cloud/chat',body),env,{});assert.equal(anonymousAgain.status,401);
 });
-test('empty response refunds trial and a partial response consumes a turn',async()=>{
+test('empty and partial responses retain daily reservations without touching legacy counters',async()=>{
  const env=environment();env.AI.run=async()=>new ReadableStream({start(c){c.close();}});
  const body={guest_token:'b'.repeat(64),text:'Xin chào'};
  const response=await worker.fetch(req('/api/cloud/chat',body),env,{});await response.text();
- assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_trials').get().used,0);
+ assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_daily').get().used,1);
  env.AI.run=async()=>new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"response":"Một phần"}\n\ndata: {"error":"interrupted"}\n\n'));c.close();}});
- const partial=await worker.fetch(req('/api/cloud/chat',body),env,{});assert.match(await partial.text(),/event: error/);assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_trials').get().used,1);
+ const partial=await worker.fetch(req('/api/cloud/chat',body),env,{});assert.match(await partial.text(),/event: error/);
+ assert.equal(env.DB.raw.prepare('SELECT used FROM cloud_daily').get().used,2);
+ assert.equal(env.DB.raw.prepare('SELECT COUNT(*) AS n FROM cloud_trials').get().n,0);
 });
 test('web disabled does not call search and invalid input never calls AI',async()=>{
  const env=environment();let calls=0;env.AI.run=async()=>{calls++;return new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('data: {"response":"OK"}\n\n'));c.close();}});};
@@ -69,14 +74,14 @@ test('support attachment paths, invalid encoding and oversized files rejected',(
  assert.equal(validateHelpAttachment({name:'x',data:'not-base64!'}),false);
  assert.equal(validateHelpAttachment({name:'x',data:'a'.repeat(1400000)}),false);
 });
-test('JSON and streaming Cloudflare share the same lifetime account quota',async()=>{
- const env=environment(),original=env.AI.run;
+test('JSON and streaming Cloudflare share the daily request budget',async()=>{
+ const env=environment(),original=env.AI.run;env.CLOUD_DAILY_REQUEST_LIMIT=3;
  env.AI.run=async(model,input)=>input.stream?original(model,input):{response:'Nội dung trả lời'};
  const body={username:'admin',key:env.ADMIN_KEY,text:'Xin chào',provider:'cloudflare'};
  for(let i=0;i<2;i++){const r=await worker.fetch(req('/api/chat/stream',body),env,{});assert.equal(r.status,200);await r.text();}
  const third=await worker.fetch(req('/api/chat/ai',body),env,{});assert.equal(third.status,200);assert.equal((await third.json()).source,'cloudflare');
- const fourth=await worker.fetch(req('/api/chat/ai',body),env,{});assert.equal(fourth.status,409);
- const fifth=await worker.fetch(req('/api/chat/stream',body),env,{});assert.equal(fifth.status,409);
+ const fourth=await worker.fetch(req('/api/chat/ai',body),env,{});assert.equal(fourth.status,429);
+ const fifth=await worker.fetch(req('/api/chat/stream',body),env,{});assert.equal(fifth.status,429);
 });
 
 test('profile is private, persists contacts, updates display name and cannot change account rights',async()=>{

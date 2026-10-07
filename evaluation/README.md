@@ -16,6 +16,12 @@ Từ thư mục Chat-AI:
 ```
 Chỉ tính chênh lệch khi hai tập có cùng ID. Không tạo điểm giả cho câu chưa kiểm thử.
 
+`run_baseline.py` ghi trạng thái `answered`, `error` hoặc `empty` cho từng câu.
+Lỗi kết nối/thực thi Ollama được lưu trong `error`, không dùng thông báo lỗi làm
+câu trả lời và không tính vào điểm tự động hay thời gian phản hồi thành công.
+Runner vẫn lưu kết quả để chẩn đoán, nhưng trả mã thoát 1 nếu có lỗi hoặc thiếu
+câu trả lời. Chỉ chấm `manual_scores` cho câu có trạng thái `answered`.
+
 Đánh giá 👎 trong ứng dụng lưu câu hỏi, bản trả lời, model, nhãn phân loại, lý do và thời gian trong bảng answer_feedback thuộc SQLite local. Có thể đọc bằng FeedbackStore.poor_answers(username) trong mã đã xác thực tài khoản. Gom các lỗi cùng loại, sửa prompt/quy trình, chạy lại bộ 30 câu cùng câu gây lỗi. Thay từng yếu tố một và giữ bản trước để phát hiện hồi quy. Phản hồi không tự huấn luyện model và không tự gửi nội dung lên dịch vụ ngoài.
 
 Giữ 7B cho máy hiện tại. Chỉ cân nhắc 14B khi 7B vẫn sai ở các câu suy luận khó dù đã có dữ liệu/công cụ đúng, và bạn chấp nhận chậm hơn hoặc có thêm VRAM. Với cấu hình RTX 3070 8GB, bản 14B quantized có thể phải offload RAM; đo thực tế trước khi đổi. Chưa đổi model mặc định trong bản cập nhật này. Nếu dùng hai model sau này: model nhỏ phân loại, model lớn trả lời câu khó; tránh đổi model ở mỗi lượt trò chuyện ngắn vì thời gian nạp có thể xóa lợi ích tốc độ.

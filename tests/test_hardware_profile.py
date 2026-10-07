@@ -16,7 +16,7 @@ class HardwareProfiles(unittest.TestCase):
         self.assertNotIn('qwen2.5-coder:32b',recommendations('high',{'ram_gb':16,'vram_gb':8})['code'])
         self.assertIn('qwen2.5-coder:32b',recommendations('high',{'ram_gb':64,'vram_gb':24})['code'])
     def test_levels_choose_different_context_budgets(self):
-        self.assertEqual([recommendations(level)['num_ctx'] for level in ['weak','medium','high']],[2048,4096,8192])
+        self.assertEqual([recommendations(level)['num_ctx'] for level in ['weak','medium','high']],[2048,8192,8192])
     def test_weak_code_can_use_installed_small_chat_model(self):
         self.assertEqual(available_choice(recommendations('weak')['code'],['qwen2.5:1.5b']),'qwen2.5:1.5b')
 

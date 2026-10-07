@@ -62,7 +62,7 @@ class ApiTests(unittest.TestCase):
         body={'text':'Tóm tắt tiếp','history':[{'role':'user','content':'Tài liệu A'},{'role':'assistant','content':'A'}],'document_result':result}
         events=list(api_answer_events(Client(),body));answer=events[1][1]['text']
         self.assertEqual(captured[1:3],body['history']);self.assertIn('Tài liệu',captured[0]['content'])
-        self.assertIn('Trang chính thức - Tài liệu - https://example.com/doc',answer)
+        self.assertIn('example.com - Tài liệu - https://example.com/doc',answer)
         self.assertFalse(events[-1][1]['switch_required'])
     def test_uncited_document_does_not_add_footer(self):
         class Client:

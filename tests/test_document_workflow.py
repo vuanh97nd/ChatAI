@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from assistant.document_intent import fallback_intent,search_queries,relevance_score,load_glossary,normalize_intent,recent_conversation
 from assistant.documents import read_bytes,chunks
-from assistant.document_pipeline import summarize_events,prepare_documents_events,DOCUMENT_EXAMPLES
+from assistant.document_pipeline import summarize_events,prepare_documents_events
 from assistant.web import WebTools,source_footer
 from assistant.answer_policy import evidence_record
 from assistant.context import compact_evidence
@@ -153,7 +153,7 @@ class DocumentWorkflowTest(unittest.TestCase):
         payload=json.loads(calls[0]['messages'][-1]['content'])
         self.assertEqual(len(payload['conversation']),15)
         self.assertEqual(route['intent']['standalone_question'],'Tóm tắt báo cáo 14')
-        self.assertEqual(len(DOCUMENT_EXAMPLES),4)
+        self.assertNotIn('few-shot',calls[0]['messages'][0]['content'])
 
     def test_compaction_keeps_processed_metadata_not_mutate_snapshot(self):
         state={'prepared_documents':[{'id':'D1','file':'x','text':'a'*9000,'processed_full':True,'full_text':True}]}

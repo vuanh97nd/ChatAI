@@ -31,6 +31,7 @@ class Client:
                 return {'message':{'content':json.dumps(self.observation)},'load_duration':1000000000}
             if 'prompts' in keys:return {'message':{'content':json.dumps({'prompts':['a robot logo'],'assumptions':[]})}}
             return {'message':{'content':json.dumps({'category':'coding','creative':False,'complex':False,'high_accuracy':False})}}
+        if kw.get('stream') is False:return {'message':{'content':'a robot logo'}}
         return iter([fixtures.chunk('Đây là code đã sửa:\n```python\nprint(1)\n```\nChưa chạy thử.')])
 
 class OrchestratorTest(unittest.TestCase):

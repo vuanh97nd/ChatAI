@@ -1,8 +1,8 @@
 """Lựa chọn AI riêng theo tài khoản và địa chỉ dịch vụ, lưu trên máy."""
-from .cloud import CLOUD_MODEL, REMOTE_MODELS
+from .cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS
 from .modules import CHAT_MODELS
 
-DEFAULT_ACCOUNT_MODEL = CLOUD_MODEL
+DEFAULT_ACCOUNT_MODEL = NVIDIA_MODEL
 
 
 def valid_model(model):

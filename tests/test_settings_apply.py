@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from assistant import config
+from assistant.cloud import PROVIDER_NAMES, REMOTE_MODELS
+from assistant.admin_ui import admin_session
 from assistant.themes import style_sheet,recolor,chat_style,bubble_color
 
 class Combo:
@@ -28,32 +30,36 @@ class Text:
     def toPlainText(self):return self.v
     def setText(self,v):self.v=v
     def setPlainText(self,v):self.v=v
+    def clear(self):self.v=''
     def styleSheet(self):return getattr(self,'style','')
     def setStyleSheet(self,v):self.style=v
     def property(self,key):return getattr(self,key,None)
     def setProperty(self,key,v):setattr(self,key,v)
 class Check:
-    def isChecked(self):return True
-    def setChecked(self,value):pass
+    def __init__(self,value=True):self.v=value
+    def isChecked(self):return self.v
+    def setChecked(self,value):self.v=value
 
 class SettingsTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
-        cfg={'default_model':'qwen2.5:7b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'num_predict':1536,'font_size':16,'max_rounds':8,'temperature':.2,'auto_python':True,'chat_provider':'cloudflare','server_url':'https://server.example','whitelist':['workspace'],'ollama_host':'http://127.0.0.1:11434'}
+        cfg={'default_model':'qwen2.5:7b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'num_predict':1536,'font_size':16,'max_rounds':8,'temperature':.2,'machine_auto_ai':False,'auto_python':True,'chat_provider':'cloudflare','server_url':'https://server.example','whitelist':['workspace'],'ollama_host':'http://127.0.0.1:11434'}
         (self.root/'config.json').write_text(json.dumps(cfg))
         self.root_patch=patch.object(config,'ROOT',self.root);self.root_patch.start()
         cfg=config.validate_config(cfg)
         source=ast.parse((Path(__file__).parents[1]/'desktop_ui.py').read_text())
         window=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Window')
-        methods=[n for n in window.body if isinstance(n,ast.FunctionDef) and n.name in ('proposed_settings','settings_dirty','discard_settings','save_settings','preview_appearance','apply_theme','apply_font')]
+        methods=[n for n in window.body if isinstance(n,ast.FunctionDef) and n.name in ('apply_machine_choices','proposed_settings','settings_dirty','discard_settings','save_settings','preview_appearance','apply_theme','apply_font')]
         klass=ast.ClassDef(name='TestWindow',bases=[],keywords=[],body=methods,decorator_list=[])
-        namespace={'re':re,'style_sheet':style_sheet,'recolor':recolor,'QWidget':Text,'QComboBox':Combo,'CLOUD_MODEL':'Cloudflare AI','QMessageBox':SimpleNamespace(information=lambda *args:None)}
+        namespace={'PROVIDER_NAMES':PROVIDER_NAMES,'REMOTE_MODELS':REMOTE_MODELS,'admin_session':admin_session,'re':re,'style_sheet':style_sheet,'recolor':recolor,'QWidget':Text,'QComboBox':Combo,'CLOUD_MODEL':'Cloudflare AI','QMessageBox':SimpleNamespace(information=lambda *args:None)}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[klass],type_ignores=[])),'settings','exec'),namespace)
         self.ui=namespace['TestWindow']();u=self.ui;u.cfg=cfg
         from assistant.storage import Store
         u.store=Store(self.root/'history.db');u.server_session={'username':'test','endpoint':cfg['server_url']}
         u.settings_fields={key:Combo(cfg[key]) if key.endswith('model') else Spin(cfg[key]) for key in ('default_model','code_model','num_ctx','num_predict','font_size','max_rounds','temperature')}
-        u.settings_theme=Combo(cfg['theme']);u.preview_theme=cfg['theme'];u.preview_font_size=cfg['font_size'];u.settings_provider=Combo('cloudflare');u.auto_python_check=Check();u.settings_server=Text(cfg['server_url']);u.settings_roots=Text('workspace')
+        u.settings_theme=Combo(cfg['theme']);u.preview_theme=cfg['theme'];u.preview_font_size=cfg['font_size'];u.settings_provider=Combo(PROVIDER_NAMES[cfg['chat_provider']]);u.auto_python_check=Check();u.settings_server=Text(cfg['server_url']);u.settings_roots=Text('workspace')
+        u.machine_profile=Combo(cfg['machine_profile']);u.machine_auto=Check(cfg['machine_auto_ai']);u.api_model_fields={};u.api_key_fields={}
+        u.select_ai=lambda model:u.model.setCurrentText(model)
         u.model=Combo('Cloudflare AI');u.status=Text('');u.html_cache={};u.draw=lambda:None;u.render=lambda:None;u.busy=lambda:False
         u.view=Text('');u.colored_widget=Text('');u.colored_widget.setStyleSheet('color:#a8c7fa;background:#282a2c;');u.paint_timer=object()
         u.findChildren=lambda cls:[u.view,u.colored_widget];u.setStyleSheet=lambda css:setattr(u,'stylesheet',css)
@@ -106,7 +112,7 @@ class SettingsTest(unittest.TestCase):
         self.assertIn('font-weight:700',rendered)
         css=chat_style('dark',16)
         self.assertIn('p, td, li, span {font-size:16px;}',css)
-        self.assertIn('h1 {font-size:19px;}',css)
+        self.assertIn('h1 {font-size:21px;font-weight:600;}',css)
 
     def test_old_font_restored_once_and_future_choice_retained(self):
         first=config.load_config()
