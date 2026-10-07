@@ -151,7 +151,12 @@ class ApiDocumentClient:
         hints={401:'API key không hợp lệ.',403:'API key chưa có quyền dùng model.',404:'Model không tồn tại hoặc chưa được cấp quyền.',429:'Hết hạn mức hoặc dịch vụ đang giới hạn yêu cầu.'}
         raise CloudError(PROVIDER_NAMES[self.provider]+' HTTP '+str(error.code)+': '+hints.get(error.code,'Dịch vụ chưa xử lý được yêu cầu.')) from None
     def stream_answer(self,model,messages,**kwargs):
-        """Yield text chunks progressively via SSE streaming."""
+        """Yield (kind, text) chunks progressively via SSE streaming.
+
+        kind is 'text' for answer content and 'reasoning' for a reasoning model's
+        chain-of-thought (deepseek-reasoner). Reasoning is surfaced so the UI is
+        not blank during the 40-50s thinking phase before the answer begins.
+        """
         messages=[dict(m) for m in messages]
         options=kwargs.get('options',{})
         payload=self._build_payload(model,messages,options,stream=True)
@@ -166,8 +171,11 @@ class ApiDocumentClient:
                     if chunk=='[DONE]':break
                     try:
                         value=json.loads(chunk)
-                        delta=value['choices'][0].get('delta',{}).get('content','')
-                        if delta:yield delta
+                        delta=value['choices'][0].get('delta',{})
+                        reasoning=delta.get('reasoning_content','')
+                        if reasoning:yield 'reasoning',reasoning
+                        content=delta.get('content','')
+                        if content:yield 'text',content
                     except (ValueError,KeyError,IndexError,TypeError):continue
         except HTTPError as error:self._api_error(error)
         except (URLError,TimeoutError):raise CloudError('Không kết nối được '+PROVIDER_NAMES[self.provider]+'.') from None
@@ -222,8 +230,15 @@ def api_answer_events(client,body):
     messages.append(user_message)
     yield 'meta',{'provider':client.provider}
     if hasattr(client,'stream_answer') and not body.get('deep_analysis'):
-        chunks=[]
-        for chunk in client.stream_answer(client.model,messages,options=body.get('options',{})):
+        chunks=[];reason_len=0;reason_mark=0
+        for kind,chunk in client.stream_answer(client.model,messages,options=body.get('options',{})):
+            if kind=='reasoning':
+                if not chunks:
+                    reason_len+=len(chunk)
+                    if reason_len-reason_mark>=200 or reason_mark==0:
+                        reason_mark=reason_len
+                        yield 'status',{'text':'🤔 AI đang suy luận… ('+str(reason_len)+' ký tự)'}
+                continue
             chunks.append(chunk)
             yield 'delta',{'text':chunk}
         answer=''.join(chunks)

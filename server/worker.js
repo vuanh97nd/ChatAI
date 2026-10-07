@@ -1074,6 +1074,7 @@ async function streamChat(body,env,request,owner){
    const stop=()=>reader.cancel().catch(()=>{});abort.signal.addEventListener('abort',stop,{once:true});
    try{
     emit('meta',{provider,version:VERSION,memory_warning:body._memory_warning||null});
+    let reasonLen=0,reasonMark=0;
     while(true){
      const {done,value}=await reader.read();if(done)break;
      buffer+=decoder.decode(value,{stream:true});if(buffer.length>1000000)throw new Error('Oversized stream frame');
@@ -1084,6 +1085,10 @@ async function streamChat(body,env,request,owner){
       const raw=line.slice(5).trim();if(!raw||raw==='[DONE]')continue;
       let data;try{data=JSON.parse(raw);}catch{continue;}
       if(data.error)throw new Error('Upstream stream failure');
+      // Reasoning models (deepseek-reasoner) stream reasoning_content before the answer.
+      // Surface it as progress so the UI is not blank during the 40-50s thinking phase.
+      const reason=data.choices?.[0]?.delta?.reasoning_content;
+      if(typeof reason==='string'&&reason&&!length){reasonLen+=reason.length;if(reasonLen-reasonMark>=200||reasonMark===0){reasonMark=reasonLen;emit('status',{text:'🤔 AI đang suy luận… ('+reasonLen+' ký tự)'});}}
       const chunk=data.choices?.[0]?.delta?.content ?? data.response ?? '';
       if(typeof chunk==='string'&&chunk){length+=chunk.length;if(length>48000)throw new Error('Answer limit');emit('delta',{text:chunk});}
      }
