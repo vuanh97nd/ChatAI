@@ -102,10 +102,22 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed,[])
         self.assertIn('từ chối',self.state['messages'][-1]['content'])
     def test_invalid_model_tools_never_execute(self):
-        self.responses=[json.dumps({'answer':'','tool':'run_command','arguments':'{"command":"bad"}'})]
+        self.responses=[json.dumps({'answer':'','tool':'run_command','arguments':'{"command":"bad"}'})]*2
         self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
         list(self.agent.run(self.state))
         self.assertFalse(self.state['running']);self.assertEqual(self.committed,[])
+    def test_markdown_and_object_arguments_are_accepted_but_wait_for_approval(self):
+        self.responses=['```json\n'+json.dumps({'tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}})+'\n```']
+        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
+        self.assertEqual(self.committed,[])
+    def test_invalid_json_is_repaired_before_any_side_effect(self):
+        self.responses=['Để tôi mở Word.',json.dumps({'answer':'','tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}})]
+        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        events=list(self.agent.run(self.state))
+        self.assertTrue(any('sửa định dạng' in event.get('text','') for event in events))
+        self.assertEqual(events[-1]['type'],'pending');self.assertEqual(self.committed,[])
+        self.assertEqual(len(self.requests),2)
     def test_local_model_chrome_search_also_waits_for_approval(self):
         import test_app as fixtures
         from assistant.agent import Agent

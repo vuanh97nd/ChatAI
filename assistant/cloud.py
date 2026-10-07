@@ -216,6 +216,8 @@ class ServerApiClient:
     def chat(self,model,messages,**kwargs):
         from .accounts import request_account
         options=kwargs.get('options',{})
+        if kwargs.get('format'):
+            messages=[{'role':'system','content':'Trả đúng một JSON hợp lệ, không Markdown. JSON schema: '+json.dumps(kwargs['format'],ensure_ascii=False)},*messages]
         body={
             'username':self.session['username'],'key':self.session['key'],'provider':self.provider,
             'messages':messages,'small':model=='document-small','format':kwargs.get('format'),

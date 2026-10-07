@@ -6,6 +6,26 @@ from .tools import EXTRA_TOOLS, validate_call
 from .experience import repeated_failure, task_record
 
 
+def parse_plan(raw, schemas):
+    if not isinstance(raw,str) or len(raw)>30000:raise ValueError('Phản hồi kế hoạch vượt giới hạn.')
+    text=raw.strip()
+    fenced=re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```',text,re.I)
+    if fenced:text=fenced.group(1)
+    output=json.loads(text)
+    if not isinstance(output,dict):raise ValueError('Kế hoạch phải là đối tượng JSON.')
+    tool=output.get('tool','')
+    answer=output.get('answer','')
+    if tool is None:tool=''
+    if not isinstance(tool,str) or not isinstance(answer,str):raise ValueError('tool và answer phải là chuỗi.')
+    args=output.get('arguments',{})
+    if isinstance(args,str):args=json.loads(args or '{}')
+    if not isinstance(args,dict):raise ValueError('arguments phải là đối tượng JSON.')
+    if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
+    if tool:validate_call(tool,args,schemas)
+    elif not answer.strip():raise ValueError('Thiếu câu trả lời hoặc công cụ.')
+    return {'answer':answer,'tool':tool,'arguments':args}
+
+
 def requested_automation(prompt):
     return bool(re.search(r'(mở|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
                 and re.search(r'(ứng dụng|\bapp\b|chrome|chorme|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I))
@@ -98,14 +118,24 @@ class OnlineAutomation:
                     messages.append({'role':'user','content':'KẾT QUẢ CÔNG CỤ '+message['tool_name']+': '+message['content'][:16000]})
                 elif message.get('content'):messages.append({'role':message['role'],'content':message['content'][:6000]})
                 elif message.get('tool_calls'):messages.append({'role':'assistant','content':json.dumps(message['tool_calls'],ensure_ascii=False)})
-            response=self.client.chat(self.client.model,messages,format={'type':'object','properties':{
-                'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'string'}},
-                'required':['answer','tool','arguments']},options={'num_predict':2048,'temperature':.1})
+            output=None
+            for attempt in range(2):
+                response=self.client.chat(self.client.model,messages,format={'type':'object','properties':{
+                    'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'string'}},
+                    'required':['answer','tool','arguments']},options={'num_predict':2048,'temperature':.1})
+                try:
+                    if response.get('truncated'):raise ValueError('JSON bị giới hạn token.')
+                    output=parse_plan(response['message']['content'],self.schemas)
+                    break
+                except (ValueError,KeyError,TypeError) as error:
+                    if attempt==0:
+                        yield {'type':'status','text':'AI đang sửa định dạng kế hoạch; chưa chạy thao tác mới…'}
+                        messages.append({'role':'assistant','content':response.get('message',{}).get('content','')[:4000]})
+                        messages.append({'role':'user','content':'Kế hoạch chưa hợp lệ: '+str(error)[:250]+'. Trả lại đúng một JSON {"answer":"...","tool":"tên công cụ hoặc chuỗi rỗng","arguments":"chuỗi JSON"}. Chỉ dùng công cụ và tham số trong danh sách. Không Markdown.'})
             try:
-                output=json.loads(response['message']['content'])
-                if not isinstance(output,dict) or not isinstance(output.get('answer'),str) or not isinstance(output.get('tool'),str):raise ValueError()
+                if output is None:raise ValueError()
                 if output['tool']:
-                    args=json.loads(output['arguments']);validate_call(output['tool'],args,self.schemas)
+                    args=output['arguments']
                     call={'function':{'name':output['tool'],'arguments':args}}
                     state['messages'].append({'role':'assistant','content':'','tool_calls':[call]});state['queue']=[call]
                 else:
@@ -114,6 +144,6 @@ class OnlineAutomation:
                     yield {'type':'token','text':text}
             except (ValueError,KeyError,TypeError):
                 state['running']=False
-                text='AI trả kế hoạch không hợp lệ; chưa thực hiện thao tác mới. Hãy thử yêu cầu ngắn hơn.'
+                text='AI chưa trả kế hoạch hợp lệ sau hai lần kiểm tra; chưa thực hiện thao tác mới. Kiểm tra model trực tuyến hoặc thử lại bằng AI khác.'
                 state['messages'].append({'role':'assistant','content':text});yield {'type':'token','text':text}
             self.save(state)
