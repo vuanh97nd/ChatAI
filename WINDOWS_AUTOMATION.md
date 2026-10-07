@@ -34,7 +34,9 @@ DeepSeek, NVIDIA, Gemini và các AI trực tuyến qua proxy tương thích có
 
 **Dừng app AI** ở khung chat hoặc **Dừng điều khiển app** trong Cài đặt chặn các bước tiếp theo. Không cưỡng ép tắt app/tiến trình vì có thể mất tài liệu. Thao tác UIA đang thực hiện có thể cần hoàn tất. Bấm **Tiếp tục điều khiển app** trong Cài đặt để cấp lại quyền. Tắt quyền hoặc xóa EXE khỏi danh sách rồi lưu cũng chặn bước đang chờ duyệt. Phiên điều khiển không được giữ qua lần khởi động lại ChatAI.
 
-## Tải PDF và mở Foxit Reader
+## Tải PDF và mở Foxit Reader / PDF Editor
+
+Hỗ trợ cả **Foxit PDF Editor** (`FoxitPDFEditor.exe`): thêm EXE Editor vào danh sách app được phép và dùng đường dẫn đó khi mở PDF. Chức năng này tải, đọc văn bản và mở file; chưa tự chỉnh sửa nội dung qua giao diện Editor.
 
 Thêm EXE **Foxit PDF Reader** vào danh sách ứng dụng được phép và Lưu. Cài đặt thư mục được phép để lưu PDF (không lưu ngoài whitelist). Có thể gửi DeepSeek: “Tìm nguồn PDF chính thức của TCCS 41-2022, tải về, mở bằng Foxit Reader rồi đọc và tóm tắt.” AI tìm URL nguồn, đề nghị `pdf_source_open` để tải PDF tối đa 20 MiB, lưu một file mới và gửi lệnh mở Foxit. Đọc văn bản bằng thư viện PDF, không chụp/đọc màn hình Foxit; file scan cần OCR và không được coi là đã đọc toàn văn khi thiếu text. Dùng `pdf_read` và `next_start` để đọc tiếp phần còn lại; mỗi lượt đọc vẫn cần duyệt. Việc mở Foxit thành công không chứng minh tài liệu đúng số hiệu hoặc nội dung đã được kiểm chứng. Không ghi đè file, không hỗ trợ PDF mã hóa. Chrome vẫn chặn download; việc tải được thực hiện bởi công cụ PDF riêng với preview URL và đường dẫn đích.
 

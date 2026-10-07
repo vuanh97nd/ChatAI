@@ -53,6 +53,10 @@ class PDFSourceTest(unittest.TestCase):
         self.assertEqual(Path(plan['path']).read_bytes(),b'user file')
         plan=self.plan();self.app.write_bytes(b'changed')
         with self.assertRaises(PermissionError):self.tools.commit(plan)
+    def test_foxit_pdf_editor_is_supported(self):
+        self.app=self.root/'FoxitPDFEditor.exe';self.app.write_bytes(b'editor fixture')
+        plan=self.plan()
+        self.assertEqual(plan['app'],str(self.app))
     def test_text_pdf_is_read_with_real_pdf_parser(self):
         from pypdf.generic import DictionaryObject,NameObject,DecodedStreamObject
         writer=PdfWriter();page=writer.add_blank_page(width=200,height=200)

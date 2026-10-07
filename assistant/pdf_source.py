@@ -27,14 +27,14 @@ class PDFSource:
             return {'action':name,'path':str(path),'sha256':fingerprint(path),'start':start,
                     'notice':'Đọc tối đa 8000 ký tự PDF tại vị trí start và đưa vào hội thoại AI.'}
         app=self.windows.allowed_path(args['app'])
-        if app.name.lower() not in {'foxitpdfreader.exe','foxitreader.exe','foxit reader.exe'}:
-            raise ValueError('Chọn EXE Foxit Reader trong danh sách app được phép.')
+        if app.name.lower() not in {'foxitpdfreader.exe','foxitreader.exe','foxit reader.exe','foxitpdfeditor.exe','foxit pdf editor.exe'}:
+            raise ValueError('Chọn EXE Foxit PDF Reader hoặc Foxit PDF Editor trong danh sách app được phép.')
         url=public_url(args['url'])
         if not self.files.roots:raise PermissionError('Thêm thư mục được phép trong Cài đặt trước.')
         destination=self.files.path(str(self.files.roots[0]/('source-'+uuid.uuid4().hex+'.pdf')),exists=False)
         return {'action':'pdf_source_open','app':str(app),'sha256':fingerprint(app),
                 'url':url,'path':str(destination),
-                'notice':'Tải PDF tối đa 20 MiB từ URL này, lưu tệp mới trong thư mục được phép, đọc phần đầu rồi mở Foxit Reader. Cần duyệt trước; nội dung PDF được gửi cho AI. Không ghi đè file.'}
+                'notice':'Tải PDF tối đa 20 MiB từ URL này, lưu tệp mới trong thư mục được phép, đọc phần đầu rồi mở ứng dụng Foxit đã chọn. Cần duyệt trước; nội dung PDF được gửi cho AI. Không ghi đè file.'}
 
     def read(self,path,start=0):
         from .documents import read_document_range
