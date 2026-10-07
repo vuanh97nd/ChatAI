@@ -324,5 +324,5 @@ def register_custom_ai(entries):
         name=label
         if name in REMOTE_MODELS and REMOTE_MODELS[name]!=identifier:continue
         REMOTE_MODELS[name]=identifier;PROVIDER_NAMES[identifier]=name;CUSTOM_PROVIDER_TYPES[identifier]=item['provider']
-        accepted.append({k:item.get(k,'') for k in ('id','label','provider','model')})
+        accepted.append({k:item.get(k,'') for k in ('id','label','provider','model','thinking_enabled')})
     return accepted

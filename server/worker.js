@@ -1558,6 +1558,27 @@ async function writeProviderConfig(env,provider,value){
 async function providerAPI(env,path,body){
  const allowed=['nvidia','deepseek','gemini'];
  await initializeProviderStore(env);
+ if(path.endsWith('/deepseek-presets')){
+  const shared=await readProviderConfig(env,'deepseek');
+  if(!shared.key&&!String(env.DEEPSEEK_API_KEY||'').trim())return fail('Chưa có key chung DeepSeek. Lưu key DeepSeek một lần trước khi tạo ba cấu hình.',503);
+  const rows=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' LIMIT 50").all();
+  const existing=[];
+  for(const row of rows.results||[])existing.push({id:row.provider,value:await decodeProviderConfig(env,row.provider,row.encrypted_value)});
+  const presets=[{label:'DeepSeek Flash',model:'deepseek-flash',thinking_enabled:false},{label:'DeepSeek V4 Pro',model:'deepseek-v4-pro',thinking_enabled:true},{label:'DeepSeek Suy luận',model:'deepseek-flash',thinking_enabled:true}];
+  const matches=presets.map(p=>existing.find(e=>e.value.provider==='deepseek'&&(e.value.label===p.label||(p.label==='DeepSeek Suy luận'&&e.value.label==='DeepSeek R1 Suy luận'))));
+  if(existing.length+matches.filter(x=>!x).length>50)return fail('Đã đạt giới hạn 50 AI bổ sung.');
+  if(presets.some((p,i)=>!matches[i]&&existing.some(e=>String(e.value.label||'').toLowerCase()===p.label.toLowerCase())))return fail('Tên cấu hình DeepSeek đang được dùng bởi AI khác.');
+  const entries=[],updates=[];
+  for(const [i,p] of presets.entries()){
+   const id=matches[i]?.id||'ai_'+crypto.randomUUID().replaceAll('-','');
+   const value={...p,provider:'deepseek',key:''};
+   const encrypted=await encodeProviderConfig(env,id,value);
+   updates.push(env.DB.prepare('INSERT INTO provider_credentials(provider,encrypted_value,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at').bind(id,encrypted,new Date().toISOString()));
+   entries.push({id,...p,provider:'deepseek'});
+  }
+  await env.DB.batch(updates);
+  return reply({success:true,entries,message:'Đã cấu hình ba AI dùng key chung DeepSeek.'});
+ }
  if(path.endsWith('/add')){
   const provider=body.provider,label=String(body.label||'').trim(),model=String(body.model||'').trim(),key=String(body.api_key||'').trim();
   if(!allowed.includes(provider)||!label||label.length>80||!model||!/^[A-Za-z0-9._/-]{1,160}$/.test(model)||key.length>4096)return fail('Tên, dịch vụ, mã AI hoặc key không hợp lệ.');
@@ -1570,13 +1591,13 @@ async function providerAPI(env,path,body){
   const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM provider_credentials WHERE provider LIKE 'ai_%'").first();
   if(count.total>=50)return fail('Đã đạt giới hạn 50 AI bổ sung.');
   const id='ai_'+crypto.randomUUID().replaceAll('-','');
-  await writeProviderConfig(env,id,{key,model,provider,label});
-  return reply({success:true,entry:{id,label,provider,model}});
+  await writeProviderConfig(env,id,{key,model,provider,label,thinking_enabled:body.thinking_enabled===true});
+  return reply({success:true,entry:{id,label,provider,model,thinking_enabled:body.thinking_enabled===true}});
  }
  if(path==='/api/provider/catalog'){
   const rows=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' ORDER BY updated_at LIMIT 50").all();
   const entries=[];
-  for(const row of rows.results||[]){const value=await decodeProviderConfig(env,row.provider,row.encrypted_value);if(allowed.includes(value.provider)&&value.label&&value.model)entries.push({id:row.provider,label:value.label,provider:value.provider,model:value.model});}
+  for(const row of rows.results||[]){const value=await decodeProviderConfig(env,row.provider,row.encrypted_value);if(allowed.includes(value.provider)&&value.label&&value.model)entries.push({id:row.provider,label:value.label,provider:value.provider,model:value.model,thinking_enabled:value.thinking_enabled===true});}
   return reply({success:true,entries});
  }
  if(path.endsWith('/status')){
@@ -1646,7 +1667,7 @@ const requestedProvider=body.provider;let provider=requestedProvider;
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:false};
-   if(provider==='deepseek')payload.thinking={type:!testing&&body.thinking_enabled===true?'enabled':'disabled'};
+   if(provider==='deepseek')payload.thinking={type:!testing&&(stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){

@@ -2147,6 +2147,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 field.editingFinished.connect(lambda p=provider:QTimer.singleShot(200,lambda:self.load_provider_catalog(False,p)))
             self.button(api_form,'Kiểm tra '+label,lambda checked=False,p=provider:self.check_online_provider(p))
         self.button(api_form,'Thêm AI',self.add_ai_dialog)
+        self.button(api_form,'Cấu hình 3 AI DeepSeek dùng chung key',self.configure_deepseek_presets)
         self.button(api_form,'Lưu key API',self.save_settings)
         self.button(api_form,'Xem trạng thái key trên server',self.provider_key_status)
         self.api_key_group.setVisible(admin_session(self.server_session));layout.addWidget(self.api_key_group)
@@ -2685,6 +2686,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if self.settings_provider.findText(name)<0:self.settings_provider.addItem(name)
         from assistant.config import save_config
         self.cfg=save_config(self.cfg)
+
+    def configure_deepseek_presets(self):
+        if not admin_session(self.server_session) or self.busy():return
+        from assistant.accounts import request_account
+        session=dict(self.server_session)
+        def done(value):
+            replacements={item['id'] for item in value['entries']}
+            entries=[item for item in self.cfg.get('custom_ai',[]) if item['id'] not in replacements]
+            self.install_custom_ai([*entries,*value['entries']])
+            self.select_ai('DeepSeek Flash')
+            QMessageBox.information(self,'DeepSeek',value.get('message','Đã lưu cấu hình.'))
+        self.work(lambda emit:request_account(session['endpoint'],'/api/admin/providers/deepseek-presets',dict(username=session['username'],key=session['key']),timeout=30),done)
 
     def add_ai_dialog(self):
         if not admin_session(self.server_session) or self.busy():return
