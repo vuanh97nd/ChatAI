@@ -169,3 +169,12 @@ Tối đa100 mục/tài khoản, title120 ký tự, text4000 ký tự. Bật b�
 `/api/chat/ai` hoặc `/api/chat/stream` nhận `web_search:true` và `search_query` tùy chọn. Worker gọi Brave Search, đưa trích đoạn/nguồn vào model được chọn, yêu cầu tổng hợp có dẫn URL. Secret BRAVE_SEARCH_API_KEY cần được cấu hình. Nếu không có search_query, dùng câu hỏi văn bản, không lấy nội dung document/context làm truy vấn. Tối đa600 ký tự/75 từ. Tool Python thực thi ở desktop/Docker, Worker không chạy Python hoặc lệnh Windows.
 
 `work.js` ở thư mục gốc là bản sao đồng bộ của server/worker.js, dùng để copy lên Cloudflare Dashboard. Chỉ triển khai một bản.
+
+
+### Cập nhật sửa thời gian đăng nhập
+
+Khi cập nhật thủ công: lấy toàn bộ `server/worker.js` của nhánh main, mở Worker hiện có trong Cloudflare Dashboard → Edit code, thay nội dung và Deploy. Giữ nguyên binding DB và các secrets hiện có. Pull ứng dụng trên Windows không tự cập nhật Worker. Không tạo Worker/database mới để áp dụng bản sửa.
+
+Worker lưu phiên bản cấu trúc dữ liệu trong `chat_ai_runtime_schema`; lần đầu cập nhật chạy migration, các cold start sau đọc một dòng phiên bản thay vì lặp DDL/PRAGMA. Khi sửa `ensureSchema` hoặc `ensureAdminSchema`, tăng `RUNTIME_SCHEMA_VERSION`. Chỉ ghi phiên bản sau khi mọi migration thành công; lỗi migration không được đánh dấu sẵn sàng. Token, khóa thiết bị và chào lần đầu được ghi theo một D1 batch; mật khẩu, trạng thái, hạn tài khoản và session epoch vẫn được kiểm tra. Các bảng dữ liệu khác tiếp tục migration riêng khi cần.
+
+Đăng nhập admin sau migration dùng tối đa 4 câu SQL ở cold start theo kiểm tra SQLite; đây là số truy vấn, không phải cam kết độ trễ mạng thực tế. Chạy `npm test` để kiểm tra schema lạnh, phục hồi migration, xác thực và thu hồi phiên.

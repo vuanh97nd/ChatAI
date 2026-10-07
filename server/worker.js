@@ -372,13 +372,18 @@ const referenceWorker = {async fetch(request,env){
    let device=String(body.device_id||'').trim();
    const isSys=actor.role==='system'||actor.username.toLowerCase()==='admin';
    
+   // One D1 transaction for token, device lock and welcome instead of serial
+   // round trips. The token insert rechecks the epoch/status after authentication.
+   const loginWrites=[],now=new Date().toISOString();
+   const sessionToken=isSys?null:'session:'+b64(crypto.getRandomValues(new Uint8Array(32)));
    if(!isSys){
     if(!device)device='legacy_app_device_'+actor.username+'_'+Date.now();
-    await db.prepare('INSERT INTO device_logins(username, device_id, session_id, created_at) VALUES(?,?,NULL,?) ON CONFLICT(username) DO UPDATE SET device_id=excluded.device_id, session_id=NULL, created_at=excluded.created_at').bind(actor.username, device, new Date().toISOString()).run();
+    loginWrites.push(db.prepare("INSERT INTO account_tokens(token_hash,username,epoch,expires_at) SELECT ?,username,session_epoch,? FROM users WHERE username=? AND session_epoch=? AND account_status='active'").bind(await tokenDigest(sessionToken),new Date(Date.now()+30*86400000).toISOString(),actor.username,actor.session_epoch||0));
+    loginWrites.push(db.prepare("INSERT INTO device_logins(username, device_id, session_id, created_at) SELECT username,?,NULL,? FROM users WHERE username=? AND session_epoch=? AND account_status='active' ON CONFLICT(username) DO UPDATE SET device_id=excluded.device_id, session_id=NULL, created_at=excluded.created_at").bind(device,now,actor.username,actor.session_epoch||0));
    }
-   
-   const sessionToken=isSys?null:await issueAccountToken(db,actor.username);
-   const welcome=await db.prepare('INSERT OR IGNORE INTO welcome_accounts(username,seen_at) VALUES(?,?)').bind(actor.username,new Date().toISOString()).run();
+   loginWrites.push(db.prepare('INSERT OR IGNORE INTO welcome_accounts(username,seen_at) VALUES(?,?)').bind(actor.username,now));
+   const written=await db.batch(loginWrites),welcome=written[written.length-1];
+   if(!isSys&&written[0]?.meta?.changes!==1)return fail('Phiên tài khoản đã thay đổi. Đăng nhập lại.',401);
    
    return reply({
        success:true,
@@ -390,7 +395,7 @@ const referenceWorker = {async fetch(request,env){
        fullname:actor.fullname,
        expires_at:actor.expires_at,
        license_type:isSys?'Vĩnh viễn':'Có thời hạn',
-       first_login:welcome.meta?welcome.meta.changes===1:false,
+       first_login:welcome?.meta?.changes===1,
        device_lock:!isSys,
        permissions:isSys?['all','system','admin']:['user'],
        user:{
@@ -1247,8 +1252,7 @@ export default {
     try{body=JSON.parse(raw||'{}');}catch{return respond(fail('JSON không hợp lệ.'));}
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
-   await ensureSchema(env.DB);
-   await ensureAdminSchema(env.DB);
+   await ensureRuntimeSchema(env.DB);
    if(path.startsWith('/api/admin/providers/')||(path==='/api/provider/model'||path==='/api/provider/catalog')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để dùng AI trực tuyến.',401));
@@ -1325,7 +1329,7 @@ export default {
  },
  scheduled(event,env,ctx){
   if(!env.DB)return;
-  ctx.waitUntil((async()=>{await ensureSchema(env.DB);await ensureAdminSchema(env.DB);await env.DB.prepare('DELETE FROM account_tokens WHERE expires_at<?').bind(new Date().toISOString()).run();referenceWorker.scheduled(event,env,ctx);})());
+  ctx.waitUntil((async()=>{await ensureRuntimeSchema(env.DB);await env.DB.prepare('DELETE FROM account_tokens WHERE expires_at<?').bind(new Date().toISOString()).run();referenceWorker.scheduled(event,env,ctx);})());
  }
 };
 
@@ -1410,6 +1414,28 @@ async function ensureAdminSchema(db){
    db.prepare('CREATE TABLE IF NOT EXISTS admin_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,target TEXT NOT NULL,action TEXT NOT NULL,details TEXT NOT NULL,created_at TEXT NOT NULL)')
   ]);
  })();adminSchemaJobs.set(db,job);try{await job;}catch(e){adminSchemaJobs.delete(db);throw e;}
+}
+// Persist migration completion across cold isolates/D1 binding objects. Bump this
+// version whenever ensureSchema/ensureAdminSchema changes. Never cache actors.
+const RUNTIME_SCHEMA_VERSION=1;
+const runtimeSchemaJobs=new WeakMap();
+async function ensureRuntimeSchema(db){
+ if(runtimeSchemaJobs.has(db))return runtimeSchemaJobs.get(db);
+ const job=(async()=>{
+  let marker;
+  try{marker=await db.prepare('SELECT version FROM chat_ai_runtime_schema WHERE id=1').first();}
+  catch(error){if(!/no such table.*chat_ai_runtime_schema/i.test(String(error)))throw error;}
+  if(marker?.version===RUNTIME_SCHEMA_VERSION){
+   schemaJobs.set(db,Promise.resolve());adminSchemaJobs.set(db,Promise.resolve());return;
+  }
+  await ensureSchema(db);await ensureAdminSchema(db);
+  await db.prepare('CREATE TABLE IF NOT EXISTS chat_ai_runtime_schema(id INTEGER PRIMARY KEY CHECK(id=1),version INTEGER NOT NULL)').run();
+  // Mark only after every migration succeeds; older concurrent deploys must not
+  // downgrade a newer version. A future version also triggers our migrations.
+  await db.prepare('INSERT INTO chat_ai_runtime_schema VALUES(1,?) ON CONFLICT(id) DO UPDATE SET version=MAX(version,excluded.version)').bind(RUNTIME_SCHEMA_VERSION).run();
+ })();
+ runtimeSchemaJobs.set(db,job);
+ try{await job;}catch(error){runtimeSchemaJobs.delete(db);schemaJobs.delete(db);adminSchemaJobs.delete(db);throw error;}
 }
 async function tokenDigest(token){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token)))).map(n=>n.toString(16).padStart(2,'0')).join('');}
 async function issueAccountToken(db,username){

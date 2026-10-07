@@ -57,6 +57,8 @@ class Store:
                     at TEXT NOT NULL, conversation_id TEXT NOT NULL,
                     action TEXT NOT NULL, details TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS conversations_owner_updated
+                ON conversations(json_extract(state,'$.account_username'),updated DESC);
             """)
 
     @contextmanager

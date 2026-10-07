@@ -103,3 +103,6 @@ Công cụ `cad3d_create_open` dùng cho cả AI trên máy và AI trực tuyế
 Ví dụ: **Tạo mặt bích 3D trong AutoCAD, đường kính ngoài 240 mm, lỗ tâm 80 mm, dày 20 mm; 8 lỗ xuyên đường kính 18 mm trên vòng bu-lông đường kính 180 mm; tâm đáy (0,0,0), lỗ đầu ở hướng +X.** AI hỏi kích thước/đơn vị thiếu; không đoán. Quyền tự thực hiện đã lưu áp dụng công cụ này, vẫn có đếm ngược và nút dừng. Thư viện mapbox-earcut được cài nền theo quyền cài gói hiện có.
 
 Khi đăng nhập, chuyển lịch sử khách sang tài khoản chạy trong worker, chỉ cập nhật hội thoại khách bằng SQLite JSON, không giải mã toàn bộ lịch sử trong giao diện. Trạng thái tài khoản hiển thị số giây; tooltip tách thời gian chờ server và xử lý trên máy. Nhật ký `login_timing` chỉ chứa hai số thời gian, không ghi mật khẩu/token. Thời gian này đo xác thực và chuẩn bị dữ liệu, không đo toàn bộ quá trình khởi động Windows/AutoCAD.
+
+
+Lịch sử SQLite có chỉ mục theo chủ tài khoản và thời gian cập nhật. Đăng nhập/chuyển hội thoại khách và danh sách Gần đây dùng chỉ mục này, tránh quét/đọc nội dung của toàn bộ tài khoản. Lần đầu mở database cũ tạo chỉ mục; các lần sau dùng lại, không thay nội dung hội thoại.
