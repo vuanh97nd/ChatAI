@@ -101,6 +101,7 @@ class Store:
     def save(self, cid, state):
         title = next((m["content"][:60] for m in state["messages"] if m["role"] == "user"),
                      "Cuộc trò chuyện mới")
+        title=state.get('custom_title') or title
         with self.connection() as db:
             db.execute("INSERT INTO conversations(id,title,updated,state) VALUES (?,?,?,?) "
                        "ON CONFLICT(id) DO UPDATE SET title=excluded.title,updated=excluded.updated,state=excluded.state",
@@ -156,3 +157,17 @@ class Store:
             db.execute('INSERT INTO audit(at,conversation_id,action,details) VALUES (?,?,?,?)',
                        (now(), cid, 'conversation_deleted', dumps({'backup': str(backup)})))
         return str(backup)
+
+    def restore_deleted(self,backup,owner):
+        snapshot=json.loads(Path(backup).read_text(encoding='utf-8'))
+        if snapshot['state'].get('account_username')!=owner:raise PermissionError('Hội thoại thuộc tài khoản khác.')
+        cid=snapshot['id']
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT 1 FROM conversations WHERE id=?',(cid,)).fetchone():
+                raise ValueError('Hội thoại đã tồn tại; không ghi đè.')
+            db.execute('INSERT INTO conversations(id,title,updated,state) VALUES (?,?,?,?)',
+                       (cid,snapshot['title'],now(),dumps(snapshot['state'])))
+            db.execute('INSERT INTO audit(at,conversation_id,action,details) VALUES (?,?,?,?)',
+                       (now(),cid,'conversation_restored',dumps({'backup':str(backup)})))
+        return cid

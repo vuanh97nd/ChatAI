@@ -82,3 +82,7 @@ Công cụ `cad_create_open` hỗ trợ AI local và trực tuyến: tạo DXF m
 Ví dụ: **Vẽ trong AutoCAD đường tròn tâm (0,0), bán kính 50 mm** hoặc **Vẽ hình chữ nhật rộng 200 mm, cao 100 mm tại (0,0)**. Kết quả gồm đường dẫn DXF và trạng thái gửi lệnh mở; chưa xác minh cửa sổ AutoCAD. Không sửa DWG đang mở, không chạy AutoLISP/script, không ghi đè tệp cũ.
 
 Nhận diện AutoCAD hỗ trợ tên EXE acad.exe/acadlt.exe và InstallLocation trong mục đăng ký gỡ cài đặt khi DisplayIcon không chỉ tới app. Nếu bản portable không đăng ký, thêm đường dẫn EXE thực tế thủ công.
+
+Trước bước công cụ app đầu tiên của mỗi yêu cầu mới, chat hiện đếm ngược 3–2–1 giây và nút **Hủy yêu cầu**. Hủy trong khoảng này ngăn công cụ được thực hiện. Các bước sau hoặc tiếp tục duyệt trong cùng yêu cầu không đếm ngược lại.
+
+Trong mục Gần đây, hội thoại đang chọn có nút thùng rác ngay bên phải; các dòng khác có menu đổi tên/xóa. Sau khi xóa, nút **Hoàn tác** xuất hiện 5 giây. Hội thoại được backup trước khi xóa; hoàn tác khôi phục lịch sử và tên, không ghi đè hội thoại đã tồn tại. File Word/PDF/DXF đã tạo không bị xóa.

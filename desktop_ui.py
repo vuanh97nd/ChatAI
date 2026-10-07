@@ -94,11 +94,17 @@ class Worker(QThread):
     def __init__(self, fn):
         super().__init__()
         self.fn, self.result, self.failure = fn, None, None
-        self.stop_requested=Event();self.cancelled=False;self.cancellable=False
+        self.stop_requested=Event();self.cancelled=False;self.cancellable=False;self.app_countdown=False;self.app_countdown_done=False
         self.partial='';self.snapshot_count=0;self.chat_cid=None
 
     def emit_event(self,event):
         if self.cancellable and self.stop_requested.is_set():raise ChatCancelled()
+        if event.get('type')=='app_activity' and self.app_countdown and not self.app_countdown_done:
+            self.app_countdown_done=True
+            for seconds in (3,2,1):
+                self.event.emit({'type':'app_countdown','seconds':seconds})
+                if self.stop_requested.wait(1):raise ChatCancelled()
+            self.event.emit({'type':'app_countdown','seconds':0})
         if event.get('type')=='token':self.partial+=event.get('text','')
         elif event.get('type')=='snapshot':self.partial='';self.snapshot_count=len(event.get('messages',[]))
         self.event.emit(event)
@@ -311,6 +317,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.history = QListWidget(); self.history.setObjectName('history'); nav.addWidget(self.history,1)
         self.history.itemClicked.connect(self.select_chat)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.undo_delete_box=QWidget();undo_row=QHBoxLayout(self.undo_delete_box);undo_row.setContentsMargins(0,0,0,0)
+        undo_row.addWidget(QLabel('Đã xóa hội thoại'))
+        undo_button=QPushButton('Hoàn tác');undo_button.clicked.connect(self.undo_delete_chat);undo_row.addWidget(undo_button)
+        nav.addWidget(self.undo_delete_box);self.undo_delete_box.hide()
+        self.undo_delete_timer=QTimer(self);self.undo_delete_timer.setSingleShot(True);self.undo_delete_timer.timeout.connect(self.expire_delete_undo)
+        self.deleted_chat_backup=None
         self.sidebar_stack.addWidget(navigation)
         settings_nav=QWidget();self.settings_nav_layout=QVBoxLayout(settings_nav)
         self.settings_nav_layout.setContentsMargins(0,0,0,0);self.settings_nav_layout.setSpacing(8)
@@ -394,6 +406,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.status = QLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
         status_row=QHBoxLayout(); self.reply_logo=self.logo_label(22);self.reply_logo.hide();status_row.addWidget(self.reply_logo)
         status_row.addWidget(self.status,1)
+        self.cancel_countdown_button=QPushButton('Hủy yêu cầu');self.cancel_countdown_button.clicked.connect(self.send_or_stop);self.cancel_countdown_button.hide();status_row.addWidget(self.cancel_countdown_button)
         self.windows_stop_button=QPushButton('Dừng app AI');self.windows_stop_button.clicked.connect(self.stop_windows_apps)
         self.windows_stop_button.setToolTip('Chặn các bước điều khiển ứng dụng tiếp theo; không tắt app hay bỏ qua lưu tài liệu.')
         self.windows_stop_button.setVisible(self.cfg.get('windows_apps_enabled',False));status_row.addWidget(self.windows_stop_button)
@@ -608,10 +621,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.send_btn.setAccessibleName('Dừng phản hồi' if stopping else 'Gửi tin nhắn')
         self.send_btn.setEnabled(not self.worker.stop_requested.is_set() if stopping else enabled and not self.busy())
 
-    def work(self, fn, callback=None, cancellable=False):
+    def work(self, fn, callback=None, cancellable=False, app_countdown=False):
         if self.busy():
             return
         worker = Worker(fn); self.worker, self.callback = worker, callback
+        worker.app_countdown=app_countdown
         worker.cancellable=cancellable;worker.chat_cid=self.cid if cancellable else None
         worker.event.connect(self.on_event)
         worker.finished.connect(self.finished)
@@ -623,6 +637,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         worker.start()
 
     def finished(self):
+        self.cancel_countdown_button.hide()
         self.finish_app_activity()
         worker, callback = self.worker, self.callback
         if worker.failure and self.sent_prompt and not self.input.toPlainText().strip():
@@ -660,6 +675,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             callback(worker.result)
 
     def on_event(self, event):
+        if event['type']=='app_countdown':
+            seconds=event['seconds'];self.cancel_countdown_button.setVisible(seconds>0)
+            if seconds:self.status.setText(f'AI sẽ thực hiện yêu cầu sau {seconds} giây…')
+            return
         if event['type']=='app_activity':
             self.compact_app_activity(event['text']);return
         if event['type']=='status' and getattr(self,'app_compact_active',False):
@@ -967,6 +986,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for cid, title in self.store.list(self.server_session['username'] if self.server_session else GUEST_OWNER,include_empty=False):
             item = QListWidgetItem(title); item.setData(Qt.ItemDataRole.UserRole, cid); self.history.addItem(item)
             if cid == self.cid: self.history.setCurrentItem(item)
+            row=QWidget();buttons=QHBoxLayout(row);buttons.setContentsMargins(4,2,4,2);buttons.setSpacing(2)
+            choose=QPushButton(row.fontMetrics().elidedText(title,Qt.TextElideMode.ElideRight,165));choose.setToolTip(title)
+            choose.setStyleSheet('text-align:left;background:transparent;border:none;padding:6px;')
+            choose.clicked.connect(lambda checked=False,i=item:self.select_chat(i));buttons.addWidget(choose,1)
+            action=QPushButton('🗑' if cid==self.cid else '⋯');action.setFixedSize(30,30)
+            action.setToolTip('Xóa cuộc trò chuyện' if cid==self.cid else 'Đổi tên hoặc xóa')
+            action.setAccessibleName(action.toolTip())
+            if cid==self.cid:action.clicked.connect(lambda checked=False,c=cid:self.delete_chat(c))
+            else:
+                menu=QMenu(action);menu.addAction('Đổi tên',lambda checked=False,c=cid:self.rename_chat(c));menu.addAction('Xóa',lambda checked=False,c=cid:self.delete_chat(c));action.setMenu(menu)
+            buttons.addWidget(action);item.setSizeHint(row.sizeHint());self.history.setItemWidget(item,row)
         self.filter_history(self.history_search.text())
         selected=self.history.currentItem()
         full_title=selected.text() if selected else 'Chat AI'
@@ -1038,23 +1068,46 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.store.remember_conversation(self.server_session['username'] if self.server_session else GUEST_OWNER,self.cid)
             self.tabs.setCurrentIndex(0);self.render()
 
-    def delete_chat(self):
-        if self.busy(): return
-        cid = self.cid
-        if not any(ident==cid for ident,_ in self.store.list()):
-            self.cid=self.store.create(persist=False);self.render();self.status.setText('Cuộc trò chuyện mới chưa có tin nhắn nên chưa được lưu.');return
-        title = next((title for ident, title in self.store.list() if ident == cid), 'Hội thoại')
-        answer = QMessageBox.question(self, 'Xóa cuộc trò chuyện',
-            f'Xóa “{title}”?\nHội thoại sẽ được backup trong data/backups trước khi xóa.',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes: return
+    def rename_chat(self,cid):
+        if self.busy():return
+        owner=self.server_session['username'] if self.server_session else GUEST_OWNER
+        if self.store.load(cid).get('account_username')!=owner:return
+        title=next((title for ident,title in self.store.list(owner) if ident==cid),'')
+        text,accepted=QInputDialog.getText(self,'Đổi tên hội thoại','Tên mới:',text=title)
+        if accepted and text.strip():
+            state=self.store.load(cid);state['custom_title']=text.strip()[:120];self.store.save(cid,state);self.render()
+
+    def expire_delete_undo(self):
+        self.deleted_chat_backup=None;self.undo_delete_box.hide()
+
+    def undo_delete_chat(self):
+        if not self.deleted_chat_backup:return
+        backup,owner=self.deleted_chat_backup
+        current=self.server_session['username'] if self.server_session else GUEST_OWNER
+        if current!=owner:return
         try:
-            with execution_lock(ROOT / 'data/agent.lock'):
-                backup = self.store.delete(cid, ROOT / 'data/backups')
-                rows = self.store.list(self.server_session['username'] if self.server_session else GUEST_OWNER,include_empty=False); self.cid = rows[0][0] if rows else self.store.create(persist=False)
-            self.stream = ''; self.html_cache.clear(); self.input.clear(); self.render()
-            self.status.setText('Đã xóa. Backup: ' + backup)
-        except Exception as exc: QMessageBox.warning(self, 'Xóa hội thoại', str(exc))
+            cid=self.store.restore_deleted(backup,owner)
+            self.undo_delete_timer.stop();self.expire_delete_undo()
+            if not self.busy():self.cid=cid
+            self.render();self.status.setText('Đã khôi phục hội thoại.')
+        except Exception as exc:QMessageBox.warning(self,'Hoàn tác',str(exc))
+
+    def delete_chat(self,cid=None):
+        if self.busy():return
+        if not isinstance(cid,str):cid=self.cid
+        owner=self.server_session['username'] if self.server_session else GUEST_OWNER
+        if self.store.load(cid).get('account_username')!=owner:return
+        if not any(ident==cid for ident,_ in self.store.list(owner)):return
+        try:
+            with execution_lock(ROOT/'data/agent.lock'):
+                backup=self.store.delete(cid,ROOT/'data/backups')
+                if cid==self.cid:
+                    rows=self.store.list(owner,include_empty=False)
+                    self.cid=rows[0][0] if rows else self.store.create(persist=False)
+            self.deleted_chat_backup=(backup,owner);self.undo_delete_box.show();self.undo_delete_timer.start(5000)
+            self.stream='';self.html_cache.clear();self.input.clear();self.render()
+            self.status.setText('Đã xóa hội thoại — có thể Hoàn tác trong 5 giây. Các tài liệu đã tạo được giữ nguyên.')
+        except Exception as exc:QMessageBox.warning(self,'Xóa hội thoại',str(exc))
 
     def toggle_web(self):
         if self.busy():return
@@ -1493,7 +1546,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     state['running']=False;agent.save(state);raise
                 emit({'type':'snapshot','messages':snapshot()})
                 return state
-        self.work(task,self.after_chat,cancellable=True)
+        self.work(task,self.after_chat,cancellable=True,app_countdown=prompt is not None)
 
     def chat_task(self, prompt=None, allowed=None, expected=None, recover=False):
         if prompt is None and self.store.load(self.cid).get('online_automation'):
@@ -1622,7 +1675,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 finally:
                     events.close()
                 return self.store.load(cid)
-        self.work(task, self.after_chat, cancellable=True)
+        self.work(task, self.after_chat, cancellable=True,app_countdown=prompt is not None)
 
     def after_chat(self, state):
         if state['pending']:
