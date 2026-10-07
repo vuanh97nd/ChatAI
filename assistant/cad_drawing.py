@@ -16,6 +16,11 @@ LAYERS = {
     "KS-TUY-2401-Trắc dọc tự nhiên": {"color": 3},
     "XLDY-PVD-ZONE":                {"color": 4},
     "XLDY-CDM-ZONE":                {"color": 5},
+    "XLDY-DAO-THAY-ZONE":           {"color": 3},
+    "XLDY-COC-TRE-ZONE":            {"color": 2},
+    "XLDY-COC-TRE":                 {"color": 2},
+    "XLDY-CU-TRAM-ZONE":            {"color": 30},
+    "XLDY-CU-TRAM":                 {"color": 30},
     "XLDY-PVD-DEPTH":               {"color": 4, "linetype": "DASHED"},
     "XLDY-ANNOT":                   {"color": 6},
     "NEN-DUONG":                    {"color": 2},
@@ -280,12 +285,15 @@ def build_tracdoc_xldy(doc, segments, origin_x=0, origin_y=0):
         gy = elev_to_y(ge)
         dy = elev_to_y(de)
 
-        if treatment in ("PVD", "CDM"):
-            zone_layer = "XLDY-PVD-ZONE" if treatment == "PVD" else "XLDY-CDM-ZONE"
-            hatch_pattern = "ANSI31" if treatment == "PVD" else "AR-SAND"
-            hatch_color   = 4 if treatment == "PVD" else 5
-
-            # Zone rectangle as hatch
+        _ZONE_MAP = {
+            "PVD":      ("XLDY-PVD-ZONE",      "ANSI31",  4),
+            "CDM":      ("XLDY-CDM-ZONE",       "AR-SAND", 5),
+            "ĐÀO THAY": ("XLDY-DAO-THAY-ZONE",  "EARTH",   3),
+            "CỌC TRE":  ("XLDY-COC-TRE-ZONE",   "DOTS",    2),
+            "CỪ TRÀM":  ("XLDY-CU-TRAM-ZONE",   "DOTS",    30),
+        }
+        if treatment in _ZONE_MAP:
+            zone_layer, hatch_pattern, hatch_color = _ZONE_MAP[treatment]
             boundary = [(sx, gy), (ex, gy), (ex, dy), (sx, dy), (sx, gy)]
             try:
                 hatch = msp.add_hatch(color=hatch_color,
@@ -293,7 +301,6 @@ def build_tracdoc_xldy(doc, segments, origin_x=0, origin_y=0):
                 hatch.set_pattern_fill(hatch_pattern, scale=0.5)
                 hatch.paths.add_polyline_path(boundary, is_closed=True)
             except Exception:
-                # Fallback: just draw outline rectangle
                 msp.add_lwpolyline(boundary,
                                    dxfattribs={"layer": zone_layer,
                                                "color": hatch_color})
@@ -308,9 +315,36 @@ def build_tracdoc_xldy(doc, segments, origin_x=0, origin_y=0):
 
         # CDM depth annotation
         if treatment == "CDM":
-            hdy = seg.get("hdy") or 0
-            _add_text(msp, f"H.CDM={hdy:.1f}m",
+            hdy_v = seg.get("hdy") or 0
+            _add_text(msp, f"H.CDM={hdy_v:.1f}m",
                       cx, dy + 3, height=1.5, layer="0")
+
+        # Đào thay annotation
+        if treatment == "ĐÀO THAY":
+            exc = seg.get("excavation_depth") or seg.get("hdy") or 0
+            _add_text(msp, f"Đào {exc:.1f}m",
+                      cx, dy + 3, height=1.5, layer="XLDY-ANNOT",
+                      halign=TextEntityAlignment.MIDDLE_CENTER)
+
+        # Cọc tre / Cừ tràm annotation
+        if treatment in ("CỌC TRE", "CỪ TRÀM"):
+            pl = seg.get("pile_length") or seg.get("hdy") or 0
+            ps = seg.get("pile_spacing") or (0.6 if treatment == "CỌC TRE" else 0.8)
+            label = "CT" if treatment == "CỌC TRE" else "Tràm"
+            _add_text(msp, f"{label} L={pl:.1f}m @{ps:.1f}m",
+                      cx, dy + 3, height=1.5, layer="XLDY-ANNOT",
+                      halign=TextEntityAlignment.MIDDLE_CENTER)
+            # Draw pile symbols as short vertical lines at pile_spacing intervals
+            pile_layer = "XLDY-COC-TRE" if treatment == "CỌC TRE" else "XLDY-CU-TRAM"
+            pile_color = 2 if treatment == "CỌC TRE" else 30
+            x_pile = sx
+            while x_pile <= ex + 0.01:
+                msp.add_line(
+                    (x_pile, gy),
+                    (x_pile, gy - pl),
+                    dxfattribs={"layer": pile_layer, "color": pile_color}
+                )
+                x_pile += float(ps)
 
         # Settlement annotations
         sc = seg.get("Sc")
@@ -393,30 +427,28 @@ def build_mcn_xldy(doc, segment, origin_x=0, origin_y=0):
             msp.add_lwpolyline(soft_pts,
                                dxfattribs={"layer": "VolUnsoil", "color": 8})
 
-    # 5. PVD symbols (vertical lines spaced at pvd_spacing)
+    # 5. Treatment-specific symbols
+    treatment_norm = treatment.replace(" ", "").upper()
+
     if treatment == "PVD" and pvd_spacing > 0 and pvd_depth > 0:
-        pvd_zone_left  = -toe_half
-        pvd_zone_right =  toe_half
-        x = pvd_zone_left
-        while x <= pvd_zone_right + 0.01:
+        # PVD: vertical lines from ground surface down
+        x = -toe_half
+        while x <= toe_half + 0.01:
             msp.add_line(
-                (x, crest_y),
-                (x, crest_y - pvd_depth),
+                (x, origin_y),
+                (x, origin_y - pvd_depth),
                 dxfattribs={"layer": "GT_MCN", "color": 4}
             )
             x += pvd_spacing
 
-    # 6. CDM circles
-    if treatment == "CDM" and hdy > 0:
-        cdm_radius  = 0.4   # 0.8 m diameter
-        cdm_spacing = segment.get("pvd_spacing") or 1.6
-        cdm_spacing = float(cdm_spacing) if cdm_spacing else 1.6
+    elif treatment == "CDM" and hdy > 0:
+        # CDM: circles (0.8m dia) arranged in grid
+        cdm_radius  = 0.4
+        cdm_spacing = float(segment.get("pvd_spacing") or 1.6)
         x = -toe_half
         while x <= toe_half + 0.01:
-            # CDM from design surface to bottom of soft soil
             y_top = origin_y
-            y_bot = origin_y - hdy
-            n_cdm = max(1, int((y_top - y_bot) / (cdm_radius * 2)))
+            n_cdm = max(1, int(hdy / (cdm_radius * 2)))
             for row in range(n_cdm):
                 cy = y_top - cdm_radius - row * cdm_radius * 2
                 msp.add_circle(
@@ -424,6 +456,48 @@ def build_mcn_xldy(doc, segment, origin_x=0, origin_y=0):
                     dxfattribs={"layer": "XLDY-CDM", "color": 5}
                 )
             x += cdm_spacing
+
+    elif treatment == "ĐÀO THAY":
+        # Excavation + fill zone: hatch the excavated depth below ground
+        exc_depth = float(segment.get("excavation_depth") or hdy)
+        exc_depth = min(exc_depth, 4.0)
+        exc_pts = [
+            (-toe_half, origin_y - exc_depth),
+            (toe_half,  origin_y - exc_depth),
+            (toe_half,  origin_y),
+            (-toe_half, origin_y),
+            (-toe_half, origin_y - exc_depth),
+        ]
+        try:
+            hatch = msp.add_hatch(color=3, dxfattribs={"layer": "XLDY-DAO-THAY-ZONE"})
+            hatch.set_pattern_fill("EARTH", scale=0.5)
+            hatch.paths.add_polyline_path(exc_pts, is_closed=True)
+        except Exception:
+            msp.add_lwpolyline(exc_pts, dxfattribs={"layer": "XLDY-DAO-THAY-ZONE", "color": 3})
+        _add_text(msp, f"Đào thay đất H={exc_depth:.1f}m",
+                  0, origin_y - exc_depth - 1.5, height=1.0, layer="XLDY-ANNOT",
+                  halign=TextEntityAlignment.MIDDLE_CENTER)
+
+    elif treatment in ("CỌC TRE", "CỪ TRÀM"):
+        # Pile symbols: short vertical lines at pile_spacing
+        pile_length  = float(segment.get("pile_length") or hdy)
+        pile_spacing = float(segment.get("pile_spacing") or (0.6 if treatment == "CỌC TRE" else 0.8))
+        pile_length  = min(pile_length, 3.0 if treatment == "CỌC TRE" else 4.0)
+        pile_layer   = "XLDY-COC-TRE" if treatment == "CỌC TRE" else "XLDY-CU-TRAM"
+        pile_color   = 2 if treatment == "CỌC TRE" else 30
+        x = -toe_half
+        while x <= toe_half + 0.01:
+            msp.add_line(
+                (x, origin_y),
+                (x, origin_y - pile_length),
+                dxfattribs={"layer": pile_layer, "color": pile_color}
+            )
+            x += pile_spacing
+        _add_text(msp,
+                  f"{'Cọc tre' if treatment == 'CỌC TRE' else 'Cừ tràm'} "
+                  f"L={pile_length:.1f}m @{pile_spacing:.1f}m",
+                  0, origin_y - pile_length - 1.5, height=1.0, layer="XLDY-ANNOT",
+                  halign=TextEntityAlignment.MIDDLE_CENTER)
 
     # 7. Dimension annotations
     ann_y_above = crest_y + 2.0

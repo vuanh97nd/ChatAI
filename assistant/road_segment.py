@@ -19,9 +19,12 @@ class Segment:
     ground_elev: float           # natural ground elevation (m)
     layers: list[dict] = field(default_factory=list)
     # layers: [{'code': '1c', 'thickness': 5.2}, ...]
-    treatment: str = ''          # 'PVD', 'CDM', 'Đào thay', 'Không xử lý'
+    treatment: str = ''          # 'PVD', 'CDM', 'Đào thay', 'Cọc tre', 'Cừ tràm', 'Không xử lý'
     pvd_spacing: float = 0.0     # m (triangular grid)
     pvd_depth: float = 0.0       # m
+    excavation_depth: float = 0.0  # m (Đào thay)
+    pile_spacing: float = 0.0      # m (Cọc tre / Cừ tràm)
+    pile_length: float = 0.0       # m (Cọc tre / Cừ tràm)
     geotextile: bool = False
     notes: str = ''
 
@@ -37,7 +40,9 @@ def classify_treatment(htk: float, hdy: float,
     Rules based on TCVN 9362:2012 and common Vietnamese practice:
     ─────────────────────────────────────────────────────────────
     htk < 0.5m or hdy <= 0.5m  → Không xử lý
-    htk 0.5–1.5m, hdy 0.5–3m   → Đào thay đất (or cừ tràm if very shallow)
+    htk < 1.5m,   hdy ≤ 1.5m   → Cọc tre spacing 0.6m
+    htk < 2.0m,   hdy 1.5–2.0m → Cừ tràm spacing 0.8m, L=3–5m
+    htk any,      hdy 2.0–3.0m → Đào thay đất
     htk 0.5–1.5m, hdy 3–8m     → PVD spacing 1.5m, gia tải nhẹ
     htk 1.5–4m,   hdy 0.5–3m   → Đào thay đất
     htk 1.5–4m,   hdy 3–8m     → PVD spacing 1.5m, gia tải
@@ -57,9 +62,22 @@ def classify_treatment(htk: float, hdy: float,
         params['cdm_depth'] = hdy
         params['cdm_spacing'] = 2.0
 
+    elif hdy <= 1.5 and htk < 1.5:
+        # Very shallow soft soil + low fill → cọc tre (bamboo pile, L max 3m)
+        method = 'Cọc tre'
+        params['pile_length'] = min(hdy, 3.0)
+        params['pile_spacing'] = 0.6
+
+    elif hdy <= 2.5 and htk < 2.0:
+        # Shallow soft soil → cừ tràm (melaleuca pile, L max 4m)
+        method = 'Cừ tràm'
+        params['pile_length'] = min(hdy + 1.0, 4.0)
+        params['pile_spacing'] = 0.8
+
     elif hdy <= 3.0:
+        # Đào thay đất, max excavation 4m
         method = 'Đào thay'
-        params['excavation_depth'] = hdy
+        params['excavation_depth'] = min(hdy, 4.0)
 
     elif htk > 4.0 and hdy > 3.0:
         method = 'PVD'
@@ -272,6 +290,9 @@ def segment_profile(profile_points: list[dict],
             treatment=method,
             pvd_spacing=params.get('pvd_spacing', 0.0),
             pvd_depth=params.get('pvd_depth', 0.0),
+            excavation_depth=params.get('excavation_depth', 0.0),
+            pile_spacing=params.get('pile_spacing', 0.0),
+            pile_length=params.get('pile_length', 0.0),
             geotextile=params.get('geotextile', False),
             notes='',
         )
@@ -306,6 +327,9 @@ def segments_to_dicts(segments: list[Segment]) -> list[dict]:
             'treatment': s.treatment,
             'pvd_spacing': s.pvd_spacing,
             'pvd_depth': s.pvd_depth,
+            'excavation_depth': s.excavation_depth,
+            'pile_spacing': s.pile_spacing,
+            'pile_length': s.pile_length,
             'geotextile': s.geotextile,
             'notes': s.notes,
         }
