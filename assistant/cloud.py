@@ -295,7 +295,7 @@ class ServerApiClient:
               'messages':messages,'max_tokens':options.get('num_predict',1600),
               'temperature':options.get('temperature',.2),'stream':True}
         request=Request(endpoint.rstrip('/')+'/api/provider/model',data=json.dumps(body).encode(),
-                        headers={'Content-Type':'application/json','Accept':'text/event-stream'})
+                        headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
         try:
             with urlopen(request,timeout=self.timeout) as response:
                 if 'text/event-stream' not in response.headers.get('Content-Type',''):
@@ -318,7 +318,12 @@ class ServerApiClient:
         except HTTPError as error:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}
-            raise CloudError(detail.get('message','Server HTTP '+str(error.code)),detail.get('code','')) from None
+            if not isinstance(detail,dict):detail={}
+            message=str(detail.get('message') or 'Server HTTP '+str(error.code))
+            message=message.replace(str(self.session['key']),'[ẨN]')
+            if error.code==403:
+                message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
+            raise CloudError(message,detail.get('code','')) from None
         except (URLError,TimeoutError):raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
 
     def chat(self,model,messages,**kwargs):

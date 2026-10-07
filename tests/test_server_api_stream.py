@@ -1,7 +1,8 @@
 import io,json,unittest
+from urllib.error import HTTPError
 from email.message import Message
 from unittest.mock import patch
-from assistant.cloud import ServerApiClient
+from assistant.cloud import ServerApiClient,CloudError
 
 class Response(io.BytesIO):
     def __init__(self,data,content_type='text/event-stream'):
@@ -12,7 +13,9 @@ class ServerStreamingTest(unittest.TestCase):
         response=Response(b'data: {"choices":[{"delta":{"reasoning_content":"hidden"}}]}\n\ndata: {"choices":[{"delta":{"content":"Xin "}}]}\n\ndata: {"choices":[{"delta":{"content":"chao"}}]}\n\ndata: [DONE]\n\n')
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek_flash')
         seen=[]
-        def open_request(request,timeout):seen.append(json.loads(request.data));return response
+        def open_request(request,timeout):
+            self.assertEqual(request.get_header('User-agent'),'ChatAI-Desktop/2.5 (+Windows; account API)')
+            seen.append(json.loads(request.data));return response
         with patch('assistant.cloud.urlopen',open_request):
             stream=client.stream_answer(client.model,[{'role':'user','content':'Chao'}])
             self.assertEqual(next(stream),'Xin ')
@@ -23,3 +26,11 @@ class ServerStreamingTest(unittest.TestCase):
         response=Response(b'{"success":true,"answer":"OK"}','application/json')
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek')
         with patch('assistant.cloud.urlopen',return_value=response):self.assertEqual(list(client.stream_answer(client.model,[])),['OK'])
+
+    def test_forbidden_worker_response_explains_source_and_hides_session(self):
+        client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek')
+        for data in [b'<html>Forbidden</html>',b'{"message":"denied test-session"}',b'[]']:
+            error=HTTPError('https://example.com/api/provider/model',403,'Forbidden',{},io.BytesIO(data))
+            with patch('assistant.cloud.urlopen',side_effect=error),self.assertRaises(CloudError) as caught:
+                list(client.stream_answer(client.model,[]))
+            self.assertIn('Worker',str(caught.exception));self.assertNotIn('test-session',str(caught.exception))
