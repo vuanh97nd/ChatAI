@@ -106,6 +106,8 @@ class SupportMixin:
         self.answer_actions.hide();self.reply_active=True;self.reply_dots.show();self.reply_timer.start()
         self.status.setText('Đang phân tích sâu; lượt này có thể lâu hơn…' if use_deep else ('Đang tìm kiếm mạng…' if use_web else 'Đang kết nối AI trên server…'))
         def run_chat(emit):
+            import time
+            turn_started=time.monotonic();first_text_at=None
             state=self.store.load(cid)
             history=[{'role':m['role'],'content':m['content'][:1600]} for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')][-20:]
             state['account_username']=owner;state['model']=selected_model
@@ -177,6 +179,7 @@ class SupportMixin:
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
             body['options']={'num_predict':cfg.get('num_predict',1536),'temperature':cfg.get('temperature',.2),'num_ctx':cfg.get('num_ctx',4096)}
+            preparation_finished=time.monotonic()
             events=api_answer_events(api_client,body) if api_client else cloud_events(endpoint,body)
             try:first=next(events)
             except CloudError as error:
@@ -191,7 +194,9 @@ class SupportMixin:
                 for event,value in itertools.chain([first],events):
                     if event=='meta' and value.get('memory_warning'):emit({'type':'status','text':value['memory_warning']})
                     elif event=='status':emit({'type':'status','text':value.get('text','AI đang xử lý…')})
-                    if event=='delta':answer.append(value['text']);emit({'type':'token','text':value['text']})
+                    if event=='delta':
+                        if first_text_at is None and value.get('text'):first_text_at=time.monotonic()
+                        answer.append(value['text']);emit({'type':'token','text':value['text']})
                     elif event=='done':completed=True;switch_required=bool(value.get('switch_required'))
                 if not completed:failure='Luồng AI kết thúc sớm. Phần trả lời đã nhận vẫn được giữ.'
             except Exception as error:failure=str(error)
@@ -200,7 +205,13 @@ class SupportMixin:
                 if answer:state['messages'].append({'role':'assistant','content':''.join(answer)})
                 state['running']=False;self.store.save(cid,state)
             if failure:emit({'type':'status','text':failure})
-            return {'cloud_done':True,'message':failure or 'Hoàn tất','switch_required':switch_required}
+            finished_at=time.monotonic()
+            wait_finished=first_text_at if first_text_at is not None else finished_at
+            timing={'preparation':preparation_finished-turn_started,'first_text_wait':wait_finished-preparation_finished,
+                    'answer_receiving':finished_at-wait_finished}
+            summary=('Hoàn tất · chuẩn bị %.1fs · chờ chữ đầu tiên %.1fs · nhận câu trả lời %.1fs' %
+                     (timing['preparation'],timing['first_text_wait'],timing['answer_receiving']))
+            return {'cloud_done':True,'message':failure or summary,'switch_required':switch_required,'timing':timing}
         def task(emit):
             try:return run_chat(emit)
             finally:
