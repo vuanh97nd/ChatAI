@@ -1575,7 +1575,7 @@ async function writeProviderConfig(env,provider,value){
  try{await env.DB.prepare('INSERT INTO provider_credentials(provider,encrypted_value,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at').bind(provider,encrypted,new Date().toISOString()).run();}catch{throw providerFailure('storage');}
 }
 async function providerAPI(env,path,body){
- const allowed=['nvidia','deepseek','gemini','groq'];
+ const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','groq'];
  await initializeProviderStore(env);
  if(path.endsWith('/deepseek-presets')){
   const shared=await readProviderConfig(env,'deepseek');
@@ -1641,12 +1641,13 @@ async function providerAPI(env,path,body){
   try{if(updates.length)await env.DB.batch(updates);}catch{throw providerFailure('storage');}
   return reply({success:true,configured,message:'Đã lưu cấu hình API trên server. Key cũ được giữ nếu ô nhập để trống.'});
  }
-const requestedProvider=body.provider;let provider=requestedProvider;
+const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash'};
+ const requestedProvider=body.provider;let provider=variants[requestedProvider]?'deepseek':requestedProvider;
  if(!allowed.includes(provider)&&!/^ai_[a-f0-9]{32}$/.test(String(provider)))return fail('Dịch vụ AI không hợp lệ.');
  let key=(path.endsWith('/test')||path.endsWith('/models'))?String(body.api_key||''):'';let configuredModel='';
- const stored=await readProviderConfig(env,requestedProvider);
+ const stored=await readProviderConfig(env,variants[requestedProvider]?'deepseek':requestedProvider);
  if(String(requestedProvider).startsWith('ai_')){if(!allowed.includes(stored.provider))return fail('AI bổ sung không tồn tại.',404);provider=stored.provider;}
- if(!key)key=stored.key;configuredModel=stored.model||'';
+ if(!key)key=stored.key;configuredModel=variants[requestedProvider]||stored.model||'';
  if(!key&&requestedProvider!==provider)key=(await readProviderConfig(env,provider)).key;
  if(!key)key=String(env[provider.toUpperCase()+'_API_KEY']||'');
  if(!key)return fail('Quản trị viên chưa cấu hình key cho AI này.',503);
@@ -1715,7 +1716,7 @@ const requestedProvider=body.provider;let provider=requestedProvider;
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:false};
-   if(provider==='deepseek')payload.thinking={type:!testing&&(stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
+   if(provider==='deepseek')payload.thinking={type:!testing&&(stored.thinking_enabled===true||body.thinking_enabled===true||requestedProvider==='deepseek_pro'||requestedProvider==='deepseek_r1')?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){

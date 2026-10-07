@@ -20,6 +20,10 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
    globalThis.fetch=async(url,options)=>{assert.equal(url,'https://api.deepseek.com/chat/completions');assert.equal(options.headers.Authorization,'Bearer '+shared);seen.push(JSON.parse(options.body).model);thinking.push(JSON.parse(options.body).thinking?.type);return Response.json({choices:[{message:{content:'OK'}}]});};
    if(source==='secret')env.DEEPSEEK_API_KEY=shared;
    else await call('/api/admin/providers/save',{providers:{deepseek:shared},models:{deepseek:'deepseek-flash'}});
+   for(const provider of ['deepseek_flash','deepseek_pro','deepseek_r1'])await call('/api/provider/model',{provider,messages:[{role:'user',content:'Xin chào'}]});
+   assert.deepEqual(seen,['deepseek-flash','deepseek-v4-pro','deepseek-flash']);
+   assert.deepEqual(thinking,['disabled','enabled','enabled']);
+   seen.length=0;thinking.length=0;
    const models=['deepseek-flash','deepseek-v4-pro','deepseek-reasoner'];
    for(const [index,model] of models.entries()){
     const added=await call('/api/admin/providers/add',{provider:'deepseek',label:'Test DeepSeek '+index,model,api_key:''});
