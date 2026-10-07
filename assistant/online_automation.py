@@ -110,6 +110,10 @@ class OnlineAutomation:
     def run(self,state):
         while state['running']:
             if state.get('pending'):
+                if not state['pending'].get('decision_started') and self.cfg.get('windows_apps_auto_execute') and self.windows.check().get('windows_apps_auto_execute'):
+                    yield {'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']}
+                    self.approve(state,True,state['pending'])
+                    continue
                 yield {'type':'pending'};return
             if state['queue']:
                 call=state['queue'][0];name=call['function']['name'];args=call['function']['arguments']

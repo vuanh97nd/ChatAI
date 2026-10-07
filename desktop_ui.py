@@ -1639,13 +1639,15 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     def resume(self):
         state = self.store.load(self.cid)
         if state.get('online_automation') and state.get('running'):
-            if state.get('pending'):self.approve_pending(state['pending'])
+            if state.get('pending') and not (self.cfg.get('windows_apps_auto_execute') and not state['pending'].get('decision_started')):self.approve_pending(state['pending'])
             else:self.online_windows_task()
             return
         if state.get('model') in REMOTE_MODELS and state['running']:
             state['running']=False;self.store.save(self.cid,state);self.render()
             self.status.setText('Luồng AI trên server đã bị ngắt. Nội dung đã lưu được giữ; bạn có thể gửi câu hỏi mới.');return
-        if state['pending']: self.approve_pending(state['pending'])
+        action=(state.get('pending') or {}).get('plan',{}).get('action','')
+        automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action=='word_create_open') and not (state.get('pending') or {}).get('decision_started')
+        if state['pending'] and not automatic_app: self.approve_pending(state['pending'])
         elif state['running']: self.chat_task()
 
     def approve_pending(self, pending):
@@ -1777,7 +1779,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True));app_box.addWidget(self.windows_compact_check)
         self.windows_auto_execute_check=QCheckBox('Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước')
         self.windows_auto_execute_check.setChecked(self.cfg.get('windows_apps_auto_execute',False));app_box.addWidget(self.windows_auto_execute_check)
-        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright và pypdf trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
+        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright, pypdf và python-docx trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
         permission_note.setWordWrap(True);app_box.addWidget(permission_note)
         self.browser_background_check=QCheckBox('Chrome chạy nền (không hiện cửa sổ)')
         self.browser_background_check.setChecked(self.cfg.get('browser_background',False));app_box.addWidget(self.browser_background_check)

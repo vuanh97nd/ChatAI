@@ -97,6 +97,17 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed[0]['action'],'windows_list_apps')
         self.assertIsNone(self.state['pending'])
 
+    def test_previously_pending_step_uses_permission_granted_later(self):
+        self.cfg.update(windows_apps_enabled=True)
+        self.agent.windows.check=lambda:dict(self.cfg)
+        self.agent.start(self.state,'mở Word','DeepSeek API','admin')
+        self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
+        self.cfg['windows_apps_auto_execute']=True
+        self.responses=[json.dumps({'answer':'Đã kiểm tra','tool':'','arguments':{}})]
+        events=list(self.agent.run(self.state))
+        self.assertFalse(any(e['type']=='pending' for e in events))
+        self.assertEqual(len(self.committed),1)
+
     def test_revoking_one_time_permission_restores_step_approval(self):
         self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True)
         self.agent.windows.check=lambda:{'windows_apps_enabled':True,'windows_apps_auto_execute':False}

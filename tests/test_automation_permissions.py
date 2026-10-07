@@ -60,10 +60,10 @@ class AutomationPermissionsTest(unittest.TestCase):
             (runtime/'chat-ai-runtime.json').write_text('{}')
             process=SimpleNamespace(poll=lambda:0,returncode=0)
             cfg={'automation_auto_install':True,'windows_apps_enabled':True,'package':'malicious'}
-            with patch('os.name','nt'),patch('assistant.automation_setup.Path',PosixPath),patch('assistant.automation_setup.sys.executable',str(runtime/'pythonw.exe')),patch('assistant.automation_setup.sys.prefix','base'),patch('assistant.automation_setup.sys.base_prefix','base'),patch('assistant.automation_setup.missing_modules',side_effect=[['playwright'],[]]),patch('assistant.automation_setup.subprocess.Popen',return_value=process) as launch:
+            with patch('os.name','nt'),patch('assistant.automation_setup.Path',PosixPath),patch('assistant.automation_setup.sys.executable',str(runtime/'pythonw.exe')),patch('assistant.automation_setup.sys.prefix','base'),patch('assistant.automation_setup.sys.base_prefix','base'),patch('assistant.automation_setup.missing_modules',side_effect=[['playwright','docx'],[]]),patch('assistant.automation_setup.subprocess.Popen',return_value=process) as launch:
                 ensure_dependencies(cfg)
             command=launch.call_args.args[0]
-            self.assertEqual(command[0],str(python));self.assertIn(PACKAGES['playwright'],command)
+            self.assertEqual(command[0],str(python));self.assertIn(PACKAGES['playwright'],command);self.assertIn('python-docx>=1.1,<2',command);self.assertNotIn('docx',command)
             self.assertNotIn('malicious',command);self.assertFalse(launch.call_args.kwargs['shell'])
     def test_global_python_is_not_modified(self):
         with tempfile.TemporaryDirectory() as folder:

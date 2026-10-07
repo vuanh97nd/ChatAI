@@ -302,6 +302,11 @@ class Agent:
             self.save(state)
         while state["running"]:
             if state["pending"]:
+                action=state['pending']['plan'].get('action','')
+                if not state['pending'].get('decision_started') and action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                    yield {'type':'app_activity','text':'Đang thực hiện: '+action}
+                    self.approve(state,True)
+                    continue
                 yield {"type": "pending"}
                 return
             while state["queue"]:
