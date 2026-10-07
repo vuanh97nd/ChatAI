@@ -88,3 +88,9 @@ Trước bước công cụ app đầu tiên của mỗi yêu cầu mới, chat 
 Trong mục Gần đây, hội thoại đang chọn có nút thùng rác ngay bên phải; các dòng khác có menu đổi tên/xóa. Sau khi xóa, nút **Hoàn tác** xuất hiện 5 giây. Hội thoại được backup trước khi xóa; hoàn tác khôi phục lịch sử và tên, không ghi đè hội thoại đã tồn tại. File Word/PDF/DXF đã tạo không bị xóa.
 
 Nút **Dừng app AI** hủy lượt hiện tại và chặn các bước tiếp theo. Khi đang chờ API model, bộ lập kế hoạch dừng mà không chờ phản hồi mạng; phản hồi tới muộn bị bỏ qua và không được dùng để chạy công cụ. Yêu cầu HTTP đã gửi có thể vẫn xử lý phía dịch vụ đến khi hết timeout. Nút đóng cửa sổ khi tác vụ có thể hủy sẽ yêu cầu dừng rồi tự thoát khi worker kết thúc, không đóng AutoCAD/Word ngoài ChatAI. I/O Windows hoặc Google Drive đang bị chặn vẫn có thể cần đợi hệ điều hành trả về.
+
+### Giảm thời gian chờ đăng nhập và lập kế hoạch
+
+Đăng nhập hoàn tất ngay sau xác thực; hồ sơ và danh mục AI bổ sung tải nền riêng (timeout 8 giây), không chặn chat. Kết quả nền chỉ áp dụng nếu đúng phiên đăng nhập hiện tại. Tự đăng nhập bắt đầu sớm sau khi cửa sổ dựng xong. Quyền và xác thực server vẫn được giữ.
+
+Yêu cầu một đường tròn có đủ thông số, ví dụ **Vẽ trong AutoCAD đường tròn tâm (0,0), bán kính 50 mm**, được phân tích trực tiếp nếu chỉ có một AutoCAD được phép. Luồng này tạo DXF và báo kết quả công cụ, không gọi model thêm để lập kế hoạch hoặc viết lại kết quả. Không đoán tâm, kích thước hoặc đơn vị khi dùng luồng nhanh; yêu cầu phức tạp hoặc ứng dụng chưa xác định tiếp tục qua AI. Khi chờ API lập kế hoạch, trạng thái hiện số giây chờ dịch vụ.

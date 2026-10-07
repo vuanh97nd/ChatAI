@@ -257,6 +257,7 @@ from assistant.admin_ui import AdminMixin,admin_session
 
 class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     model_probe_finished = Signal(object)
+    account_enrichment_finished = Signal(object,object)
     support_badge_finished = Signal(object)
     def __init__(self, context=None):
         super().__init__()
@@ -283,6 +284,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.models = set()
         self.model_probe_running=False
         self.model_probe_finished.connect(self.models_probed)
+        self.account_enrichment_finished.connect(self.apply_account_enrichment)
         self.cid = context['cid']
         print('[4/5] Đang dựng cửa sổ chat…', flush=True)
         self.setWindowTitle('Chat AI · Desktop 2.6.5')
@@ -536,7 +538,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.chat_mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed(self.chat_mode.currentIndex())
         QTimer.singleShot(200, self.refresh_models)
-        QTimer.singleShot(1500,self.restore_login)
+        QTimer.singleShot(100,self.restore_login)
 
     @staticmethod
     def logo_label(size):
@@ -2014,10 +2016,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.accounts import request_account,save_login,forget_login
             result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
             if result.get('session_token'):session['key']=result['session_token']
-            try:
-                result.update(request_account(session['endpoint'],'/api/account/profile/get',{'username':session['username'],'key':session['key']})['profile'])
-            except RuntimeError:
-                for key in ('fullname','email','phone','avatar'):result.setdefault(key,session.get(key,''))
+            # The login endpoint already returns identity and role; optional profile
+            # enrichment must not hold up authentication or the chat controls.
+            for key in ('fullname','email','phone','avatar'):result.setdefault(key,session.get(key,''))
             stored=dict(session)
             for key in ('fullname','email','phone','avatar'):stored[key]=result.get(key,'')
             stored['fullname']=result.get('fullname') or session['username'];stored['role']=result.get('role','user')
@@ -2028,11 +2029,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             except Exception:
                 warning=' · Đăng nhập thành công nhưng chưa lưu được ghi nhớ trên Windows'
             from assistant.model_preferences import load_model
-            try:
-                entries=request_account(session['endpoint'],'/api/provider/catalog',dict(username=session['username'],key=session['key']),timeout=30).get('entries',[])
-                from assistant.cloud import register_custom_ai
-                result['_custom_ai']=register_custom_ai(entries)
-            except RuntimeError:result['_custom_ai']=self.cfg.get('custom_ai',[])
+            result['_custom_ai']=self.cfg.get('custom_ai',[])
             result['_saved_ai']=load_model(self.store,session)
             return result,[],warning
         def done(result):
@@ -2047,12 +2044,40 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.settings_server.setText(session['endpoint'])
             self.chat_login.setText('Tài khoản: '+session['username'])
             self.account_status.setText('Đã đăng nhập: '+session['username']+result[2])
+            self.load_account_enrichment(dict(self.server_session))
             self.trial.adopt(session['username'])
             current=self.store.load(self.cid)
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
             self.store.remember_conversation(session['username'],self.cid)
             self.render()
         self.work(task,done)
+
+    def load_account_enrichment(self,session):
+        from threading import Thread
+        from assistant.accounts import request_account
+        def fetch(section,path):
+            try:
+                result=request_account(session['endpoint'],path,{'username':session['username'],'key':session['key']},timeout=8)
+                self.account_enrichment_finished.emit(session,{'section':section,'result':result})
+            except Exception:
+                # Optional enrichment failure never signs out a valid login.
+                pass
+        for section,path in (('profile','/api/account/profile/get'),('catalog','/api/provider/catalog')):
+            Thread(target=fetch,args=(section,path),daemon=True).start()
+
+    def apply_account_enrichment(self,session,value):
+        current=self.server_session
+        if not current or any(current.get(k)!=session.get(k) for k in ('endpoint','username','key')):return
+        if value['section']=='profile':
+            profile=value['result'].get('profile',{})
+            for key in ('fullname','email','phone','avatar'):
+                if key in profile:current[key]=profile[key]
+            self.refresh_account_ui()
+        elif value['section']=='catalog':
+            from assistant.cloud import register_custom_ai
+            if self.busy():
+                QTimer.singleShot(500,lambda:self.apply_account_enrichment(session,value));return
+            self.install_custom_ai(register_custom_ai(value['result'].get('entries',[])))
 
     def change_password_dialog(self):
         if self.busy():return

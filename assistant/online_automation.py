@@ -49,6 +49,27 @@ def search_call(prompt, cfg):
     return {'function':{'name':'browser_search','arguments':{'path':paths[0],'query':match.group(1).strip()}}}
 
 
+def drawing_call(prompt,cfg):
+    """Execute a fully specified single circle without an extra model round."""
+    if not cfg.get('windows_apps_enabled'):return None
+    number=r'(-?\d+(?:[.,]\d+)?)'
+    match=re.fullmatch(r'\s*(?:hãy\s+)?vẽ\s+(?:trong\s+(?:autocad|cad)\s+)?(?:đường|hình)\s+tròn\s+tâm\s*\(\s*'+number+r'\s*,\s*'+number+r'\s*\)\s*,?\s*bán\s+kính\s*'+number+r'\s*(mm|cm|m|inch)(?:\s+trong\s+(?:autocad|cad))?\s*[.!]?\s*',prompt,re.I)
+    if not match:return None
+    from .installed_apps import authorized_apps
+    paths=[row['path'] for row in authorized_apps(cfg) if PureWindowsPath(row['path']).name.lower() in {'acad.exe','acadlt.exe'}]
+    if len(paths)!=1:return None
+    x,y,radius=(float(v.replace(',','.')) for v in match.groups()[:3])
+    if radius<=0:return None
+    return {'function':{'name':'cad_create_open','arguments':{'app':paths[0],'units':match.group(4).lower(),'entities':json.dumps([{'type':'circle','center':[x,y],'radius':radius}])}}}
+
+
+def direct_drawing_answer(state,name,result):
+    if name!='cad_create_open' or not state.get('direct_drawing'):return None
+    if not result.get('ok'):return 'Chưa tạo/mở được bản vẽ: '+str(result.get('error','Chưa có kết quả xác nhận.'))
+    if not result.get('document_created'):return None
+    return 'Đã tạo DXF: '+result['path']+'\nĐã gửi lệnh mở AutoCAD; chưa xác minh cửa sổ hiển thị.'
+
+
 def application_call(prompt, cfg):
     """Discover before planning an explicit app opening, with normal approval."""
     if not cfg.get('windows_apps_enabled'):return None
@@ -84,7 +105,8 @@ class OnlineAutomation:
         state['messages'].append({'role':'user','content':prompt})
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
                      online_automation=True,automation_rounds=0)
-        call=search_call(prompt,self.cfg) or application_call(prompt,self.cfg)
+        call=search_call(prompt,self.cfg) or (drawing_call(prompt,self.cfg) if self.cad_app else None) or application_call(prompt,self.cfg)
+        state['direct_drawing']=bool(call and call['function']['name']=='cad_create_open')
         if call:
             state['messages'].append({'role':'assistant','content':'','tool_calls':[call]})
             state['queue']=[call]
@@ -108,7 +130,11 @@ class OnlineAutomation:
         else:result={'ok':False,'denied':True,'note':'Người dùng từ chối. Không gọi lại thao tác này.'}
         self.store.audit(self.cid,'online_automation_result',{'name':name,'ok':result.get('ok',False)})
         state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(result,ensure_ascii=False)})
-        state['queue']=[];state['pending']=None;self.save(state)
+        state['queue']=[];state['pending']=None
+        answer=direct_drawing_answer(state,name,result)
+        if answer:
+            state['messages'].append({'role':'assistant','content':answer});state['running']=False
+        self.save(state)
 
     def run(self,state):
         while state['running']:

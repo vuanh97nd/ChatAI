@@ -115,6 +115,21 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
         self.assertEqual(self.committed,[])
 
+    def test_fully_specified_circle_executes_without_model_rounds(self):
+        self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True,windows_apps_allowed=[r'C:\CAD\acad.exe'])
+        self.agent.windows.check=lambda:dict(self.cfg)
+        self.agent.cad_app=SimpleNamespace(prepare=lambda name,args:{'action':name,**args},commit=lambda plan:{'ok':True,'document_created':True,'path':'drawing.dxf'})
+        from assistant.tools import EXTRA_TOOLS
+        self.agent.schemas.extend(s for m,s in EXTRA_TOOLS if m=='cad_app')
+        self.agent.start(self.state,'Vẽ trong AutoCAD đường tròn tâm (0,0), bán kính 50 mm','DeepSeek API','admin')
+        list(self.agent.run(self.state))
+        self.assertEqual(self.requests,[])
+        self.assertFalse(self.state['running'])
+        self.assertIn('drawing.dxf',self.state['messages'][-1]['content'])
+        from assistant.online_automation import drawing_call
+        self.assertIsNone(drawing_call('Vẽ trong AutoCAD đường tròn bán kính 50 mm',self.cfg))
+        self.assertIsNone(drawing_call('Đừng vẽ đường tròn tâm (0,0), bán kính 50 mm',self.cfg))
+
     def test_deepseek_cad_plan_uses_saved_permission(self):
         self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True)
         self.agent.windows.check=lambda:dict(self.cfg)
