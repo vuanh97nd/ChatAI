@@ -1,0 +1,17 @@
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+enableXsrfProtection = true
+enableCORS = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"
+primaryColor = "#82aaff"
+backgroundColor = "#10141d"
+secondaryBackgroundColor = "#1b2332"
+textColor = "#e7edf7"
+font = "sans serif"

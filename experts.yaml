@@ -1,0 +1,19 @@
+# YAML 1.2: JSON là cú pháp YAML hợp lệ, dùng được cả khi chưa có PyYAML.
+{
+  "version": 1,
+  "slow_seconds": 90,
+  "experts": [
+    {"name":"planner","kind":"llm","role":"planner","model":"qwen2.5:3b","fallback_models":["qwen2.5:7b"],"temperature":0,"mission":"Phân loại và lập kế hoạch JSON, không trả lời thay chuyên gia","when":{}},
+    {"name":"general","kind":"llm","role":"chat","model":"qwen2.5:7b","temperature":0.3,"mission":"Tổng hợp, giải thích và giữ giọng tiếng Việt nhất quán","when":{}},
+    {"name":"coding","kind":"llm","role":"code","model":"qwen2.5-coder:7b","temperature":0.2,"mission":"Phân tích/sửa code dựa vào OCR và dữ liệu thật; đề xuất kiểm thử","when":{"need_code":true}},
+    {"name":"vision","kind":"llm","role":"vision","model":"gemma3:4b","temperature":0.1,"mission":"Chép chữ/code/lỗi nguyên văn; trích bảng và đánh dấu chỗ mờ","when":{"has_images":true}},
+    {"name":"embedding","kind":"embedding","role":"embedding","model":"bge-m3","temperature":0,"mission":"Embedding CPU cho bộ nhớ và RAG","when":{"need_rag":true}},
+    {"name":"web","kind":"tool","role":"web","tool":"bing","mission":"Tìm và đọc nguồn khi nút Tìm kiếm mạng bật","when":{"need_web":true}},
+    {"name":"rag","kind":"tool","role":"rag","tool":"rag_search","mission":"Tìm tài liệu riêng rồi đọc file qua whitelist","when":{"need_rag":true}},
+    {"name":"memory","kind":"tool","role":"memory","tool":"personal_memory","mission":"Chỉ lấy ký ức liên quan đúng tài khoản","when":{"need_memory":true}},
+    {"name":"calculate","kind":"tool","role":"calculation","tool":"calculate","mission":"Tính bằng công cụ, không tự nhẩm","when":{"need_calculation":true}},
+    {"name":"sandbox","kind":"tool","role":"sandbox","tool":"python_run","mission":"Chạy Python không mạng trong Docker, theo quyền và xác nhận","when":{"need_code":true}},
+    {"name":"image","kind":"tool","role":"image","tool":"image_generate","mission":"Model ảnh đang chọn (SD-Turbo nhanh hoặc SDXL-Turbo chất lượng cao) tạo ảnh từ prompt đã cải thiện, có xác nhận","when":{"need_image":true}},
+    {"name":"video","kind":"tool","role":"video","tool":"video_generate","mission":"MP4 chuyển động từ ảnh, không nhận là video diffusion","when":{"need_video":true}}
+  ]
+}

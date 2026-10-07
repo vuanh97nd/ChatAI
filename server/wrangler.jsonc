@@ -1,0 +1,22 @@
+{
+  "$schema":"node_modules/wrangler/config-schema.json",
+  "name":"chat-ai-server",
+  "main":"worker.js",
+  "compatibility_date":"2026-10-01",
+  "d1_databases":[{"binding":"DB","database_name":"chat-ai-db","database_id":"REPLACE_WITH_D1_DATABASE_ID"}],
+  "ai":{"binding":"AI"},
+  "triggers":{"crons":["*/15 * * * *"]},
+  "vars":{
+    "ALLOWED_ORIGINS":"",
+    "CHAT_AI_AI_MODEL":"auto",
+    "CLOUDFLARE_AI_MODEL":"@cf/qwen/qwen3-30b-a3b-fp8",
+    "OPENAI_MODEL":"gpt-4.1-mini",
+    "GROQ_MODEL":"openai/gpt-oss-120b",
+    "DEEPSEEK_MODEL":"deepseek-chat",
+    "NVIDIA_MODEL":"nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+    "CHAT_AI_DOWNLOAD_URL":"https://github.com/vuanh97nd/ChatAI/releases/latest",
+    "CHAT_AI_RELEASE_NOTES":"Chat AI Desktop 2.5"
+  }
+  // Personal memory: "kv_namespaces":[{"binding":"MEMORY_KV","id":"YOUR_MEMORY_KV_ID"}]
+  // Optional: "kv_namespaces":[{"binding":"CHAT_AI_KV","id":"YOUR_KV_NAMESPACE_ID"}]
+}

@@ -1,0 +1,13 @@
+.stApp { background: #10141d; color: #e7edf7; }
+[data-testid="stSidebar"] { background: #171d29; border-right: 1px solid #293142; }
+.block-container { max-width: 1050px; padding-top: 1.7rem; padding-bottom: 3rem; }
+[data-testid="stChatMessage"] { border-radius: 18px; border: 1px solid #263044; margin: 10px 0; }
+[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) { background: #202d44; }
+[data-testid="stBottom"] > div { background: #10141d; }
+.hero { text-align: center; padding: 35px 10px 20px; }
+.hero .mark { display:inline-block; color:#90b7ff; font-size:38px; margin-bottom:8px; }
+.hero h1 { font-size: 34px; font-weight: 650; margin:0 0 12px; color:#edf3ff; }
+.hero p { color: #9aa8bd; font-size:16px; }
+.pill { display:inline-block; padding:5px 12px; margin-right:6px; border:1px solid #35415a;
+        border-radius:30px; font-size:12px; color:#a9c7ff; }
+button { border-radius: 12px !important; }

@@ -1,0 +1,441 @@
+[
+  {
+    "id": 1,
+    "question": "Sửa code Python trong ảnh",
+    "category": "coding",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "code",
+      "sandbox",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 2,
+    "question": "Giải thích lỗi terminal trong ảnh",
+    "category": "knowledge",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 3,
+    "question": "Tính tổng bảng số liệu trong ảnh",
+    "category": "calculation",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "calculation",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 4,
+    "question": "Tóm tắt ảnh tài liệu tiếng Việt",
+    "category": "knowledge",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 5,
+    "question": "Đọc kích thước bản vẽ trong ảnh",
+    "category": "knowledge",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 6,
+    "question": "Tính tổng tiền hóa đơn này",
+    "category": "calculation",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "calculation",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 7,
+    "question": "Giải thích vật thể trong ảnh dựa vào kiến thức",
+    "category": "knowledge",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 8,
+    "question": "Tìm thông tin mới về hình trong ảnh",
+    "category": "current_web",
+    "image": true,
+    "files": false,
+    "web": true,
+    "roles": [
+      "vision",
+      "web",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 9,
+    "question": "Viết lại nội dung ảnh thành đoạn văn",
+    "category": "writing_translation",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 10,
+    "question": "Đọc file rồi viết code xử lý dữ liệu",
+    "category": "personal_documents",
+    "image": false,
+    "files": true,
+    "web": false,
+    "roles": [
+      "rag",
+      "code",
+      "sandbox",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": true,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 11,
+    "question": "Tìm tài liệu API mới và viết code Python",
+    "category": "coding",
+    "image": false,
+    "files": false,
+    "web": true,
+    "roles": [
+      "web",
+      "code",
+      "sandbox",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 12,
+    "question": "Tính trung bình dữ liệu trong file",
+    "category": "personal_documents",
+    "image": false,
+    "files": true,
+    "web": false,
+    "roles": [
+      "rag",
+      "calculation",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": true,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 13,
+    "question": "Dựa vào tài liệu của tôi giải thích quy trình",
+    "category": "personal_documents",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "rag",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": true,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 14,
+    "question": "Dựa vào bộ nhớ cho tôi ví dụ code",
+    "category": "coding",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "code",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 15,
+    "question": "Tạo ảnh logo robot",
+    "category": "writing_translation",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "prompt",
+      "image",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 16,
+    "question": "Tạo video cảnh biển",
+    "category": "writing_translation",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "prompt",
+      "video",
+      "answer"
+    ],
+    "need_code": false,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 17,
+    "question": "Tạo ảnh logo và viết code HTML dùng ảnh đó",
+    "category": "coding",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "prompt",
+      "image",
+      "code",
+      "sandbox",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 18,
+    "question": "Sửa code từ ảnh mờ, đánh dấu chỗ không đọc rõ",
+    "category": "coding",
+    "image": true,
+    "files": false,
+    "web": false,
+    "roles": [
+      "vision",
+      "code",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 19,
+    "question": "Tìm trên mạng và viết code, nhưng web đang tắt",
+    "category": "coding",
+    "image": false,
+    "files": false,
+    "web": false,
+    "roles": [
+      "code",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": false,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  },
+  {
+    "id": 20,
+    "question": "Đọc cả ảnh lỗi và file code, sửa rồi giải thích",
+    "category": "personal_documents",
+    "image": true,
+    "files": true,
+    "web": false,
+    "roles": [
+      "vision",
+      "rag",
+      "code",
+      "sandbox",
+      "answer"
+    ],
+    "need_code": true,
+    "rag": true,
+    "criteria": [
+      "Dữ liệu bàn giao giữ nguyên nội dung có thể đọc",
+      "Mọi phần yêu cầu có trạng thái hoặc lý do chưa làm",
+      "Không nhận kết quả tool khi chưa có kết quả thực",
+      "Web chỉ chạy khi nút bật",
+      "Đối chiếu thủ công OCR/code/nguồn với đầu vào thật"
+    ]
+  }
+]

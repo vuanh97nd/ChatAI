@@ -1,0 +1,28 @@
+.venv/
+**/__pycache__/
+*.pyc
+data/
+workspace/
+node_modules/
+dist/
+.env*
+.dev.vars*
+*.dpapi
+
+# Local environments and generated files
+.venv*/
+build/
+build-logs/
+runtime/
+*.zip
+/ChatAI.exe
+
+# Local configuration and credentials
+/config.json
+/config.backup*.json
+.streamlit/secrets.toml
+.streamlit/secrets.*.toml
+*.pem
+*.key
+/.gitignore (1)
+*.bak*

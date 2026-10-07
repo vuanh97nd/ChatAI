@@ -1,0 +1,17 @@
+# Small installer: chat UI + Ollama client + PDF + robot icon assets.
+PySide6-Essentials>=6.8,<7
+ollama>=0.6,<1
+pypdf>=5,<7
+pypdfium2>=4.30,<5
+Pillow>=10,<13
+imageio>=2.34,<3
+imageio-ffmpeg>=0.5,<1
+opencv-python-headless>=4.10,<5
+numpy>=1.26,<3
+six>=1.17,<2
+
+PyYAML>=6.0.2,<7
+
+pandas>=2.2,<3
+
+openpyxl>=3.1.5,<4

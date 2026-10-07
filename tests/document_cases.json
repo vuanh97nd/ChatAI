@@ -1,0 +1,22 @@
+[
+  {"id":1,"field":"luật","question":"Tóm tắt Nghị định 13/2023/NĐ-CP","target":"13/2023/NĐ-CP","checks":["không hỏi năm đã có","đọc đúng văn bản","không đưa tóm tắt vào truy vấn"]},
+  {"id":2,"field":"luật","question":"Trích điều 7 của văn bản đó","history":["Tóm tắt Nghị định 13/2023/NĐ-CP"],"target":"13/2023/NĐ-CP","checks":["không hỏi lại số hiệu","trích đúng điều từ toàn văn"]},
+  {"id":3,"field":"luật","question":"Giải thích Luật Đất đai 2024","target":"Luật Đất đai 2024","checks":["phân biệt kiến thức chung và nội dung luật","đúng phiên bản"]},
+  {"id":4,"field":"luật","question":"Tóm tắt Thông tư 999999/2099/TT-XYZ","target":"999999/2099/TT-XYZ","nonexistent":true,"checks":["nói chưa tìm được tài liệu","không bịa điều khoản"]},
+  {"id":5,"field":"kỹ thuật","question":"Hãy tóm tắt nội dung TCCS41-2022","target":"TCCS41-2022","checks":["không suy đoán cơ quan","không dẫn Zalo","một câu hỏi nếu thật sự mơ hồ"]},
+  {"id":6,"field":"kỹ thuật","question":"Giải thích chi tiết ISO 9001:2015","target":"ISO 9001:2015","checks":["không bịa toàn văn có bản quyền","không ép hỏi tên đầy đủ"]},
+  {"id":7,"field":"kỹ thuật","question":"So sánh ISO 9001:2015 và ISO 14001:2015","target":"ISO","checks":["tìm hai đối tượng","giữ phạm vi mỗi tiêu chuẩn"]},
+  {"id":8,"field":"kỹ thuật","question":"Tóm tắt ASTM D4318","target":"ASTM D4318","checks":["giữ viết tắt khi chưa có glossary","không tự thêm năm"]},
+  {"id":9,"field":"y tế","question":"Tóm tắt WHO guideline on hypertension 2021","target":"WHO guideline on hypertension 2021","checks":["ưu tiên nguồn WHO đúng tài liệu","phân biệt tư vấn điều trị cá nhân"]},
+  {"id":10,"field":"y tế","question":"Bài đó có giới hạn gì?","history":["Tóm tắt WHO guideline on hypertension 2021"],"target":"WHO guideline on hypertension 2021","checks":["dùng ngữ cảnh","không hỏi lại tiêu đề"]},
+  {"id":11,"field":"tài chính","question":"Phân tích Báo cáo thường niên FPT 2024","target":"Báo cáo thường niên FPT 2024","checks":["đúng doanh nghiệp/năm","giữ đơn vị số liệu"]},
+  {"id":12,"field":"tài chính","question":"Báo cáo đó nói gì về dòng tiền?","history":["Phân tích Báo cáo thường niên FPT 2024"],"target":"Báo cáo thường niên FPT 2024","checks":["ưu tiên mục liên quan","nguồn tên file + trang"]},
+  {"id":13,"field":"giáo dục","question":"Tóm tắt sách The Design of Everyday Things","target":"The Design of Everyday Things","checks":["không nhận đọc toàn sách từ giới thiệu","không tự thêm tác giả vào định danh"]},
+  {"id":14,"field":"giáo dục","question":"Giải thích báo cáo PISA 2022","target":"báo cáo PISA 2022","checks":["đúng kỳ báo cáo","không đoán viết tắt"]},
+  {"id":15,"field":"công nghệ","question":"Tóm tắt bài Attention Is All You Need","target":"Attention Is All You Need","checks":["đọc bài báo","phương pháp/kết quả/giới hạn có căn cứ"]},
+  {"id":16,"field":"công nghệ","question":"Tìm nguồn cho RFC 9110","target":"RFC 9110","checks":["truy vấn thuần đối tượng","nguồn RFC phù hợp"]},
+  {"id":17,"field":"công nghệ","question":"Dịch tài liệu đính kèm sang tiếng Việt","target":"tài liệu đính kèm","attached":true,"checks":["ưu tiên file","không tìm mạng khi tắt","không nhận dịch đủ nếu chỉ có bản tóm tắt"]},
+  {"id":18,"field":"khoa học","question":"Tóm tắt bài báo DOI:10.1038/s41586-021-03819-2","target":"DOI:10.1038/s41586-021-03819-2","checks":["đối chiếu DOI","không lấy bài gần giống"]},
+  {"id":19,"field":"đa lĩnh vực","question":"Tóm tắt báo cáo XYZ-ALPHA-UNKNOWN","target":"XYZ-ALPHA-UNKNOWN","nonexistent":true,"checks":["giữ mã","không tự bịa giải nghĩa XYZ"]},
+  {"id":20,"field":"đa lĩnh vực","question":"Tóm tắt phần kết luận trong tài liệu này","target":"tài liệu này","attached":true,"checks":["đọc file có sẵn","nguồn chỉ khi dùng","không hỏi tên đầy đủ"]}
+]
