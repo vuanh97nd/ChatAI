@@ -108,7 +108,21 @@ WRITES.add('word_create_open')
 EXTRA_TOOLS.append(('word_app',schema('word_create_open','Soạn nội dung rồi tạo DOCX mới trong thư mục được phép và mở bằng Word. Dùng công cụ này khi người dùng yêu cầu mở Word và viết bài; không nhập vùng soạn thảo qua UIA. app phải là WINWORD.EXE đã tìm bằng windows_list_apps. content là nội dung đầy đủ, tối đa 30000 ký tự.',{'app':TEXT,'title':TEXT,'content':TEXT},['app','content'])))
 
 WRITES.add('cad_create_open')
-EXTRA_TOOLS.append(('cad_app',schema('cad_create_open','Tạo bản vẽ DXF mới và mở AutoCAD. Tìm acad.exe/acadlt.exe bằng windows_list_apps. units: mm/cm/m/inch. entities là chuỗi JSON mảng hình: {"type":"circle","center":[0,0],"radius":50}, {"type":"line","start":[0,0],"end":[100,0]}, {"type":"rectangle","origin":[0,0],"width":100,"height":50}. Hỏi kích thước và đơn vị nếu thiếu; không tự đoán. Tối đa 200 hình, không sửa DWG/bản vẽ đang mở, không chạy lệnh/script CAD.',{'app':TEXT,'units':TEXT,'entities':TEXT},['app','units','entities'])))
+EXTRA_TOOLS.append(('cad_app',schema('cad_create_open',
+'Tạo bản vẽ DXF 2D mới và mở AutoCAD. Tìm acad.exe/acadlt.exe bằng windows_list_apps. units: mm/cm/m/inch. '
+'entities là chuỗi JSON mảng hình, tối đa 500 phần tử. Các loại hỗ trợ:\n'
+'• {"type":"line","start":[x,y],"end":[x,y],"layer":"TÊN"}\n'
+'• {"type":"circle","center":[x,y],"radius":r,"layer":"TÊN"}\n'
+'• {"type":"rectangle","origin":[x,y],"width":w,"height":h,"layer":"TÊN"}\n'
+'• {"type":"polyline","points":[[x,y],...],"closed":true/false,"layer":"TÊN"} — biên lớp đất, tường chắn\n'
+'• {"type":"hatch","boundary":[[x,y],...],"pattern":"ANSI31","scale":1.0,"angle":0,"layer":"TÊN"} — ký hiệu đất\n'
+'  pattern hợp lệ: ANSI31(sét), ANSI32, ANSI33, ANSI34, AR-SAND(cát), AR-CONC(bê tông), EARTH(đất lấp), GRASS(cỏ), GRAVEL(cuội), MUDST(bùn), DOTS, SOLID, CROSS, STEEL, SWAMP\n'
+'• {"type":"text","insert":[x,y],"content":"Văn bản","height":h,"rotation":0,"halign":"LEFT/CENTER/RIGHT","valign":"BASELINE/BOTTOM/MIDDLE/TOP","layer":"TÊN"}\n'
+'• {"type":"dim_linear","start":[x,y],"end":[x,y],"dimline":[x,y],"text_override":"","layer":"TÊN"} — kích thước\n'
+'layers (tùy chọn) là chuỗi JSON mảng: [{"name":"ĐẤT_1","color":2,"linetype":"CONTINUOUS"}] — màu ACI 1–256, linetype: CONTINUOUS/DASHED/DOTTED/CENTER/PHANTOM/HIDDEN.\n'
+'Gợi ý mặt cắt địa kỹ thuật: dùng polyline cho biên lớp đất, hatch để tô ký hiệu, text cho nhãn cao độ, dim_linear cho chiều sâu.\n'
+'Hỏi kích thước/đơn vị nếu thiếu; không tự đoán. Không sửa DWG/bản vẽ đang mở, không chạy script CAD.',
+{'app':TEXT,'units':TEXT,'entities':TEXT,'layers':TEXT},['app','units','entities'])))
 
 WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
