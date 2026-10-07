@@ -4,6 +4,9 @@ import os
 import subprocess
 import sys
 import traceback
+import time
+from assistant.performance import measure,record
+LAUNCHER_STARTED=time.monotonic()
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -122,7 +125,7 @@ def ensure_qt(log):
 def main():
     os.chdir(ROOT)
     try:
-        redirected = _prepare_local_environment()
+        with measure('startup.launcher_environment'):redirected = _prepare_local_environment()
         if redirected is not None:
             return redirected
     except Exception as exc:
@@ -131,13 +134,15 @@ def main():
             ctypes.windll.user32.MessageBoxW(None, str(exc), "Chat AI — Không tạo được môi trường riêng", 0x10)
         return 1
 
-    (ROOT / "data").mkdir(exist_ok=True)
-    log = (ROOT / "data" / "startup.log").open("a", encoding="utf-8", buffering=1)
+    with measure('startup.launcher_log'):
+        (ROOT / 'data').mkdir(exist_ok=True)
+        log = (ROOT / 'data' / 'startup.log').open('a',encoding='utf-8',buffering=1)
     sys.stdout = sys.stderr = log
     os.environ.pop("PYTHONHOME", None)
     os.environ.pop("PYTHONPATH", None)
     try:
-        ensure_qt(log)
+        with measure('startup.launcher_qt_import'):ensure_qt(log)
+        record('startup.launcher_before_app',time.monotonic()-LAUNCHER_STARTED)
         from app import main as start
         return start() or 0
     except Exception:
