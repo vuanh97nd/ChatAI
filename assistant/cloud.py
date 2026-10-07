@@ -8,10 +8,14 @@ from urllib.parse import urlparse
 CLOUD_MODEL = 'Cloudflare AI'
 NVIDIA_MODEL = 'NVIDIA AI'
 DEEPSEEK_MODEL = 'DeepSeek API'
+DEEPSEEK_FLASH_MODEL = 'DeepSeek Flash'
+DEEPSEEK_PRO_MODEL = 'DeepSeek V4 Pro'
+DEEPSEEK_R1_MODEL = 'DeepSeek R1 Suy luận'
 GEMINI_MODEL = 'Gemini API'
 GROQ_MODEL = 'Groq API'
-REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
+REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_FLASH_MODEL:'deepseek_flash', DEEPSEEK_PRO_MODEL:'deepseek_pro', DEEPSEEK_R1_MODEL:'deepseek_r1', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
 PROVIDER_NAMES = {v:k for k,v in REMOTE_MODELS.items()}
+_DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner'}
 CUSTOM_PROVIDER_TYPES={}
 SWITCH_MESSAGE = 'Chọn AI phù hợp với tác vụ bạn muốn thực hiện.'
 
@@ -81,11 +85,12 @@ class CloudDocumentClient:
         return {'message':{'content':result['answer']}}
 
 
+_DS_API = 'https://api.deepseek.com/chat/completions'
 API_ENDPOINTS = {'nvidia':'https://integrate.api.nvidia.com/v1/chat/completions',
-                 'deepseek':'https://api.deepseek.com/chat/completions',
+                 'deepseek':_DS_API,'deepseek_flash':_DS_API,'deepseek_pro':_DS_API,'deepseek_r1':_DS_API,
                  'gemini':'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                  'groq':'https://api.groq.com/openai/v1/chat/completions'}
-API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
+API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
 
 
 def _protect_key(value, decrypt=False):
@@ -110,7 +115,7 @@ def _protect_key(value, decrypt=False):
 
 def save_api_key(store,provider,key):
     import base64
-    if provider not in API_ENDPOINTS:raise ValueError('Dịch vụ API không hợp lệ.')
+    if provider not in API_ENDPOINTS or provider in _DEEPSEEK_VARIANT_MODELS:raise ValueError('Dịch vụ API không hợp lệ.')
     encrypted=base64.b64encode(_protect_key(key.strip().encode())).decode() if key.strip() else ''
     with store.connection() as db:
         db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
@@ -120,11 +125,12 @@ def save_api_key(store,provider,key):
 def api_key(store,provider):
     import os,base64
     if provider not in API_ENDPOINTS:raise ValueError('Dịch vụ API không hợp lệ.')
+    key_provider='deepseek' if provider in _DEEPSEEK_VARIANT_MODELS else provider
     with store.connection() as db:
         db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
-        row=db.execute('SELECT value FROM settings WHERE key=?',('api_key_'+provider,)).fetchone()
+        row=db.execute('SELECT value FROM settings WHERE key=?',('api_key_'+key_provider,)).fetchone()
     if row and row[0]:return _protect_key(base64.b64decode(row[0]),True).decode()
-    return os.environ.get(provider.upper()+'_API_KEY','').strip()
+    return os.environ.get(key_provider.upper()+'_API_KEY','').strip()
 
 
 class ApiDocumentClient:

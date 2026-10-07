@@ -42,7 +42,7 @@ def validate_config(cfg):
     import re
     for provider in ('nvidia','deepseek','gemini'):
         if not isinstance(cfg[provider+'_model'],str) or not re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',cfg[provider+'_model']):raise ValueError('Tên model API không hợp lệ.')
-    if cfg["chat_provider"] not in ("nvidia","deepseek","gemini","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
+    if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
     for key,value in {"num_predict":1536,"font_size":13,"auto_python":True}.items():cfg.setdefault(key,value)
     server = urlparse(cfg.get('server_url',''))
     if cfg.get('server_url') and (server.scheme!='https' or not server.hostname or server.username or server.password or server.query or server.fragment or server.path not in ('','/')):
