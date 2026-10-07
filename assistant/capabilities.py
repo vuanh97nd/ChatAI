@@ -119,7 +119,10 @@ class Capabilities:
         if action in {'cad_tracdoc_xldy','cad_mcn_xldy'}:
             r=self.cad_drawing.commit(plan)
             if r.get('status')=='error':raise RuntimeError(r['message'])
-            return f"Đã xuất {r['segments']} đoạn → {r['output']}"
+            msg=f"Đã xuất {r['segments']} đoạn → {r['output']}"
+            link=self._drive_upload(r['output'],plan.get('args',{}).get('project_name',''))
+            if link:msg+=f"\n☁ Drive: {link}"
+            return msg
         if action=='klxldy_write':return self._commit_xldy_docs(plan)
         if action=='geoslope_write':return self._commit_geoslope(plan)
         if action=='tm_xldy_write':return self._commit_xldy_docs(plan)
@@ -178,6 +181,19 @@ class Capabilities:
         return registry[name](**args)
 
     # ------------------------------------------------------------------
+    # Google Drive upload helper
+    # ------------------------------------------------------------------
+
+    def _drive_upload(self, local_path: str, project_name: str = '') -> str | None:
+        """Upload a file to Drive → My Drive/AI/<project_name>/ and return webViewLink."""
+        try:
+            from .drive_sync import upload_file
+            r = upload_file(local_path, project_name)
+            return r.get('webViewLink') if r else None
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # XLDY document helpers
     # ------------------------------------------------------------------
 
@@ -200,11 +216,11 @@ class Capabilities:
         action   = plan['action']
         segments = plan['segments']
         args     = plan.get('args', {})
+        project  = args.get('project_name', '')
         if action == 'klxldy_write':
             from .klxldy_writer import write_klxldy
-            r = write_klxldy(args['output_xlsx'], segments,
-                             project_name=args.get('project_name', ''))
-            return f"Đã lập bảng khối lượng {r['rows_written']} đoạn → {r['output_path']}"
+            r = write_klxldy(args['output_xlsx'], segments, project_name=project)
+            msg = f"Đã lập bảng khối lượng {r['rows_written']} đoạn → {r['output_path']}"
         else:
             from .tm_xldy_writer import write_tm_xldy
             sp_raw = args.get('soil_params_json', [])
@@ -212,7 +228,11 @@ class Capabilities:
             meta = {k: args[k] for k in ('project_name','sta_from','sta_to') if args.get(k)}
             r = write_tm_xldy(args['output_docx'], segments,
                               project_meta=meta or None, soil_params=soil_params or None)
-            return f"Đã soạn thuyết minh XLDY (~{r['pages_estimate']} trang) → {r['output_path']}"
+            msg = f"Đã soạn thuyết minh XLDY (~{r['pages_estimate']} trang) → {r['output_path']}"
+        drive_link = self._drive_upload(r['output_path'], project)
+        if drive_link:
+            msg += f"\n☁ Drive: {drive_link}"
+        return msg
 
     # ------------------------------------------------------------------
     # GeoSlope XLDY helpers
@@ -245,8 +265,10 @@ class Capabilities:
         if len(segments) == 1:
             r = write_geoslope_gsz(output, segments[0],
                                    soil_params=soil_params or None, method=method)
-            return (f"Đã tạo file GeoSlope/W ({r['analysis_type']}, "
-                    f"{r['materials']} vật liệu, {r['regions']} vùng) → {r['output_path']}")
+            msg = (f"Đã tạo file GeoSlope/W ({r['analysis_type']}, "
+                   f"{r['materials']} vật liệu, {r['regions']} vùng) → {r['output_path']}")
+            link = self._drive_upload(r['output_path'], project)
+            if link: msg += f"\n☁ Drive: {link}"
         else:
             from pathlib import Path
             out_dir = str(Path(output).parent)
@@ -254,5 +276,9 @@ class Capabilities:
                                          soil_params=soil_params or None,
                                          method=method, project_name=project)
             ok = sum(1 for f in r['files'] if 'error' not in f)
-            return (f"Đã tạo {ok}/{r['count']} file GeoSlope/W (.gsz) → {r['output_dir']}")
+            msg = f"Đã tạo {ok}/{r['count']} file GeoSlope/W (.gsz) → {r['output_dir']}"
+            for finfo in r['files']:
+                if 'output_path' in finfo:
+                    self._drive_upload(finfo['output_path'], project)
+        return msg
 
