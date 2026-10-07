@@ -25,19 +25,22 @@ def collect_artifacts(result, roots, producer):
     roots=[Path(r).resolve() for r in roots];items=[]
     raw_paths=[('image',p) for p in result.get('images',[])[:8] if isinstance(p,str)]
     if isinstance(result.get('video'),str):raw_paths.append(('video',result['video']))
+    _DOC_EXTS={'.gsz','.dxf','.docx','.xlsx','.pdf','.csv','.txt','.py','.json','.xml','.zip'}
     for raw in result.get('files',[])[:10]:
         if isinstance(raw,str):
             suffix=Path(raw).suffix.lower()
-            raw_paths.append(('video' if suffix=='.mp4' else 'image',raw))
+            kind='video' if suffix=='.mp4' else 'file' if suffix in _DOC_EXTS else 'image'
+            raw_paths.append((kind,raw))
     for raw in result.get('artifacts',[])[:10]:
         if isinstance(raw,str):
             suffix=Path(raw).suffix.lower()
-            raw_paths.append(('video' if suffix=='.mp4' else 'image',raw))
+            kind='video' if suffix=='.mp4' else 'file' if suffix in _DOC_EXTS else 'image'
+            raw_paths.append((kind,raw))
     for kind,raw in raw_paths:
         try:
             path=Path(raw).resolve(strict=True)
             if not path.is_file() or not any(path.is_relative_to(r) for r in roots):continue
-            if path.suffix.lower() not in ('.png','.jpg','.jpeg','.webp','.mp4'):continue
+            if kind not in ('file',) and path.suffix.lower() not in ('.png','.jpg','.jpeg','.webp','.mp4'):continue
             size=path.stat().st_size
             if not 0<size<=512*1024**2:continue
             sha=hashlib.sha256()
@@ -47,6 +50,8 @@ def collect_artifacts(result, roots, producer):
             if expected and expected.get('sha256')!=sha.hexdigest():continue
             item={'kind':kind,'path':str(path),'filename':path.name,'bytes':size,
                   'sha256':sha.hexdigest(),'producer':producer,'status':'created'}
+            if kind=='file':
+                items.append(item);continue
             if kind=='image':
                 from PIL import Image
                 with Image.open(path) as image:

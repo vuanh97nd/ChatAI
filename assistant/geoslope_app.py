@@ -325,6 +325,7 @@ class GeoslopeApp:
         return {
             'ok': True,
             'path': str(path),
+            'files': [str(path)],
             'method': problem['method'],
             'materials': len(problem['materials']),
             'note': 'Mở file .gsz bằng GeoStudio/GeoSlope để chạy phân tích.',
