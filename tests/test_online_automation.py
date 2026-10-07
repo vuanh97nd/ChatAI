@@ -115,6 +115,20 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
         self.assertEqual(self.committed,[])
 
+    def test_deepseek_cad_plan_uses_saved_permission(self):
+        self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True)
+        self.agent.windows.check=lambda:dict(self.cfg)
+        self.agent.cad_app=self.agent.windows
+        from assistant.tools import EXTRA_TOOLS
+        self.agent.schemas.extend(s for m,s in EXTRA_TOOLS if m=='cad_app')
+        self.responses=[json.dumps({'answer':'','tool':'cad_create_open','arguments':{'app':r'C:\CAD\acad.exe','units':'mm','entities':[{'type':'circle','center':[0,0],'radius':50}]}}),
+                        json.dumps({'answer':'Đã tạo bản vẽ','tool':'','arguments':{}})]
+        self.agent.start(self.state,'Vẽ đường tròn bán kính 50 mm trong AutoCAD','DeepSeek API','admin')
+        events=list(self.agent.run(self.state))
+        self.assertFalse(any(e['type']=='pending' for e in events))
+        self.assertEqual(self.committed[0]['action'],'cad_create_open')
+        self.assertEqual(json.loads(self.committed[0]['entities'])[0]['radius'],50)
+
     def test_song_name_reply_stays_in_online_tool_workflow(self):
         from assistant.online_automation import use_automation
         cfg={'windows_apps_enabled':True}

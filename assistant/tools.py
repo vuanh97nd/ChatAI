@@ -106,3 +106,6 @@ def validate_call(name, args, schemas=None):
 
 WRITES.add('word_create_open')
 EXTRA_TOOLS.append(('word_app',schema('word_create_open','Soạn nội dung rồi tạo DOCX mới trong thư mục được phép và mở bằng Word. Dùng công cụ này khi người dùng yêu cầu mở Word và viết bài; không nhập vùng soạn thảo qua UIA. app phải là WINWORD.EXE đã tìm bằng windows_list_apps. content là nội dung đầy đủ, tối đa 30000 ký tự.',{'app':TEXT,'title':TEXT,'content':TEXT},['app','content'])))
+
+WRITES.add('cad_create_open')
+EXTRA_TOOLS.append(('cad_app',schema('cad_create_open','Tạo bản vẽ DXF mới và mở AutoCAD. Tìm acad.exe/acadlt.exe bằng windows_list_apps. units: mm/cm/m/inch. entities là chuỗi JSON mảng hình: {"type":"circle","center":[0,0],"radius":50}, {"type":"line","start":[0,0],"end":[100,0]}, {"type":"rectangle","origin":[0,0],"width":100,"height":50}. Hỏi kích thước và đơn vị nếu thiếu; không tự đoán. Tối đa 200 hình, không sửa DWG/bản vẽ đang mở, không chạy lệnh/script CAD.',{'app':TEXT,'units':TEXT,'entities':TEXT},['app','units','entities'])))

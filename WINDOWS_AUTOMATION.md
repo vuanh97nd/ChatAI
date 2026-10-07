@@ -4,7 +4,7 @@ Trong **Cài đặt → Điều khiển ứng dụng**, bật quyền, chọn **
 
 Hai quyền tùy chọn, mặc định tắt:
 
-- **Tự cài thư viện cần thiết đã được kiểm tra**: khi dùng công cụ app, ChatAI phát hiện thư viện thiếu và dùng đúng `python.exe` của tiến trình đang chạy để cài các gói cố định pywinauto, psutil, comtypes, Playwright, pypdf và python-docx. Áp dụng virtualenv hoặc runtime đóng gói có marker; không cài vào Python hệ thống, không nâng quyền và model không được chọn gói/index/lệnh tùy ý. Có trạng thái tiến trình, giới hạn 4 phút; Dừng AI hoặc thu hồi quyền sẽ ngắt cài. Nếu cài xong mà chưa nạp được, cần khởi động lại app. Mạng/pip bị lỗi sẽ được báo; không bảo đảm mọi thiếu sót runtime có thể tự sửa.
+- **Tự cài thư viện cần thiết đã được kiểm tra**: khi dùng công cụ app, ChatAI phát hiện thư viện thiếu và dùng đúng `python.exe` của tiến trình đang chạy để cài các gói cố định pywinauto, psutil, comtypes, Playwright, pypdf, python-docx và ezdxf. Áp dụng virtualenv hoặc runtime đóng gói có marker; không cài vào Python hệ thống, không nâng quyền và model không được chọn gói/index/lệnh tùy ý. Có trạng thái tiến trình, giới hạn 4 phút; Dừng AI hoặc thu hồi quyền sẽ ngắt cài. Nếu cài xong mà chưa nạp được, cần khởi động lại app. Mạng/pip bị lỗi sẽ được báo; không bảo đảm mọi thiếu sót runtime có thể tự sửa.
 - **Cho phép mở mọi ứng dụng đã cài**: công cụ `windows_list_apps` tra EXE đăng ký trong Windows App Paths và thông tin DisplayIcon của phần mềm đã cài. EXE trong danh sách đó được mở ngoài danh sách thủ công; đường dẫn không được phát hiện vẫn bị chặn. App portable, UWP hoặc app không đăng ký EXE cần thêm thủ công và có thể không hỗ trợ UIA. Không tự nâng quyền quản trị, không cho phép shell/script host hoặc trình gỡ cài đặt thông dụng. Danh sách ứng dụng được gửi cho AI chỉ sau khi duyệt. Quyền mở không bỏ xác nhận đọc/bấm/nhập/gửi/lưu/xóa; mỗi quy trình vẫn cần duyệt như trước. Tắt quyền rồi lưu chặn bước mở tiếp theo và các phiên không còn được phép.
 
 Hai quyền áp dụng cả AI trên máy và AI trực tuyến qua ChatAI desktop. Muốn dùng, bật quyền điều khiển app cùng các tùy chọn này rồi **Lưu**; thư viện được kiểm tra khi bạn gửi yêu cầu tiếp theo, không cài ngay khi đánh dấu checkbox.
@@ -74,3 +74,11 @@ Tùy chọn **Tự thu gọn chat khi AI điều khiển ứng dụng** mặc đ
 Tạm dừng giữ tác vụ và chờ ở lần kiểm tra quyền tiếp theo, không cưỡng ép dừng thao tác native đang chạy. Tiếp tục gỡ trạng thái tạm dừng. Kết thúc chặn các bước sau và hủy lượt chat, không đóng Word/Chrome bên ngoài hoặc xóa tài liệu. Mở chat chỉ hiện cửa sổ chính để theo dõi. Khi tác vụ xong, lỗi hoặc cần duyệt thủ công, chat tự hiện lại và thanh nổi đóng.
 
 Quyền điều khiển app cũng có thể lưu từ hộp thoại Đồng ý đầu tiên: giữ chọn **Ghi nhớ quyền điều khiển app, không hỏi lại sau mỗi bước hoặc lỗi**. Quyền được lưu vào cấu hình, giữ qua lần khởi động lại và có thể tắt trong Cài đặt. Khi quyền này đã bật, thao tác bị ngắt chưa rõ kết quả được ghi nhận mà không hỏi lại và không tự thực hiện lại.
+
+### Vẽ bản CAD mới
+
+Công cụ `cad_create_open` hỗ trợ AI local và trực tuyến: tạo DXF mới trong thư mục được phép rồi mở bằng AutoCAD (`acad.exe`) hoặc AutoCAD LT (`acadlt.exe`) được phép. Hỗ trợ đường tròn, đoạn thẳng, hình chữ nhật; đơn vị mm/cm/m/inch. Thiếu kích thước hoặc đơn vị thì AI hỏi thông số, không hỏi lại quyền đã lưu. Thư viện ezdxf được tự cài theo quyền cài gói hiện có.
+
+Ví dụ: **Vẽ trong AutoCAD đường tròn tâm (0,0), bán kính 50 mm** hoặc **Vẽ hình chữ nhật rộng 200 mm, cao 100 mm tại (0,0)**. Kết quả gồm đường dẫn DXF và trạng thái gửi lệnh mở; chưa xác minh cửa sổ AutoCAD. Không sửa DWG đang mở, không chạy AutoLISP/script, không ghi đè tệp cũ.
+
+Nhận diện AutoCAD hỗ trợ tên EXE acad.exe/acadlt.exe và InstallLocation trong mục đăng ký gỡ cài đặt khi DisplayIcon không chỉ tới app. Nếu bản portable không đăng ký, thêm đường dẫn EXE thực tế thủ công.

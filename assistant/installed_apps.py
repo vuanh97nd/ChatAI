@@ -1,6 +1,6 @@
 """Discover registered Windows desktop executables, without model-supplied commands."""
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 def installed_apps():
@@ -32,7 +32,16 @@ def installed_apps():
                                 name=winreg.EnumKey(key,index)
                                 with winreg.OpenKey(key,name) as item:
                                     if kind=='paths':add(name,winreg.QueryValueEx(item,None)[0])
-                                    else:add(winreg.QueryValueEx(item,'DisplayName')[0],winreg.QueryValueEx(item,'DisplayIcon')[0])
+                                    else:
+                                        label=winreg.QueryValueEx(item,'DisplayName')[0]
+                                        try:add(label,winreg.QueryValueEx(item,'DisplayIcon')[0])
+                                        except OSError:pass
+                                        if isinstance(label,str) and 'autocad' in label.casefold():
+                                            try:
+                                                location=winreg.QueryValueEx(item,'InstallLocation')[0]
+                                                if isinstance(location,str):
+                                                    for exe in ('acad.exe','acadlt.exe'):add(label,str(Path(os.path.expandvars(location))/exe))
+                                            except OSError:pass
                             except OSError:continue
                 except OSError:continue
     return sorted(found.values(),key=lambda row:row['name'].casefold())
@@ -42,3 +51,9 @@ def authorized_apps(cfg):
     rows=[{'name':Path(p).name,'path':p} for p in cfg.get('windows_apps_allowed',[])]
     if cfg.get('windows_apps_all_installed'):rows+=installed_apps()
     return list({row['path'].casefold():row for row in rows}.values())
+
+
+def matches_app(row,query):
+    query=query.casefold().strip()
+    if not query or query in (row['name']+' '+row['path']).casefold():return True
+    return query in {'autocad','auto cad','autocad lt','cad'} and PureWindowsPath(row['path']).name.casefold() in {'acad.exe','acadlt.exe'}

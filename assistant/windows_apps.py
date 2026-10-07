@@ -231,7 +231,8 @@ class WindowsApps:
         if action=='windows_list_apps':
             from .installed_apps import authorized_apps
             rows=authorized_apps(self.check());query=plan.get('query','').casefold().strip()
-            matches=[row for row in rows if not query or query in (row['name']+' '+row['path']).casefold()]
+            from .installed_apps import matches_app
+            matches=[row for row in rows if matches_app(row,query)]
             return {'ok':True,'apps':matches[:100],'truncated':len(matches)>100,
                     'note':'Chỉ mở đường dẫn được trả về. Tìm theo query nếu danh sách bị cắt. App không đăng ký với Windows hoặc portable cần thêm EXE thủ công.'}
         if action == 'windows_open':

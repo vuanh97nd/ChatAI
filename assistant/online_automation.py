@@ -21,6 +21,7 @@ def parse_plan(raw, schemas):
     if isinstance(args,str):args=json.loads(args or '{}')
     if not isinstance(args,dict):raise ValueError('arguments phải là đối tượng JSON.')
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
+    if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
     if tool:validate_call(tool,args,schemas)
     elif not answer.strip():raise ValueError('Thiếu câu trả lời hoặc công cụ.')
     return {'answer':answer,'tool':tool,'arguments':args}
@@ -28,8 +29,8 @@ def parse_plan(raw, schemas):
 
 def requested_automation(prompt):
     general_open=re.search(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?!rộng\b|lòng\b|bài\b|đầu\b).+',prompt,re.I)
-    return bool(general_open or (re.search(r'(mở|đọc|tải|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
-                and re.search(r'(ứng dụng|phần mềm|\bapp\b|chrome|chorme|foxit|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I)))
+    return bool(general_open or (re.search(r'(mở|vẽ|đọc|tải|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
+                and re.search(r'(ứng dụng|phần mềm|\bapp\b|chrome|chorme|foxit|autocad|\bcad\b|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I)))
 
 
 def use_automation(prompt, cfg, state, tool_mode=False):
@@ -54,7 +55,7 @@ def application_call(prompt, cfg):
     if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
     match=re.match(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?:(?:ứng dụng|phần mềm|app)\s+)?(.+)',prompt,re.I)
     if not match:return None
-    target=re.split(r'\s+(?:và|rồi|để|giúp|cho)\s+',match.group(1),maxsplit=1,flags=re.I)[0].strip()
+    target=re.split(r'\s+(?:và|rồi|để|giúp|cho|vẽ|viết)\s+',match.group(1),maxsplit=1,flags=re.I)[0].strip()
     if re.match(r'(?:rộng|lòng|bài|đầu)\b',target,re.I):return None
     return {'function':{'name':'windows_list_apps','arguments':{'query':target[:150]}}}
 
@@ -67,12 +68,13 @@ def app_permissions(cfg):
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
+        self.cad_app=cad_app
         self.word_app=word_app
         self.pdf_source=pdf_source
-        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set())
+        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
 
     def save(self,state):self.store.save(self.cid,state)
@@ -89,6 +91,7 @@ class OnlineAutomation:
         self.save(state)
 
     def component(self,name):
+        if name=='cad_create_open':return self.cad_app
         if name=='word_create_open':return self.word_app
         if name in {'pdf_source_open','pdf_read'}:return self.pdf_source
         return self.browser if name.startswith('browser_') else self.windows
@@ -146,6 +149,7 @@ class OnlineAutomation:
                          'Khi đã đủ kết quả hoặc bị từ chối, tool rỗng và answer trả lời tiếng Việt. '
                          'Không tuyên bố không có công cụ khi danh sách có công cụ phù hợp; gọi công cụ để xin duyệt. '
                          'Không đoán đường dẫn/control; dùng danh sách EXE và kết quả windows_inspect. '
+                         'Khi cần vẽ bằng AutoCAD, dùng cad_create_open để tạo DXF và mở acad.exe. Nếu thiếu kích thước/đơn vị, hỏi rõ rồi tiếp tục dùng công cụ khi người dùng bổ sung. Không tự đoán kích thước. '
                          'Khi cần mở Word và viết bài, tìm WINWORD.EXE rồi gọi word_create_open với toàn bộ bài viết; công cụ tạo DOCX có nội dung và mở Word, không cần gõ qua UIA. '
                          'Khi chưa biết đường dẫn hoặc được cấp mở mọi app đã cài, dùng windows_list_apps(query=tên app) để tìm EXE thật trước. Không tự chạy lệnh cài thư viện; ChatAI tự quản lý gói theo quyền Cài đặt. '
                          'browser_search mở Chrome tìm và đọc tự động; browser_run thực hiện toàn bộ quy trình sau khi duyệt một lần, phiên mới mỗi lần. '

@@ -550,7 +550,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def compact_app_activity(self,text):
         if not self.cfg.get('windows_apps_compact',True):return
-        labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
+        labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','cad_create_open':'Đang tạo bản vẽ và mở AutoCAD','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
         text=labels.get(text.split(': ')[-1],text)
         if not hasattr(self,'automation_panel'):
             from assistant.automation_panel import AutomationPanel
@@ -1455,6 +1455,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.files import FileTools
             from assistant.pdf_source import PDFSource
             from assistant.word_app import WordApp
+            from assistant.cad_app import CadApp
             request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
             with execution_lock(ROOT/'data/agent.lock'):
                 state=self.store.load(cid)
@@ -1467,7 +1468,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
-                    PDFSource(windows,files,audit),WordApp(windows,files))
+                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit))
                 if prompt is not None:
                     agent.start(state,prompt,model,session['username'])
                     self.store.remember_conversation(session['username'],cid)
@@ -1603,7 +1604,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 elif allowed is not None:
                     if state['pending'] != expected: raise RuntimeError('Preview đã thay đổi. Xin duyệt lại.')
                     action=state['pending']['plan'].get('action','')
-                    if allowed and (action.startswith(('windows_','browser_','pdf_')) or action=='word_create_open'):
+                    if allowed and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open'}):
                         emit({'type':'app_activity','text':'Đang thực hiện: '+action})
                     agent.approve(state, allowed)
                 def snapshot():
@@ -1646,13 +1647,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             state['running']=False;self.store.save(self.cid,state);self.render()
             self.status.setText('Luồng AI trên server đã bị ngắt. Nội dung đã lưu được giữ; bạn có thể gửi câu hỏi mới.');return
         action=(state.get('pending') or {}).get('plan',{}).get('action','')
-        automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action=='word_create_open') and not (state.get('pending') or {}).get('decision_started')
+        automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open'}) and not (state.get('pending') or {}).get('decision_started')
         if state['pending'] and not automatic_app: self.approve_pending(state['pending'])
         elif state['running']: self.chat_task()
 
     def approve_pending(self, pending):
         action=pending['plan'].get('action','')
-        app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open'}
+        app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open'}
         if app_action and self.cfg.get('windows_apps_enabled') and self.cfg.get('windows_apps_auto_execute'):
             if pending.get('decision_started'):
                 self.status.setText('Thao tác trước chưa rõ kết quả; không chạy lại. Đang ghi nhận trạng thái.')
@@ -1797,7 +1798,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True));app_box.addWidget(self.windows_compact_check)
         self.windows_auto_execute_check=QCheckBox('Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước')
         self.windows_auto_execute_check.setChecked(self.cfg.get('windows_apps_auto_execute',False));app_box.addWidget(self.windows_auto_execute_check)
-        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright, pypdf và python-docx trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
+        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright, pypdf, python-docx và ezdxf trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
         permission_note.setWordWrap(True);app_box.addWidget(permission_note)
         self.browser_background_check=QCheckBox('Chrome chạy nền (không hiện cửa sổ)')
         self.browser_background_check.setChecked(self.cfg.get('browser_background',False));app_box.addWidget(self.browser_background_check)
