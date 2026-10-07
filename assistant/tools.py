@@ -1,4 +1,4 @@
-WRITES = {"excel_edit_cell", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
+WRITES = {"excel_edit_cell", "excel_create_from_template", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
           "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace", "windows_open", "windows_inspect", "windows_action", "browser_search", "browser_run"}
 WRITES.update({'pdf_source_open','pdf_read'})
 WRITES.add('windows_list_apps')
@@ -23,6 +23,18 @@ TOOLS = [
            {"path": TEXT, "sheet": TEXT, "cell": TEXT,
             "value": {"type": ["string", "number", "boolean", "null"]}},
            ["path", "sheet", "cell", "value"]),
+    schema("excel_create_from_template",
+           "Tạo file XLSX mới từ file mẫu (template) rồi điền dữ liệu vào nhiều ô cùng lúc. "
+           "Dùng khi người dùng có form/biểu mẫu sẵn và muốn điền nội dung mới. "
+           "template: đường dẫn file .xlsx mẫu trong whitelist. "
+           "output_name: tên file mới (chỉ tên, không đường dẫn; sẽ lưu cùng thư mục template). "
+           "fills là chuỗi JSON mảng tối đa 500 phần tử: "
+           '[{"sheet":"Sheet1","cell":"B3","value":"Nội dung"},{"sheet":"Sheet1","cell":"C4","value":123}]. '
+           "value có thể là string, số, boolean hoặc null (xóa ô). "
+           "Text ghi literal, không tạo công thức. Công thức trong template được giữ nguyên. "
+           "Hỏi người dùng xem template nào nếu chưa rõ.",
+           {"template": TEXT, "output_name": TEXT, "fills": TEXT},
+           ["template", "output_name", "fills"]),
 ]
 
 DOCUMENT_READ_SCHEMA = schema("document_read", "Đọc PDF/Word DOCX/TXT/HTML trong whitelist bằng Python. Đọc tiếp theo next_start đến hết; trả vị trí trang/đoạn thực.", {"path": TEXT, "start": {"type":"integer","minimum":0}, "limit":{"type":"integer","minimum":1,"maximum":8000}}, ["path"])

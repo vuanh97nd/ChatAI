@@ -59,6 +59,8 @@ class Capabilities:
         if name=="python_search":return self.python_search.prepare(args["code"])
         if name == "excel_edit_cell":
             return {"action": name, **self.excel.prepare_edit(**args)}
+        if name == "excel_create_from_template":
+            return self.excel.prepare_from_template(**args)
         if name in {"office_create", "word_replace"}:
             return self.office.prepare(name, args)
         if name.startswith("file_"):
@@ -92,6 +94,8 @@ class Capabilities:
             return self.media_basic.commit(plan)
         if action == "excel_edit_cell":
             return self.excel.commit_edit(plan)
+        if action == "excel_create_from_template":
+            return self.excel.commit_from_template(plan)
         if action in {"office_create", "word_replace"}:
             return self.office.commit(plan)
         if action.startswith("file_"):
