@@ -19,6 +19,8 @@ def load_config():
 
 def validate_config(cfg):
     cfg = dict(cfg)
+    from .windows_apps import validate_settings
+    validate_settings(cfg)
     from .cloud import register_custom_ai
     cfg['custom_ai']=register_custom_ai(cfg.get('custom_ai',[]))
     cfg.setdefault("machine_profile","medium")

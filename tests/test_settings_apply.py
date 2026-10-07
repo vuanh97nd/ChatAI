@@ -58,6 +58,7 @@ class SettingsTest(unittest.TestCase):
         u.store=Store(self.root/'history.db');u.server_session={'username':'test','endpoint':cfg['server_url']}
         u.settings_fields={key:Combo(cfg[key]) if key.endswith('model') else Spin(cfg[key]) for key in ('default_model','code_model','num_ctx','num_predict','font_size','max_rounds','temperature')}
         u.settings_theme=Combo(cfg['theme']);u.preview_theme=cfg['theme'];u.preview_font_size=cfg['font_size'];u.settings_provider=Combo(PROVIDER_NAMES[cfg['chat_provider']]);u.auto_python_check=Check();u.settings_server=Text(cfg['server_url']);u.settings_roots=Text('workspace')
+        u.windows_apps_check=Check(cfg['windows_apps_enabled']);u.windows_apps_paths=Text('\n'.join(cfg['windows_apps_allowed']))
         u.machine_profile=Combo(cfg['machine_profile']);u.machine_auto=Check(cfg['machine_auto_ai']);u.api_model_fields={};u.api_key_fields={}
         u.select_ai=lambda model:u.model.setCurrentText(model)
         u.model=Combo('Cloudflare AI');u.status=Text('');u.html_cache={};u.draw=lambda:None;u.render=lambda:None;u.busy=lambda:False
@@ -75,6 +76,19 @@ class SettingsTest(unittest.TestCase):
         payload=json.loads((self.root/'config.json').read_text())
         self.assertEqual(payload['num_ctx'],2048);self.assertEqual(payload['chat_provider'],'local');self.assertNotIn('roots',payload)
         self.assertEqual(u.model.currentText(),'qwen2.5:7b');self.assertFalse(u.settings_dirty());self.assertTrue(list((self.root/'data/backups').glob('config-*')))
+
+    def test_windows_app_permissions_save_and_discard(self):
+        u=self.ui
+        u.windows_apps_check.setChecked(True)
+        u.windows_apps_paths.setPlainText(r'C:\Apps\demo.exe')
+        self.assertTrue(u.settings_dirty());u.save_settings()
+        saved=config.load_config()
+        self.assertTrue(saved['windows_apps_enabled'])
+        self.assertEqual(saved['windows_apps_allowed'],[r'C:\Apps\demo.exe'])
+        u.windows_apps_paths.setPlainText(r'C:\Apps\other.exe')
+        self.assertTrue(u.settings_dirty());u.discard_settings()
+        self.assertEqual(u.windows_apps_paths.toPlainText(),r'C:\Apps\demo.exe')
+        self.assertFalse(u.settings_dirty())
 
     def test_invalid_setting_keeps_original_configuration(self):
         before=(self.root/'config.json').read_bytes();self.ui.settings_fields['num_ctx'].setValue(999999)

@@ -1,5 +1,5 @@
 WRITES = {"excel_edit_cell", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
-          "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace"}
+          "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace", "windows_open", "windows_inspect", "windows_action"}
 
 def schema(name, description, properties, required):
     return {"type": "function", "function": {"name": name, "description": description,
@@ -64,6 +64,12 @@ EXTRA_TOOLS = [
 EXTRA_TOOLS.append(('python',schema('python_search',
     'Viết công cụ tra cứu bằng Python standard library. Có web_search(query) và web_read(url) qua bridge. In kết quả và nguồn. Docker cách ly; tối đa4 yêu cầu web. Cần module web và python.',{'code':TEXT},['code'])))
 
+
+EXTRA_TOOLS.extend([
+    ('windows', schema('windows_open', 'Mở ứng dụng Windows trong danh sách được phép, không shell/arguments. Bắt buộc người dùng duyệt.', {'path': TEXT}, ['path'])),
+    ('windows', schema('windows_inspect', 'Đọc control UIA của phiên ứng dụng đã mở. Cần duyệt vì dữ liệu giao diện sẽ vào hội thoại. Không đọc ô mật khẩu.', {'session': TEXT}, ['session'])),
+    ('windows', schema('windows_action', 'Thao tác một control từ lần windows_inspect gần nhất: click (UIA invoke), set_text (ô Edit), close (Window). Mỗi bước cần duyệt; đọc lại giao diện sau thao tác để xác minh. Không nhận tọa độ/phím/shell.', {'session': TEXT, 'control': TEXT, 'operation': {'type': 'string', 'enum': ['click', 'set_text', 'close']}, 'text': TEXT}, ['session', 'control', 'operation'])),
+])
 
 def validate_call(name, args, schemas=None):
     spec = next((t["function"] for t in (schemas if schemas is not None else TOOLS)

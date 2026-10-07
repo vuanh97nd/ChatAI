@@ -67,3 +67,7 @@ Updater dùng https://github.com/vuanh97nd/ChatAI/releases. Kiểm tra khi ngư�
 Cài Inno Setup 6.3+ hoặc 7 từ https://jrsoftware.org/isdl.php. Mở `Chat-AI-Setup.iss` → Build → Compile hoặc chạy `Build-Setup.bat`. Bộ cài tạo tại `dist/Chat-AI-Setup-2.6.5.exe` và đóng gói Python runtime trong một file EXE.
 
 Bộ cài mặc định vào `%LOCALAPPDATA%/Programs/Chat-AI`, có Start Menu và tùy chọn Desktop. Máy đích không cần cài Python riêng; cần cài Ollama và tải model để dùng AI local. Giữ config hiện có khi nâng cấp; gỡ cài giữ dữ liệu/workspace. Không tự chuyển lịch sử từ thư mục Google Drive sang thư mục cài mới.
+
+## Điều khiển ứng dụng Windows
+
+Có thể cho AI local mở EXE được phép và thao tác control UI Automation sau khi duyệt từng bước. Bật trong Cài đặt → Điều khiển ứng dụng. Cần thư viện tùy chọn; xem [hướng dẫn và phạm vi hỗ trợ](WINDOWS_AUTOMATION.md). Không bảo đảm mọi app hoặc chạy hoàn toàn trong nền.

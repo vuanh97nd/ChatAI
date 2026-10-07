@@ -394,6 +394,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.status = QLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
         status_row=QHBoxLayout(); self.reply_logo=self.logo_label(22);self.reply_logo.hide();status_row.addWidget(self.reply_logo)
         status_row.addWidget(self.status,1)
+        self.windows_stop_button=QPushButton('Dừng app AI');self.windows_stop_button.clicked.connect(self.stop_windows_apps)
+        self.windows_stop_button.setToolTip('Chặn các bước điều khiển ứng dụng tiếp theo; không tắt app hay bỏ qua lưu tài liệu.')
+        self.windows_stop_button.setVisible(self.cfg.get('windows_apps_enabled',False));status_row.addWidget(self.windows_stop_button)
         self.reply_dots=QPushButton('● · ·'); self.reply_dots.setFixedWidth(86); self.reply_dots.setVisible(False)
         self.reply_dots.setToolTip('Đến phần AI đang trả lời'); self.reply_dots.setAccessibleName('Cuộn xuống câu trả lời mới nhất')
         self.reply_dots.setStyleSheet('color:#a8c7fa;background:#282a2c;font-size:20px;padding:4px;border-radius:14px;')
@@ -550,6 +553,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def send_or_stop(self):
         if self.worker and self.worker.cancellable:
+            from assistant.windows_apps import stop_automation
+            stop_automation()
             self.worker.stop_requested.set()
             self.send_btn.setEnabled(False)
             self.status.setText('Đang dừng… chờ thao tác hiện tại kết thúc an toàn.')
@@ -1631,6 +1636,22 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         box.addWidget(QLabel('Ghi/sửa/xóa/chạy lệnh cần xác nhận; sửa file có backup.'))
         self.button(box,'Dùng công cụ Office trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
         layout.addWidget(files)
+        automation = QGroupBox('Công cụ AI · Điều khiển ứng dụng Windows'); app_box = QVBoxLayout(automation)
+        self.windows_apps_check = QCheckBox('Cho AI mở và điều khiển các ứng dụng được phép')
+        self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False));app_box.addWidget(self.windows_apps_check)
+        note=QLabel('Mỗi bước mở/đọc/bấm/nhập/đóng cần xác nhận. Cửa sổ có thể hiện; chỉ hỗ trợ app UI Automation. Không tự sao lưu dữ liệu của app bên ngoài.')
+        note.setWordWrap(True);app_box.addWidget(note)
+        self.windows_apps_paths = QPlainTextEdit('\n'.join(self.cfg.get('windows_apps_allowed',[])))
+        self.windows_apps_paths.setPlaceholderText('Mỗi dòng một đường dẫn EXE được phép. Dùng nút Thêm ứng dụng để chọn.')
+        self.windows_apps_paths.setMaximumHeight(100);app_box.addWidget(self.windows_apps_paths)
+        self.button(app_box,'Thêm ứng dụng EXE…',self.add_windows_app)
+        self.button(app_box,'Dừng điều khiển app',self.stop_windows_apps)
+        self.button(app_box,'Tiếp tục điều khiển app',self.resume_windows_apps)
+        from assistant.windows_apps import available
+        dependency=QLabel('Đã có thư viện UI Automation.' if available() else 'Cần Windows và thư viện tùy chọn: xem WINDOWS_AUTOMATION.md trong thư mục dự án.')
+        dependency.setWordWrap(True);app_box.addWidget(dependency)
+        self.windows_apps_check.toggled.connect(lambda enabled:self.stop_windows_apps() if not enabled else None)
+        layout.addWidget(automation)
         history = QGroupBox('Lịch sử và dữ liệu'); box = QVBoxLayout(history)
         self.button(box,'Xem toàn bộ cuộc trò chuyện',self.full_history)
         self.button(box,'Xóa cuộc trò chuyện đang chọn',self.delete_chat)
@@ -1666,7 +1687,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(advanced_layout,'Mở config.json',lambda:self.open_path(ROOT/'config.json'))
         self.button(advanced_layout,'Mở thư mục log và backup',lambda:self.open_path(ROOT/'data'))
         layout.addWidget(advanced)
-        self.settings_sections={'Giao diện':appearance,'Nâng cao':advanced,'Cấu hình máy và AI':group,'Office và thư mục':files,'Lịch sử và dữ liệu':history,'Tài khoản':account,'Cập nhật Chat AI':updates}
+        self.settings_sections={'Giao diện':appearance,'Nâng cao':advanced,'Cấu hình máy và AI':group,'Office và thư mục':files,'Điều khiển ứng dụng':automation,'Lịch sử và dữ liệu':history,'Tài khoản':account,'Cập nhật Chat AI':updates}
         self.apply_settings_button=self.button(layout,'Lưu cài đặt',self.save_settings)
         self.apply_settings_button.setEnabled(False)
         for field in self.settings_fields.values():
@@ -1675,6 +1696,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_provider.currentIndexChanged.connect(self.account_settings_changed)
         self.auto_python_check.toggled.connect(self.account_settings_changed)
         self.settings_roots.textChanged.connect(self.account_settings_changed)
+        self.windows_apps_check.toggled.connect(self.account_settings_changed)
+        self.windows_apps_paths.textChanged.connect(self.account_settings_changed)
         self.settings_server.textChanged.connect(self.account_settings_changed)
         self.apply_font()
 
@@ -2079,6 +2102,24 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         name,ok=QInputDialog.getItem(self,'Tải AI đề xuất','Chọn AI muốn tải:',missing,0,False)
         if ok:self.download(name)
 
+    def add_windows_app(self):
+        path,_=QFileDialog.getOpenFileName(self,'Ứng dụng được phép','','Ứng dụng Windows (*.exe)')
+        if path:
+            paths=[p.strip() for p in self.windows_apps_paths.toPlainText().splitlines() if p.strip()]
+            if path not in paths:paths.append(path)
+            self.windows_apps_paths.setPlainText('\n'.join(paths))
+
+    def stop_windows_apps(self):
+        from assistant.windows_apps import stop_automation
+        stop_automation()
+        self.status.setText('Đã chặn các bước điều khiển app tiếp theo. Thao tác Windows đang thực hiện có thể cần hoàn tất.')
+
+    def resume_windows_apps(self):
+        from assistant.windows_apps import resume_automation
+        if not self.cfg.get('windows_apps_enabled'):
+            QMessageBox.information(self,'Điều khiển app','Bật quyền và Lưu cài đặt trước.');return
+        resume_automation();self.status.setText('Đã cho phép lại điều khiển app; từng bước vẫn cần xác nhận.')
+
     def proposed_settings(self):
         proposed = {k:v for k,v in self.cfg.items() if k != 'roots'}
         for key,field in self.settings_fields.items():
@@ -2093,6 +2134,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['chat_provider']=REMOTE_MODELS.get(self.settings_provider.currentText(),'local')
         proposed['server_url']=self.settings_server.text().strip()
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
+        if hasattr(self,'windows_apps_check'):
+            proposed['windows_apps_enabled']=self.windows_apps_check.isChecked()
+            proposed['windows_apps_allowed']=[p.strip() for p in self.windows_apps_paths.toPlainText().splitlines() if p.strip()]
         return proposed
 
     def settings_dirty(self):
@@ -2109,6 +2153,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'))
         self.settings_server.setText(self.cfg.get('server_url',''))
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
+        if hasattr(self,'windows_apps_check'):
+            self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False))
+            self.windows_apps_paths.setPlainText('\n'.join(self.cfg.get('windows_apps_allowed',[])))
         self.machine_profile.setCurrentIndex(self.machine_profile.findData(self.cfg.get('machine_profile','medium')))
         self.machine_auto.setChecked(self.cfg.get('machine_auto_ai',True))
         for provider,field in self.api_model_fields.items():field.setText(self.cfg.get(provider+'_model',''))
@@ -2149,6 +2196,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             return cfg
         def done(cfg):
             self.cfg=cfg
+            if hasattr(self,'windows_stop_button'):self.windows_stop_button.setVisible(cfg.get('windows_apps_enabled',False))
             if old_endpoint!=cfg.get('server_url'):
                 self.server_session=None;self.personal_memories=[]
                 from assistant.accounts import forget_login
@@ -2224,7 +2272,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(layout,'← Quay lại chat',lambda:self.tabs.setCurrentIndex(0))
         heading=QLabel('CÀI ĐẶT');heading.setStyleSheet('color:#9aa0a6;font-size:12px;padding:12px 4px;');layout.addWidget(heading)
         self.settings_nav_buttons={}
-        for label,section in [('Chung',None),('Cấu hình máy và AI','Cấu hình máy và AI'),('Giao diện','Giao diện'),('Office và công cụ','Office và thư mục'),('Tài khoản và đăng nhập','Tài khoản'),('Lịch sử và dữ liệu','Lịch sử và dữ liệu'),('Cập nhật','Cập nhật Chat AI'),('Nâng cao','Nâng cao')]:
+        for label,section in [('Chung',None),('Cấu hình máy và AI','Cấu hình máy và AI'),('Giao diện','Giao diện'),('Office và công cụ','Office và thư mục'),('Điều khiển ứng dụng','Điều khiển ứng dụng'),('Tài khoản và đăng nhập','Tài khoản'),('Lịch sử và dữ liệu','Lịch sử và dữ liệu'),('Cập nhật','Cập nhật Chat AI'),('Nâng cao','Nâng cao')]:
             button=self.button(layout,label,lambda checked=False,n=section:self.open_settings_section(n))
             button.setCheckable(True);self.settings_nav_buttons[label]=(button,section)
         self.button(layout,'Bộ nhớ cá nhân',self.memory_dialog)

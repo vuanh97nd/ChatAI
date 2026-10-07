@@ -1,3 +1,4 @@
+import json
 from .office import OfficeTools
 from .files import FileTools
 from .rag import RagTools
@@ -28,9 +29,14 @@ class Capabilities:
         # Chụp snapshot module cho lượt UI này; không tự import dependency khi chưa bật.
         self.active = {key for key in ("web", "files", "python", "rag", "media", "office", "media_basic") if manager.ready(key)}
         if not self.allow_web:self.active.discard("web")
+        from .windows_apps import WindowsApps, available
+        self.windows = WindowsApps(cfg, audit, owner=owner, policy_path=root / 'config.json')
+        if cfg.get('windows_apps_enabled') and available():self.active.add('windows')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
+        self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' Danh sách EXE được phép: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False))) if spec['function']['name']=='windows_open' else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        if name.startswith("windows_"):return self.windows.prepare(name,args)
         if name=="python_search" and not self.allow_web:raise PermissionError("Bật nút Tìm kiếm mạng trước.")
         if name=="python_search":return self.python_search.prepare(args["code"])
         if name == "excel_edit_cell":
@@ -54,6 +60,7 @@ class Capabilities:
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action.startswith("windows_"):return self.windows.commit(plan)
         if action=="python_search":
             if not self.allow_web:raise PermissionError("Bật nút Tìm kiếm mạng trước.")
             if not {"web","python"}.issubset(self.active):raise RuntimeError("Bật module Web và Python trước.")
