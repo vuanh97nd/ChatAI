@@ -4,6 +4,7 @@ from .files import FileTools
 from .rag import RagTools
 from .runner import Runner
 from .python_search import PythonSearch
+from .template_engine import TemplateEngine
 from .tools import TOOLS, EXTRA_TOOLS, WRITES, DOCUMENT_READ_SCHEMA
 from .web import WebTools
 from .media import MediaTools
@@ -26,8 +27,9 @@ class Capabilities:
         self.media = MediaTools(self.files, client, cfg, root, audit,on_status=on_status,
                                 model_variant=manager.media_variant())
         self.media_basic=BasicMediaTools(self.files,audit)
+        self.template = TemplateEngine(cfg["roots"], root / "data" / "backups", audit)
         # Chụp snapshot module cho lượt UI này; không tự import dependency khi chưa bật.
-        self.active = {key for key in ("web", "files", "python", "rag", "media", "office", "media_basic") if manager.ready(key)}
+        self.active = {key for key in ("web", "files", "python", "rag", "media", "office", "media_basic", "template") if manager.ready(key)}
         if not self.allow_web:self.active.discard("web")
         from .windows_apps import WindowsApps, available
         self.windows = WindowsApps(cfg, audit, owner=owner, policy_path=root / 'config.json')
@@ -61,6 +63,8 @@ class Capabilities:
             return {"action": name, **self.excel.prepare_edit(**args)}
         if name == "excel_create_from_template":
             return self.excel.prepare_from_template(**args)
+        if name == "template_fill":
+            return self.template.prepare(name, args)
         if name in {"office_create", "word_replace"}:
             return self.office.prepare(name, args)
         if name.startswith("file_"):
@@ -96,6 +100,8 @@ class Capabilities:
             return self.excel.commit_edit(plan)
         if action == "excel_create_from_template":
             return self.excel.commit_from_template(plan)
+        if action == "template_fill":
+            return self.template.commit(plan)
         if action in {"office_create", "word_replace"}:
             return self.office.commit(plan)
         if action.startswith("file_"):
@@ -120,5 +126,6 @@ class Capabilities:
                     "excel_summary": self.excel.excel_summary,
                     "file_list": self.files.file_list, "file_read": self.files.file_read,
                     "web_search": self.web.web_search, "web_read": self.web.web_read,
-                    "rag_search": self.rag.rag_search, "office_read": self.office.office_read}
+                    "rag_search": self.rag.rag_search, "office_read": self.office.office_read,
+                    "template_scan": self.template.scan_template}
         return registry[name](**args)

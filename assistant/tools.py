@@ -1,7 +1,8 @@
-WRITES = {"excel_edit_cell", "excel_create_from_template", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
+WRITES = {"excel_edit_cell", "excel_create_from_template", "template_fill", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
           "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace", "windows_open", "windows_inspect", "windows_action", "browser_search", "browser_run"}
 WRITES.update({'pdf_source_open','pdf_read'})
 WRITES.add('windows_list_apps')
+WRITES.add('geoslope_create')
 
 def schema(name, description, properties, required):
     return {"type": "function", "function": {"name": name, "description": description,
@@ -40,6 +41,16 @@ TOOLS = [
 DOCUMENT_READ_SCHEMA = schema("document_read", "Đọc PDF/Word DOCX/TXT/HTML trong whitelist bằng Python. Đọc tiếp theo next_start đến hết; trả vị trí trang/đoạn thực.", {"path": TEXT, "start": {"type":"integer","minimum":0}, "limit":{"type":"integer","minimum":1,"maximum":8000}}, ["path"])
 
 EXTRA_TOOLS = [
+    ("template", schema("template_scan", "Đọc file .docx mẫu và liệt kê các placeholder {{tên}} cần điền.",
+                        {"path": TEXT}, ["path"])),
+    ("template", schema("template_fill",
+        'Điền dữ liệu vào file Word mẫu (.docx) và tạo file mới. '
+        'Template dùng cú pháp {{tên_trường}} trong đoạn văn và ô bảng. '
+        'Dùng template_scan trước để biết các placeholder. '
+        'values là chuỗi JSON: {"project_name":"Nhà dân","date":"2024",...}. '
+        'Không sửa template gốc; luôn tạo file mới.',
+        {'template': TEXT, 'output_name': TEXT, 'values': TEXT},
+        ['template', 'output_name', 'values'])),
     ("office", schema("office_read", "Đọc text/bảng Word DOCX hoặc PowerPoint PPTX trong whitelist.", {"path": TEXT}, ["path"])),
     ("office", schema("office_create", "Tạo DOCX/PPTX mới sau khi người dùng duyệt. PPTX: mỗi slide là một khối, dòng đầu là tiêu đề, tách khối bằng newline---newline.", {"path": TEXT, "title": TEXT, "content": TEXT}, ["path", "title", "content"])),
     ("office", schema("word_replace", "Thay chuỗi xuất hiện đúng một lần trong đoạn/bảng DOCX, backup và duyệt. Định dạng đoạn được thay sẽ trở thành đồng nhất; header/footer chưa hỗ trợ.", {"path": TEXT, "search": TEXT, "replacement": TEXT}, ["path", "search", "replacement"])),
@@ -142,3 +153,17 @@ EXTRA_TOOLS.append(('cad_app',schema('cad_create_open',
 
 WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
+
+WRITES.add('plaxis_generate_script')
+EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
+    'Tạo script Python cho Plaxis 2D/3D để phân tích địa kỹ thuật. '
+    'Hỗ trợ: slope_stability (ổn định mái dốc, Bishop/Fellenius), '
+    'foundation_settlement (lún móng nông), retaining_wall (tường chắn đất). '
+    'version: "2d" hoặc "3d". '
+    'problem: chuỗi JSON mô tả bài toán, ví dụ: '
+    '{"type":"slope_stability","slope_angle":30,"slope_height":5,'
+    '"analysis":"Bishop","soil_layers":[{"name":"Cat","E":10000,"nu":0.3,'
+    '"gamma":18,"c":5,"phi":30,"thickness":5}]}. '
+    'Script sinh ra cần mở trong Plaxis bằng File > Run Script.',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
+    ['project_name', 'version', 'problem'])))
