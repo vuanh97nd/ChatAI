@@ -286,6 +286,20 @@ EXTRA_TOOLS.append(('tm_xldy', schema('tm_xldy_write',
      'soil_params_json': TEXT},
     ['segments_json', 'output_docx'])))
 
+WRITES.add('geoslope_write')
+EXTRA_TOOLS.append(('geoslope_xldy', schema('geoslope_write',
+    'Tạo file phân tích ổn định mái dốc GeoSlope SLOPE/W (.gsz) cho đoạn đường. '
+    'Xây dựng mặt cắt ngang đắp (hdy), lớp đất yếu (htk), vùng xử lý (CDM/PVD/đào thay đất/cọc tre). '
+    'Phân tích Bishop, bề mặt trượt GridAndRadius; Fs ≥ 1.2 (thi công), ≥ 1.4 (khai thác). '
+    'output_gsz: đường dẫn file .gsz đầu ra. '
+    'segments_json: JSON list các đoạn đường (từ road_analyze/road_verify). '
+    'soil_params_json: JSON list thông số đất nền [{"role","name","gamma","cohesion","c_prime","phi_prime"}] (tuỳ chọn). '
+    'project_name: tên dự án (tuỳ chọn). '
+    'method: Bishop (mặc định)/Morgenstern-Price/Spencer/Janbu/Ordinary.',
+    {'output_gsz': TEXT, 'segments_json': TEXT,
+     'soil_params_json': TEXT, 'project_name': TEXT, 'method': TEXT},
+    ['output_gsz', 'segments_json'])))
+
 WRITES.add('cad_mcn_xldy')
 EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
     'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '

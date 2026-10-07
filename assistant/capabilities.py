@@ -59,6 +59,7 @@ class Capabilities:
         self.cad_drawing=CadDrawingApp(self.files,audit)
         self.active.add('klxldy')
         self.active.add('tm_xldy')
+        self.active.add('geoslope_xldy')
         if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
         self.active.add('plaxis_app')
         self.active.add('geoslope_app')
@@ -75,6 +76,7 @@ class Capabilities:
         if name=='road_verify':return self.road_pipeline.prepare_verify(name,args)
         if name in {'cad_tracdoc_xldy','cad_mcn_xldy'}:return self.cad_drawing.prepare(name,args)
         if name in {'klxldy_write','tm_xldy_write'}:return self._prepare_xldy_docs(name,args)
+        if name=='geoslope_write':return self._prepare_geoslope(name,args)
         if name=='soilfirm_create':return self.soilfirm_app.prepare_create(name,args)
         if name=='borehole_dxf':return self.borehole_dxf.prepare(name,args)
         if name=='geoslope_create':return self.geoslope_app.prepare(name,args)
@@ -119,6 +121,7 @@ class Capabilities:
             if r.get('status')=='error':raise RuntimeError(r['message'])
             return f"Đã xuất {r['segments']} đoạn → {r['output']}"
         if action=='klxldy_write':return self._commit_xldy_docs(plan)
+        if action=='geoslope_write':return self._commit_geoslope(plan)
         if action=='tm_xldy_write':return self._commit_xldy_docs(plan)
         if action=='soilfirm_create':return self.soilfirm_app.commit_create(plan)
         if action=='borehole_dxf':return self.borehole_dxf.commit(plan)
@@ -210,3 +213,46 @@ class Capabilities:
             r = write_tm_xldy(args['output_docx'], segments,
                               project_meta=meta or None, soil_params=soil_params or None)
             return f"Đã soạn thuyết minh XLDY (~{r['pages_estimate']} trang) → {r['output_path']}"
+
+    # ------------------------------------------------------------------
+    # GeoSlope XLDY helpers
+    # ------------------------------------------------------------------
+
+    def _prepare_geoslope(self, name, args):
+        import json
+        segs_raw = args.get('segments_json', [])
+        segments = json.loads(segs_raw) if isinstance(segs_raw, str) else segs_raw
+        output = args.get('output_gsz', '')
+        if not output:
+            raise ValueError('output_gsz là bắt buộc.')
+        method = args.get('method') or 'Bishop'
+        count = len(segments)
+        preview = (f'Tạo {count} file GeoSlope SLOPE/W (.gsz) phân tích ổn định mái dốc '
+                   f'(Bishop, GridAndRadius) → {output}')
+        return {'action': name, 'segments': segments, 'args': args, 'preview': preview}
+
+    def _commit_geoslope(self, plan):
+        import json
+        from .geoslope_xldy_writer import write_geoslope_gsz, write_geoslope_gsz_batch
+        segments = plan['segments']
+        args     = plan.get('args', {})
+        output   = args['output_gsz']
+        sp_raw   = args.get('soil_params_json', [])
+        soil_params = json.loads(sp_raw) if isinstance(sp_raw, str) and sp_raw else (sp_raw or None)
+        method   = args.get('method') or 'Bishop'
+        project  = args.get('project_name', '')
+
+        if len(segments) == 1:
+            r = write_geoslope_gsz(output, segments[0],
+                                   soil_params=soil_params or None, method=method)
+            return (f"Đã tạo file GeoSlope/W ({r['analysis_type']}, "
+                    f"{r['materials']} vật liệu, {r['regions']} vùng) → {r['output_path']}")
+        else:
+            from pathlib import Path
+            out_dir = str(Path(output).parent)
+            r = write_geoslope_gsz_batch(out_dir, segments,
+                                         soil_params=soil_params or None,
+                                         method=method, project_name=project)
+            ok = sum(1 for f in r['files'] if 'error' not in f)
+            return (f"Đã tạo {ok}/{r['count']} file GeoSlope/W (.gsz) → {r['output_dir']}")
+
