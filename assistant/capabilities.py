@@ -49,9 +49,12 @@ class Capabilities:
         self.plaxis_app=PlaxisApp(self.files,audit)
         from .geoslope_app import GeoslopeApp
         self.geoslope_app=GeoslopeApp(self.files,audit)
+        from .soilfirm_app import SoilFirmApp
+        self.soilfirm_app=SoilFirmApp(self.files,audit)
         if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
         self.active.add('plaxis_app')
         self.active.add('geoslope_app')
+        self.active.add('soilfirm_app')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         from .online_automation import app_permissions
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
@@ -129,6 +132,11 @@ class Capabilities:
                                        num_ctx=self.cfg.get('num_ctx',4096)))
         if name in {"web_search","web_read"} and not self.allow_web:
             raise PermissionError("Bật nút Tìm kiếm mạng trước.")
+        if name == 'soilfirm_read':
+            mode = args.get('mode', 'summary')
+            if mode == 'full':
+                return self.soilfirm_app.read_project(args['path'])
+            return self.soilfirm_app.summary(args['path'])
         registry = {"excel_list_files": self.excel.excel_list_files,
                     "excel_list_sheets": self.excel.excel_list_sheets,
                     "excel_read": self.excel.excel_read,

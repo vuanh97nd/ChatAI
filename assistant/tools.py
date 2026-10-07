@@ -164,6 +164,15 @@ EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
     {'project_name': TEXT, 'problem': TEXT},
     ['project_name', 'problem'])))
 
+EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
+    'Đọc file dự án SoilFirm Pro (.json, format saspro-python-1) và trả về dữ liệu địa chất, '
+    'thông số thiết kế và kết quả tính (nếu có). '
+    'Dùng để lấy số liệu địa kỹ thuật chuẩn bị lập báo cáo hoặc phân tích. '
+    'path: đường dẫn đầy đủ file dự án SoilFirm Pro trong whitelist. '
+    'mode: "summary" (tóm tắt nhanh, mặc định) hoặc "full" (toàn bộ trường dữ liệu).',
+    {'path': TEXT, 'mode': {'type': 'string', 'enum': ['summary', 'full']}},
+    ['path'])))
+
 WRITES.add('plaxis_generate_script')
 EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Tạo script Python cho Plaxis 2D/3D để phân tích địa kỹ thuật. '
