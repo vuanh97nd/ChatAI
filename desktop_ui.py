@@ -1651,6 +1651,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         elif state['running']: self.chat_task()
 
     def approve_pending(self, pending):
+        action=pending['plan'].get('action','')
+        app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open'}
+        if app_action and self.cfg.get('windows_apps_enabled') and self.cfg.get('windows_apps_auto_execute'):
+            if pending.get('decision_started'):
+                self.status.setText('Thao tác trước chưa rõ kết quả; không chạy lại. Đang ghi nhận trạng thái.')
+                self.chat_task(recover=True)
+            else:self.chat_task(allowed=True,expected=pending)
+            return
         if pending.get('decision_started'):
             if QMessageBox.question(self, 'Phục hồi', 'Lượt trước bị ngắt trong khi ghi. Đánh dấu chưa rõ kết quả và tiếp tục? Không chạy lại thao tác.') == QMessageBox.StandardButton.Yes:
                 self.chat_task(recover=True)
@@ -1658,6 +1666,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         dialog = QDialog(self); dialog.setWindowTitle('Xác nhận thao tác'); dialog.resize(800, 620)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel('Kiểm tra đường dẫn, nội dung và tác động trước khi đồng ý.'))
+        remember=None
+        if app_action:
+            remember=QCheckBox('Ghi nhớ quyền điều khiển app, không hỏi lại sau mỗi bước hoặc lỗi')
+            remember.setChecked(True);layout.addWidget(remember)
         preview = QPlainTextEdit(); preview.setReadOnly(True)
         preview.setPlainText(json.dumps(pending['plan'], ensure_ascii=False, indent=2, default=str)); layout.addWidget(preview)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
@@ -1665,6 +1677,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         buttons.button(QDialogButtonBox.StandardButton.No).setText('Từ chối')
         buttons.accepted.connect(dialog.accept); buttons.rejected.connect(dialog.reject); layout.addWidget(buttons)
         allowed = dialog.exec() == QDialog.DialogCode.Accepted
+        if allowed and remember is not None and remember.isChecked():
+            from assistant.config import remember_app_permission
+            remember_app_permission()
+            self.cfg['windows_apps_auto_execute']=True
+            if hasattr(self,'windows_auto_execute_check'):
+                self.windows_auto_execute_check.setChecked(True)
         self.chat_task(allowed=allowed, expected=pending)
 
     def download(self, target):
@@ -2271,7 +2289,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         from assistant.windows_apps import resume_automation
         if not self.cfg.get('windows_apps_enabled'):
             QMessageBox.information(self,'Điều khiển app','Bật quyền và Lưu cài đặt trước.');return
-        resume_automation();self.status.setText('Đã cho phép lại điều khiển app; từng bước vẫn cần xác nhận.')
+        resume_automation();self.status.setText('Đã cho phép lại điều khiển app theo quyền đã lưu.')
         if hasattr(self,'windows_readiness_label'):
             from assistant.windows_apps import readiness
             self.windows_readiness_label.setText(readiness(self.cfg))

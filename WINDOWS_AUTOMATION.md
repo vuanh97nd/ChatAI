@@ -72,3 +72,5 @@ Trong Cài đặt → Điều khiển ứng dụng, bật **Tự thực hiện y
 Tùy chọn **Tự thu gọn chat khi AI điều khiển ứng dụng** mặc định bật. Khi bắt đầu công cụ ứng dụng, chat thu nhỏ và thanh nổi luôn trên cùng hiện trạng thái, thời gian chạy, **Tạm dừng / Tiếp tục**, **Mở chat** và **Kết thúc**. Kéo phần nền thanh để đổi vị trí; vị trí được lưu riêng trên máy.
 
 Tạm dừng giữ tác vụ và chờ ở lần kiểm tra quyền tiếp theo, không cưỡng ép dừng thao tác native đang chạy. Tiếp tục gỡ trạng thái tạm dừng. Kết thúc chặn các bước sau và hủy lượt chat, không đóng Word/Chrome bên ngoài hoặc xóa tài liệu. Mở chat chỉ hiện cửa sổ chính để theo dõi. Khi tác vụ xong, lỗi hoặc cần duyệt thủ công, chat tự hiện lại và thanh nổi đóng.
+
+Quyền điều khiển app cũng có thể lưu từ hộp thoại Đồng ý đầu tiên: giữ chọn **Ghi nhớ quyền điều khiển app, không hỏi lại sau mỗi bước hoặc lỗi**. Quyền được lưu vào cấu hình, giữ qua lần khởi động lại và có thể tắt trong Cài đặt. Khi quyền này đã bật, thao tác bị ngắt chưa rõ kết quả được ghi nhận mà không hỏi lại và không tự thực hiện lại.

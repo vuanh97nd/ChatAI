@@ -35,6 +35,19 @@ class PanelTest(unittest.TestCase):
             self.assertFalse(passed.wait(.05))
             resume();self.assertTrue(passed.wait(1));thread.join(1)
 
+    def test_saved_permission_bypasses_dialog_even_after_interrupted_action(self):
+        from desktop_ui import Window
+        from types import SimpleNamespace
+        calls=[]
+        host=SimpleNamespace(cfg={'windows_apps_enabled':True,'windows_apps_auto_execute':True},
+                             chat_task=lambda **kw:calls.append(kw),status=SimpleNamespace(setText=lambda text:None))
+        pending={'plan':{'action':'word_create_open'},'decision_started':False}
+        Window.approve_pending(host,pending)
+        self.assertEqual(calls[-1],{'allowed':True,'expected':pending})
+        pending=dict(pending,decision_started=True)
+        Window.approve_pending(host,pending)
+        self.assertEqual(calls[-1],{'recover':True})
+
     def test_chat_minimizes_and_returns_after_work_finishes(self):
         from desktop_ui import Window
         class Host(QMainWindow):

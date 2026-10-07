@@ -82,6 +82,17 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(payload['num_ctx'],2048);self.assertEqual(payload['chat_provider'],'local');self.assertNotIn('roots',payload)
         self.assertEqual(u.model.currentText(),'qwen2.5:7b');self.assertFalse(u.settings_dirty());self.assertTrue(list((self.root/'data/backups').glob('config-*')))
 
+    def test_remembered_app_permission_survives_reload_and_preserves_settings(self):
+        saved=config.load_config();saved['windows_apps_enabled']=True
+        config.save_config(saved)
+        granted=config.remember_app_permission()
+        self.assertTrue(granted['windows_apps_auto_execute'])
+        reloaded=config.load_config()
+        self.assertTrue(reloaded['windows_apps_auto_execute'])
+        self.assertEqual(reloaded['server_url'],saved['server_url'])
+        reloaded['windows_apps_enabled']=False;config.save_config(reloaded)
+        with self.assertRaises(PermissionError):config.remember_app_permission()
+
     def test_windows_app_permissions_save_and_discard(self):
         u=self.ui
         u.windows_apps_check.setChecked(True)

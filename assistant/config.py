@@ -89,3 +89,12 @@ def save_config(cfg):
     temp.write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
     temp.replace(path)
     return checked
+
+
+def remember_app_permission():
+    """Persist only the app execution grant, preserving the saved configuration."""
+    cfg=load_config()
+    if not cfg.get('windows_apps_enabled'):
+        raise PermissionError('Quyền điều khiển ứng dụng đã bị tắt; bật và lưu trước.')
+    cfg['windows_apps_auto_execute']=True
+    return save_config(cfg)
