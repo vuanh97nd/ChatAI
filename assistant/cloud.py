@@ -296,11 +296,17 @@ class ServerApiClient:
               'temperature':options.get('temperature',.2),'stream':True}
         request=Request(endpoint.rstrip('/')+'/api/provider/model',data=json.dumps(body).encode(),
                         headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
+        import time
+        from .performance import record
+        started=time.monotonic();first_answer=True
         try:
             with urlopen(request,timeout=self.timeout) as response:
+                record('ai.wait_response_headers',time.monotonic()-started)
                 if 'text/event-stream' not in response.headers.get('Content-Type',''):
                     value=json.load(response)
                     if not value.get('success') or not value.get('answer'):raise CloudError(value.get('message','AI chưa trả nội dung.'))
+                    record('ai.wait_first_text_json',time.monotonic()-started)
+                    if self.on_status:self.on_status('Server trả toàn bộ câu trả lời; chưa dùng luồng trả lời dần.')
                     yield value['answer'];return
                 for raw in response:
                     if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
@@ -314,7 +320,10 @@ class ServerApiClient:
                     if value.get('error'):raise CloudError('Dịch vụ AI đã ngắt luồng trả lời.')
                     choices=value.get('choices',[])
                     delta=choices[0].get('delta',{}).get('content','') if choices else ''
-                    if isinstance(delta,str) and delta:yield delta
+                    if isinstance(delta,str) and delta:
+                        if first_answer:
+                            record('ai.wait_first_text_stream',time.monotonic()-started);first_answer=False
+                        yield delta
         except HTTPError as error:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}
@@ -325,6 +334,7 @@ class ServerApiClient:
                 message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
             raise CloudError(message,detail.get('code','')) from None
         except (URLError,TimeoutError):raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
+        finally:record('ai.request_total',time.monotonic()-started)
 
     def chat(self,model,messages,**kwargs):
         from .accounts import request_account

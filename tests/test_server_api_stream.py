@@ -16,12 +16,13 @@ class ServerStreamingTest(unittest.TestCase):
         def open_request(request,timeout):
             self.assertEqual(request.get_header('User-agent'),'ChatAI-Desktop/2.5 (+Windows; account API)')
             seen.append(json.loads(request.data));return response
-        with patch('assistant.cloud.urlopen',open_request):
+        with patch('assistant.cloud.urlopen',open_request),patch('assistant.performance.record') as timing:
             stream=client.stream_answer(client.model,[{'role':'user','content':'Chao'}])
             self.assertEqual(next(stream),'Xin ')
             self.assertLess(response.tell(),len(response.getvalue()))
             self.assertEqual(list(stream),['chao'])
         self.assertTrue(seen[0]['stream']);self.assertEqual(seen[0]['provider'],'deepseek_flash')
+        self.assertEqual([c.args[0] for c in timing.call_args_list],['ai.wait_response_headers','ai.wait_first_text_stream','ai.request_total'])
     def test_old_worker_json_reply_remains_compatible(self):
         response=Response(b'{"success":true,"answer":"OK"}','application/json')
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek')
