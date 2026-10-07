@@ -54,3 +54,9 @@ Với UIA: chỉ Windows desktop đang đăng nhập, app cung cấp control UIA
 Công cụ không tự sao lưu dữ liệu của app bên ngoài. Trước khi duyệt nút gửi/lưu/xóa/đóng, kiểm tra mục tiêu và nội dung. Thử với app/tài liệu thử nghiệm trước. Tài liệu trong app có thể xuất hiện trong lịch sử ChatAI khi bạn duyệt đọc giao diện. Không dùng công cụ để nhập mật khẩu.
 
 Các test tự động kiểm tra danh sách được phép, xác nhận, hash EXE, phiên theo tài khoản, PID, control thay đổi, mật khẩu, thu hồi quyền và nút dừng bằng backend giả lập. Môi trường cloud Linux không kiểm thử được pywinauto hay thao tác app Windows thật; cần thử trên Windows trước khi dùng với dữ liệu thật.
+
+### Nhận diện ứng dụng và tiếp nối yêu cầu
+
+Khi yêu cầu mở ứng dụng (Word, Excel, Photoshop hoặc app khác), ChatAI đưa bước `windows_list_apps` vào luồng duyệt trước khi model lập kế hoạch mở. Quyền mở mọi ứng dụng đăng ký Windows được mô tả riêng với danh sách EXE thêm thủ công; danh sách thủ công không giới hạn quyền này. Các bước mở và thao tác vẫn kiểm tra quyền hiện tại và cần duyệt.
+
+Trong cuộc trò chuyện điều khiển app trực tuyến, câu trả lời bổ sung như tên bài hát tiếp tục được gửi tới bộ lập kế hoạch công cụ khi quyền điều khiển còn bật. Tạo cuộc trò chuyện mới để quay về chat thường. Không bảo đảm mọi app hỗ trợ UI Automation; Word có thể không cung cấp ô Edit để nhập nội dung. Phiên browser_run hiện đóng sau quy trình nên chưa hỗ trợ duy trì phát nhạc.

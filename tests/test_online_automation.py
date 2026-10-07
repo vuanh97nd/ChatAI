@@ -87,6 +87,35 @@ class OnlineAutomationTest(unittest.TestCase):
         client=SimpleNamespace(model='deepseek',chat=chat)
         self.agent=OnlineAutomation(client,self.cfg,self.store,self.cid,tools,tools)
     def tearDown(self):self.tmp.cleanup()
+    def test_song_name_reply_stays_in_online_tool_workflow(self):
+        from assistant.online_automation import use_automation
+        cfg={'windows_apps_enabled':True}
+        self.assertTrue(use_automation('tình yêu màu nắng',cfg,{'online_automation':True}))
+        self.assertFalse(use_automation('tình yêu màu nắng',cfg,{}))
+        self.assertFalse(use_automation('tình yêu màu nắng',{'windows_apps_enabled':False},{'online_automation':True}))
+
+    def test_registered_word_is_discovered_before_model_or_launch(self):
+        self.cfg.update(windows_apps_enabled=True,windows_apps_all_installed=True)
+        self.agent.start(self.state,'hãy mở word và viết một bài văn tả mẹ','DeepSeek API','admin')
+        self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
+        self.assertEqual(self.state['pending']['plan'],{'action':'windows_list_apps','query':'word'})
+        self.assertEqual(self.requests,[])
+        self.assertEqual(self.committed,[])
+        self.agent.approve(self.state,True,self.state['pending'])
+        self.responses=[json.dumps({'answer':'','tool':'windows_open','arguments':{'path':r'C:\Office\WINWORD.EXE'}})]
+        self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
+        self.assertEqual(self.state['pending']['plan']['action'],'windows_open')
+        self.assertIn('KHÔNG phải toàn bộ',self.requests[-1][0]['content'])
+
+    def test_generic_app_discovery_respects_negative_requests(self):
+        from assistant.online_automation import application_call
+        cfg={'windows_apps_enabled':True,'windows_apps_all_installed':True}
+        for app in ('Excel','Photoshop','Foxit PDF Editor','Chrome'):
+            self.assertEqual(application_call('hãy mở '+app+' và làm việc',cfg)['function']['arguments']['query'],app)
+        for prompt in ('đừng mở Word','cách mở Word','mở rộng ý tưởng'):
+            self.assertIsNone(application_call(prompt,cfg))
+        self.assertIsNone(application_call('mở Word',{}))
+
     def test_chrome_search_routes_without_model_and_approval_is_required(self):
         self.agent.start(self.state,'hãy mở ứng dụng chorme và tìm kiếm thông tin về tiêu chuẩn 41-2022','DeepSeek API','admin')
         events=list(self.agent.run(self.state))
@@ -101,7 +130,7 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertFalse(self.state['running'])
     def test_deepseek_can_plan_windows_app_action_without_ollama(self):
         self.responses=[json.dumps({'answer':'','tool':'windows_open','arguments':json.dumps({'path':r'C:\Apps\word.exe'})})]
-        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.agent.start(self.state,'Tiếp tục mở ứng dụng Word','DeepSeek API','admin')
         self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
         self.assertIn('windows_inspect',self.requests[0][0]['content'])
         self.assertEqual(self.committed,[])
@@ -110,17 +139,17 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertIn('từ chối',self.state['messages'][-1]['content'])
     def test_invalid_model_tools_never_execute(self):
         self.responses=[json.dumps({'answer':'','tool':'run_command','arguments':'{"command":"bad"}'})]*2
-        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.agent.start(self.state,'Tiếp tục mở ứng dụng Word','DeepSeek API','admin')
         list(self.agent.run(self.state))
         self.assertFalse(self.state['running']);self.assertEqual(self.committed,[])
     def test_markdown_and_object_arguments_are_accepted_but_wait_for_approval(self):
         self.responses=['```json\n'+json.dumps({'tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}})+'\n```']
-        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.agent.start(self.state,'Tiếp tục mở ứng dụng Word','DeepSeek API','admin')
         self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
         self.assertEqual(self.committed,[])
     def test_invalid_json_is_repaired_before_any_side_effect(self):
         self.responses=['Để tôi mở Word.',json.dumps({'answer':'','tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}})]
-        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.agent.start(self.state,'Tiếp tục mở ứng dụng Word','DeepSeek API','admin')
         events=list(self.agent.run(self.state))
         self.assertTrue(any('sửa định dạng' in event.get('text','') for event in events))
         self.assertEqual(events[-1]['type'],'pending');self.assertEqual(self.committed,[])

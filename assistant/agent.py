@@ -93,9 +93,9 @@ class Agent:
         state["messages"].append(message)
         state.update(running=True, rounds=0, model=model, code_attempts=0, tools_enabled=bool(self.schemas), routing=None, research_prepared=False, memory_prepared=False, rag_prepared=False, rag_results=None, document_prepared=False, prepared_documents=[], document_intent=None, followups=[], review_status=None, model_error=None, web_results=None, memory_write_status=None, web_search_requested=False, collaboration=None, expert_mode=bool(expert_mode), expert_override=expert_override, orchestration=None, expert_fallback_used=False, video_source_paths=[], media_prompt_en=None)
         state['online_automation']=False
-        from .online_automation import search_call
-        call=search_call(prompt,self.cfg)
-        state['initial_browser_call']=call if call and any(s['function']['name']=='browser_search' for s in self.schemas) else None
+        from .online_automation import search_call, application_call
+        call=search_call(prompt,self.cfg) or application_call(prompt,self.cfg)
+        state['initial_browser_call']=call if call and any(s['function']['name']==call['function']['name'] for s in self.schemas) else None
         self.save(state)
 
     def translate_media_prompt(self, state):

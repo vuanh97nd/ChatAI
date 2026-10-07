@@ -1336,8 +1336,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if model in REMOTE_MODELS and (cooperation['media_tool'] or self.chat_mode.currentIndex()==5):
             QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI local để dùng mục này.');self.choose_other_model();return
         if model in REMOTE_MODELS:
-            from assistant.online_automation import requested_automation
-            if requested_automation(prompt) or (self.cfg.get('windows_apps_enabled') and self.chat_mode.currentIndex()==1):
+            from assistant.online_automation import use_automation
+            if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1):
                 if self.pending_documents or self.pending_image:
                     QMessageBox.information(self,'Điều khiển ứng dụng','Gửi yêu cầu điều khiển app riêng; tài liệu/ảnh đính kèm vẫn đang được giữ.');return
                 self.online_windows_task(prompt=prompt);return

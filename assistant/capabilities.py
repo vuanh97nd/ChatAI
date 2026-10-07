@@ -39,7 +39,8 @@ class Capabilities:
         self.pdf_source=PDFSource(self.windows,self.files,audit)
         if 'windows' in self.active:self.active.add('pdf_source')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
-        self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' Danh sách EXE được phép: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
+        from .online_automation import app_permissions
+        self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
         if name in {'pdf_source_open','pdf_read'}:return self.pdf_source.prepare(name,args)

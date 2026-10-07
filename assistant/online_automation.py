@@ -32,6 +32,11 @@ def requested_automation(prompt):
                 and re.search(r'(ứng dụng|phần mềm|\bapp\b|chrome|chorme|foxit|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I)))
 
 
+def use_automation(prompt, cfg, state, tool_mode=False):
+    """Keep clarification replies in the same online tool workflow."""
+    return requested_automation(prompt) or bool(cfg.get('windows_apps_enabled') and (tool_mode or state.get('online_automation')))
+
+
 def search_call(prompt, cfg):
     """Route an explicit Chrome search without relying on a model to call tools."""
     if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
@@ -41,6 +46,24 @@ def search_call(prompt, cfg):
     paths=[row['path'] for row in authorized_apps(cfg) if PureWindowsPath(row['path']).name.lower()=='chrome.exe']
     if not match or len(paths)!=1:return None
     return {'function':{'name':'browser_search','arguments':{'path':paths[0],'query':match.group(1).strip()}}}
+
+
+def application_call(prompt, cfg):
+    """Discover before planning an explicit app opening, with normal approval."""
+    if not cfg.get('windows_apps_enabled'):return None
+    if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
+    match=re.match(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?:(?:ứng dụng|phần mềm|app)\s+)?(.+)',prompt,re.I)
+    if not match:return None
+    target=re.split(r'\s+(?:và|rồi|để|giúp|cho)\s+',match.group(1),maxsplit=1,flags=re.I)[0].strip()
+    if re.match(r'(?:rộng|lòng|bài|đầu)\b',target,re.I):return None
+    return {'function':{'name':'windows_list_apps','arguments':{'query':target[:150]}}}
+
+
+def app_permissions(cfg):
+    mode=('Đã cấp quyền mở ứng dụng đăng ký với Windows; danh sách thủ công KHÔNG phải toàn bộ ứng dụng được phép. '
+          'Bắt buộc dùng windows_list_apps để tìm trước khi kết luận ứng dụng không được phép.'
+          if cfg.get('windows_apps_all_installed') else 'Chỉ các EXE thêm thủ công được phép; dùng windows_list_apps để kiểm tra.')
+    return mode+' EXE thêm thủ công: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False)
 
 
 class OnlineAutomation:
@@ -58,7 +81,7 @@ class OnlineAutomation:
         state['messages'].append({'role':'user','content':prompt})
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
                      online_automation=True,automation_rounds=0)
-        call=search_call(prompt,self.cfg)
+        call=search_call(prompt,self.cfg) or application_call(prompt,self.cfg)
         if call:
             state['messages'].append({'role':'assistant','content':'','tool_calls':[call]})
             state['queue']=[call]
@@ -118,7 +141,7 @@ class OnlineAutomation:
                          'Không thử lại thao tác lỗi có thể đã thực hiện một phần. Nếu gặp CAPTCHA/đăng nhập, báo người dùng. '
                          'Nếu chưa biết selector của trang, browser_run navigate + read trước để nhận controls; bước sau phải navigate lại vì phiên trước đã đóng. '
                          'Nếu người dùng yêu cầu tải PDF mở Foxit, tìm URL nguồn thật bằng browser_search/browser_run rồi gọi pdf_source_open với EXE Foxit đã được phép. Không đoán URL hoặc chọn tài liệu chỉ vì tên gần giống; đối chiếu số hiệu/năm trên nguồn. Đọc tiếp pdf_read đến hết nếu cần tóm tắt toàn văn. '
-                         'Danh sách EXE: '+json.dumps(self.cfg.get('windows_apps_allowed',[]),ensure_ascii=False)+
+                         +app_permissions(self.cfg)+
                          '\nCông cụ: '+json.dumps(self.schemas,ensure_ascii=False))
             messages=[{'role':'system','content':instruction}]
             for message in state['messages'][-20:]:
