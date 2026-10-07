@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from .windows_apps import fingerprint
+from .tcvn import validate_style_def, encode_dxf_text
 
 UNITS = {'mm': 4, 'cm': 5, 'm': 6, 'inch': 1}
 
@@ -41,6 +42,24 @@ def _layer_name(value):
     if any(c in value for c in '<>/\\:;?*|="\''):
         raise ValueError('Tên layer chứa ký tự không hợp lệ.')
     return value
+
+
+def _validate_styles(raw_styles):
+    if raw_styles is None:
+        return []
+    if not isinstance(raw_styles, list) or len(raw_styles) > 50:
+        raise ValueError('styles phải là danh sách tối đa 50 phần tử.')
+    result = []
+    names = set()
+    for item in raw_styles:
+        if not isinstance(item, dict):
+            raise ValueError('Mỗi style phải là đối tượng JSON.')
+        s = validate_style_def(item)
+        if s['name'] in names:
+            raise ValueError(f'Tên style trùng: {s["name"]!r}')
+        names.add(s['name'])
+        result.append(s)
+    return result
 
 
 def _validate_layers(raw_layers):
@@ -130,8 +149,8 @@ def entities_from_json(raw):
                      'pattern': pattern.upper(), 'scale': scale, 'angle': angle}
 
         elif kind == 'text':
-            if base_keys - {'rotation', 'halign', 'valign'} != {'type', 'insert', 'content', 'height'}:
-                raise ValueError('text cần insert, content, height; tùy chọn rotation, halign, valign.')
+            if base_keys - {'rotation', 'halign', 'valign', 'style'} != {'type', 'insert', 'content', 'height'}:
+                raise ValueError('text cần insert, content, height; tùy chọn rotation, halign, valign, style.')
             content = row['content']
             if not isinstance(content, str) or not content or len(content) > 1000:
                 raise ValueError('content phải là chuỗi 1–1000 ký tự.')
@@ -145,8 +164,12 @@ def entities_from_json(raw):
             valign = row.get('valign', 'BASELINE')
             if valign not in {'BASELINE', 'BOTTOM', 'MIDDLE', 'TOP'}:
                 raise ValueError('valign phải là BASELINE/BOTTOM/MIDDLE/TOP.')
+            style_name = row.get('style', 'Standard')
+            if not isinstance(style_name, str) or len(style_name) > 255:
+                raise ValueError('style phải là chuỗi tên style đã khai báo trong styles.')
             shape = {'type': kind, 'insert': _point2d(row['insert']), 'content': content,
-                     'height': height, 'rotation': rotation, 'halign': halign, 'valign': valign}
+                     'height': height, 'rotation': rotation, 'halign': halign, 'valign': valign,
+                     'style': style_name}
 
         elif kind == 'dim_linear':
             if base_keys - {'text_override'} != {'type', 'start', 'end', 'dimline'}:
@@ -172,10 +195,24 @@ def _apply_layer(attribs, shape):
     return attribs
 
 
-def _build_dxf(doc, shapes):
+def _build_dxf(doc, shapes, styles=None):
     import ezdxf
     from ezdxf.enums import TextEntityAlignment
     model = doc.modelspace()
+    # Register text styles; build font lookup for TCVN3 encode decision
+    _style_font: dict[str, str] = {}
+    for sdef in (styles or []):
+        name = sdef['name']
+        try:
+            st = doc.styles.new(name)
+        except Exception:
+            st = doc.styles.get(name)
+        st.font = sdef['font']
+        if sdef['height']:
+            st.dxf.height = sdef['height']
+        if sdef['width_factor'] != 1.0:
+            st.dxf.width = sdef['width_factor']
+        _style_font[name] = sdef['font']
     _ALIGN = {
         ('LEFT',   'BASELINE'): TextEntityAlignment.LEFT,
         ('CENTER', 'BASELINE'): TextEntityAlignment.CENTER,
@@ -209,8 +246,12 @@ def _build_dxf(doc, shapes):
                 editor.add_polyline_path(row['boundary'], is_closed=True)
         elif kind == 'text':
             align = _ALIGN.get((row['halign'], row['valign']), TextEntityAlignment.LEFT)
-            text_attrs = {**attrs, 'height': row['height'], 'rotation': row['rotation']}
-            t = model.add_text(row['content'], dxfattribs=text_attrs)
+            style_name = row.get('style', 'Standard')
+            font_name = _style_font.get(style_name, '')
+            content = encode_dxf_text(row['content'], font_name)
+            text_attrs = {**attrs, 'height': row['height'], 'rotation': row['rotation'],
+                          'style': style_name}
+            t = model.add_text(content, dxfattribs=text_attrs)
             t.set_placement(row['insert'], align=align)
         elif kind == 'dim_linear':
             dim_attrs = {**attrs}
@@ -236,11 +277,13 @@ class CadApp:
             raise ValueError('Đơn vị phải là mm, cm, m hoặc inch.')
         shapes = entities_from_json(args['entities'])
         layers = _validate_layers(args.get('layers'))
+        styles = _validate_styles(args.get('styles'))
         if not self.files.roots:
             raise PermissionError('Thêm thư mục lưu bản vẽ được phép trong Cài đặt.')
         path = self.files.path(str(self.files.roots[0] / ('ChatAI-' + uuid.uuid4().hex + '.dxf')), exists=False)
         return {'action': 'cad_create_open', 'app': str(app), 'sha256': fingerprint(app),
-                'path': str(path), 'units': units, 'entities': shapes, 'layers': layers}
+                'path': str(path), 'units': units, 'entities': shapes, 'layers': layers,
+                'styles': styles}
 
     def commit(self, plan):
         self.windows.check()
@@ -249,17 +292,17 @@ class CadApp:
             raise PermissionError('EXE AutoCAD đã thay đổi.')
         shapes = entities_from_json(json.dumps(plan['entities']))
         layers = _validate_layers(plan.get('layers'))
+        styles = _validate_styles(plan.get('styles'))
         import ezdxf
         doc = ezdxf.new('R2010')
         doc.units = UNITS[plan['units']]
-        # Create declared layers
         for ldef in layers:
             layer = doc.layers.new(ldef['name'])
             layer.color = ldef['color']
             if ldef['linetype'] != 'CONTINUOUS':
                 doc.linetypes.add(ldef['linetype'], description=ldef['linetype'])
                 layer.linetype = ldef['linetype']
-        _build_dxf(doc, shapes)
+        _build_dxf(doc, shapes, styles)
         path = self.files.path(plan['path'], exists=False)
         if path.exists():
             raise FileExistsError('Không ghi đè bản vẽ đã có.')

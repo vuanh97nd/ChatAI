@@ -132,9 +132,13 @@ EXTRA_TOOLS.append(('cad_app',schema('cad_create_open',
 '• {"type":"text","insert":[x,y],"content":"Văn bản","height":h,"rotation":0,"halign":"LEFT/CENTER/RIGHT","valign":"BASELINE/BOTTOM/MIDDLE/TOP","layer":"TÊN"}\n'
 '• {"type":"dim_linear","start":[x,y],"end":[x,y],"dimline":[x,y],"text_override":"","layer":"TÊN"} — kích thước\n'
 'layers (tùy chọn) là chuỗi JSON mảng: [{"name":"ĐẤT_1","color":2,"linetype":"CONTINUOUS"}] — màu ACI 1–256, linetype: CONTINUOUS/DASHED/DOTTED/CENTER/PHANTOM/HIDDEN.\n'
-'Gợi ý mặt cắt địa kỹ thuật: dùng polyline cho biên lớp đất, hatch để tô ký hiệu, text cho nhãn cao độ, dim_linear cho chiều sâu.\n'
+'styles (tùy chọn) là chuỗi JSON mảng khai báo text style: [{"name":"VN_SAN","font":".VnArial","height":0,"width_factor":1.0}].\n'
+'  Font Unicode (TTF): .VnArial, .VnTimes, Arial, Times New Roman — text giữ nguyên Unicode.\n'
+'  Font TCVN3 (SHX): VNTIMES.SHX, VNARIAL.SHX, vnet.shx, vnhelveti.shx — text tự động convert sang TCVN3.\n'
+'  Thêm "style":"VN_SAN" vào entity text để áp dụng style đã khai báo.\n'
+'Gợi ý mặt cắt địa kỹ thuật: polyline biên lớp đất, hatch ký hiệu, text nhãn cao độ, dim_linear chiều sâu.\n'
 'Hỏi kích thước/đơn vị nếu thiếu; không tự đoán. Không sửa DWG/bản vẽ đang mở, không chạy script CAD.',
-{'app':TEXT,'units':TEXT,'entities':TEXT,'layers':TEXT},['app','units','entities'])))
+{'app':TEXT,'units':TEXT,'entities':TEXT,'layers':TEXT,'styles':TEXT},['app','units','entities'])))
 
 WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
