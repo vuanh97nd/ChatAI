@@ -42,7 +42,7 @@ export async function requestWebSearch(env,query,send=fetch){
   throw error;
  }finally{clearTimeout(timer);}
 }
-const VERSION='2.5.0';
+const VERSION='2.5.1';
 // Data extraction has its own contract, independent of conversational styling.
 export function extractionContract(kind){
  if(kind==='document'){
