@@ -2,6 +2,8 @@
 import ctypes
 import json
 import os
+import time
+from .performance import record
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request,urlopen
@@ -19,8 +21,12 @@ def request_account(endpoint,path,body,timeout=12):
         raise ValueError('URL server phải là URL gốc HTTPS.')
     request=Request(endpoint.rstrip('/')+path,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
     try:
+        started=time.monotonic()
         with urlopen(request,timeout=timeout) as response:
+            headers_received=time.monotonic()
+            if path=='/api/login':record('login.network_wait_headers',headers_received-started)
             raw=response.read(2000001)
+            if path=='/api/login':record('login.network_read_body',time.monotonic()-headers_received)
             if len(raw)>2000000:raise RuntimeError('Phản hồi server quá lớn. Hãy chia nhỏ yêu cầu.')
             result=json.loads(raw.decode('utf-8'))
     except HTTPError as error:

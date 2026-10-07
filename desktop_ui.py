@@ -6,6 +6,7 @@ import re
 import json
 import sys
 import traceback
+from assistant.performance import measure,record
 from threading import Event
 from pathlib import Path
 print("Chat AI Desktop 2.6.5: giao diện không chờ Ollama/SSL.",flush=True)
@@ -226,6 +227,8 @@ class LocalOllamaClient:
         with self._lock:
             if self._client is None:
                 import ollama
+                from assistant.vi_guard import install
+                install()
                 # The validated endpoint is HTTP loopback; no TLS or environment proxy is used.
                 self._client=ollama.Client(host=self.host,timeout=self.timeout,verify=False,trust_env=False)
             client=self._client
@@ -234,11 +237,11 @@ class LocalOllamaClient:
 
 def prepare_context(progress=print):
     progress('Đang đọc cấu hình và mở lịch sử…')
-    cfg = load_config()
-    store = Store(ROOT / 'data/history.sqlite3')
+    with measure('startup.config'):cfg = load_config()
+    with measure('startup.history_database'):store = Store(ROOT / 'data/history.sqlite3')
     client = LocalOllamaClient(host=cfg['ollama_host'], timeout=180)
     progress('Đang nạp trạng thái module…')
-    manager = ModuleManager(store, client, ROOT)
+    with measure('startup.module_state'):manager = ModuleManager(store, client, ROOT)
     cid = store.create(persist=False)
     rows = store.list(limit=100)
     return dict(cfg=cfg, store=store, client=client, manager=manager,
@@ -258,6 +261,7 @@ from assistant.admin_ui import AdminMixin,admin_session
 class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     model_probe_finished = Signal(object)
     account_enrichment_finished = Signal(object,object)
+    login_restore_finished = Signal(object)
     support_badge_finished = Signal(object)
     def __init__(self, context=None):
         super().__init__()
@@ -269,6 +273,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.chat_messages, self.html_cache = [], {}
         self.sent_prompt = None
         self.server_session=None; self.personal_memories=[]
+        self.login_restore_finished.connect(self.apply_restored_login)
+        self.restore_login_loading=False
         self.support_badge_finished.connect(self.apply_support_badge)
         self.trial=GuestTrial(self.store)
         self.cfg.setdefault('chat_provider','nvidia')
@@ -537,7 +543,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.model.currentTextChanged.connect(self.model_changed)
         self.chat_mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed(self.chat_mode.currentIndex())
-        QTimer.singleShot(200, self.refresh_models)
+        QTimer.singleShot(200, self.refresh_startup_models)
         QTimer.singleShot(100,self.restore_login)
 
     @staticmethod
@@ -668,7 +674,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.paint_timer.stop()
         self.image_btn.setEnabled(True); self.video_btn.setEnabled(True); self.web_btn.setEnabled(True);self.deep_btn.setEnabled(True)
         self.new_btn.setEnabled(True); self.delete_btn.setEnabled(True); self.chat_mode.setEnabled(True); self.history.setEnabled(True); self.model.setEnabled(True)
-        self.render()
+        if getattr(worker,'performance_login',False):
+            with measure('login.finish_worker_render'):self.render()
+        else:self.render()
         worker.deleteLater()
         if worker.cancelled:
             self.status.setText('Đã dừng phản hồi.');self.sent_prompt=None
@@ -1273,7 +1281,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         from assistant.model_preferences import save_model
         save_model(self.store,getattr(self,'server_session',None),name)
         if name in REMOTE_MODELS:self.model.setToolTip('AI trực tuyến dùng key chung trên server.');return
-        if name in CHAT_MODELS:self.model.setToolTip(CHAT_MODELS[name]['label'])
+        if name in CHAT_MODELS:
+            self.model.setToolTip(CHAT_MODELS[name]['label'])
+            if not self.models:QTimer.singleShot(200,self.refresh_startup_models)
 
     def check_gpu(self):
         def task(emit):
@@ -1285,6 +1295,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 lines.append(f'{model.model}: VRAM {vram/1024**3:.2f} GiB / tổng {size/1024**3:.2f} GiB ({fraction}% theo bộ nhớ).')
             return '\n'.join(lines) or 'Chưa có model đang nạp. Gửi một tin nhắn rồi kiểm tra lại.'
         self.work(task, lambda text: QMessageBox.information(self, 'Model / GPU', text))
+
+    def refresh_startup_models(self):
+        # Online login must not compete with importing the local AI stack.
+        if self.model.currentText() in REMOTE_MODELS:return
+        if self.busy():
+            QTimer.singleShot(500,self.refresh_startup_models);return
+        self.refresh_models()
 
     def refresh_models(self):
         if self.model_probe_running:return
@@ -1983,13 +2000,29 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.update_task(task,done)
 
     def restore_login(self):
+        if self.server_session or self.restore_login_loading:return
+        if self.busy():QTimer.singleShot(500,self.restore_login);return
+        self.restore_login_loading=True
+        from threading import Thread
+        def load():
+            try:
+                from assistant.accounts import load_login
+                with measure('login.restore_credentials'):session=load_login()
+                value={'session':session}
+            except Exception:value={'error':True}
+            try:self.login_restore_finished.emit(value)
+            except RuntimeError:pass # The window closed while DPAPI/file I/O was pending.
+        Thread(target=load,daemon=True).start()
+
+    def apply_restored_login(self,value):
+        self.restore_login_loading=False
         if self.server_session:return
-        if self.busy():QTimer.singleShot(1500,self.restore_login);return
-        from assistant.accounts import load_login
-        try:session=load_login()
-        except Exception:
+        if value.get('error'):
             self.account_status.setText('Không đọc được đăng nhập đã lưu. Vui lòng đăng nhập lại.');return
+        session=value.get('session')
         if not session:return
+        if self.busy():
+            QTimer.singleShot(500,lambda:self.apply_restored_login(value));return
         self.chat_login.setText('Đang tự đăng nhập…')
         self.account_status.setText('Đang khôi phục tài khoản đã ghi nhớ…')
         self.perform_login(session,remember=True,restore=True)
@@ -2012,11 +2045,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.perform_login({'endpoint':endpoint,'username':username.text().strip(),'key':password.text().strip()},remember.isChecked())
 
     def perform_login(self,session,remember=True,restore=False):
+        login_wall_started=time.monotonic()
         self.account_status.setText('Đang đăng nhập…')
         def task(emit):
             from assistant.accounts import request_account,save_login,forget_login
             started=time.monotonic()
-            result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
+            record('login.worker_setup',started-login_wall_started)
+            with measure('login.https_request'):
+                result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
             authenticated=time.monotonic()
             if result.get('session_token'):session['key']=result['session_token']
             # The login endpoint already returns identity and role; optional profile
@@ -2027,17 +2063,19 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             stored['fullname']=result.get('fullname') or session['username'];stored['role']=result.get('role','user')
             warning=''
             try:
-                if remember:save_login(stored)
-                else:forget_login()
+                with measure('login.save_credentials'):
+                    if remember:save_login(stored)
+                    else:forget_login()
             except Exception:
                 warning=' · Đăng nhập thành công nhưng chưa lưu được ghi nhớ trên Windows'
             from assistant.model_preferences import load_model
             result['_custom_ai']=self.cfg.get('custom_ai',[])
-            result['_saved_ai']=load_model(self.store,session)
-            self.trial.adopt(session['username'])
+            with measure('login.model_preference'):result['_saved_ai']=load_model(self.store,session)
+            with measure('login.adopt_guest_history'):self.trial.adopt(session['username'])
             result['_login_timings']={'server_seconds':round(authenticated-started,3),'local_seconds':round(time.monotonic()-authenticated,3)}
             return result,[],warning
         def done(result):
+            ui_started=time.monotonic()
             self.server_session=dict(session);self.server_session['fullname']=result[0].get('fullname') or session['username'];self.server_session['role']=result[0].get('role','user');self.personal_memories=result[1]
             for key in ('fullname','email','phone','avatar'):self.server_session[key]=result[0].get(key,'')
             self.install_custom_ai(result[0].get('_custom_ai',[]))
@@ -2058,7 +2096,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
             self.store.remember_conversation(session['username'],self.cid)
             self.render()
+            record('login.apply_interface',time.monotonic()-ui_started)
+            record('login.total',time.monotonic()-login_wall_started)
         self.work(task,done)
+        if self.worker:self.worker.performance_login=True
 
     def load_account_enrichment(self,session):
         from threading import Thread
@@ -2567,6 +2608,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(layout,'Tải mô hình',lambda:self.tabs.setCurrentIndex(1))
         layout.addStretch(1)
 
+    def copy_performance_report(self):
+        from assistant.performance import report
+        QApplication.clipboard().setText(report())
+        self.status.setText('Đã sao chép thời gian khởi động/đăng nhập. Bạn có thể dán để kiểm tra.')
+
     def account_menu(self):
         menu=QMenu(self)
         if self.server_session:
@@ -2593,6 +2639,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         menu.addAction('Tải mô hình',lambda:self.tabs.setCurrentIndex(1))
         menu.addAction('Ảnh và Video',lambda:self.tabs.setCurrentIndex(2))
         menu.addAction('Hỗ trợ',self.open_support)
+        menu.addAction('Sao chép thời gian khởi động/đăng nhập',self.copy_performance_report)
         menu.addSeparator();menu.addAction('Tất cả cài đặt',lambda:self.open_settings_section(None))
         menu.exec(self.settings_button.mapToGlobal(self.settings_button.rect().topLeft()))
 

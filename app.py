@@ -4,19 +4,25 @@ import sys
 import traceback
 import time
 import math
+from assistant.performance import measure,record
+LAUNCH_STARTED=time.monotonic()
 from pathlib import Path
-ROOT = Path(__file__).resolve().parent
+with measure('startup.project_path'):
+    ROOT = Path(__file__).resolve().parent
 
 def main():
-    (ROOT/'data').mkdir(exist_ok=True)
-    crash_log=(ROOT/'data/crash.log').open('a',encoding='utf-8',buffering=1)
+    with measure('startup.crash_log'):
+        (ROOT/'data').mkdir(exist_ok=True)
+        crash_log=(ROOT/'data/crash.log').open('a',encoding='utf-8',buffering=1)
     faulthandler.enable(file=crash_log,all_threads=True)
     faulthandler.dump_traceback_later(30, repeat=True,file=crash_log)
+    qt_import_started=time.monotonic()
     from assistant.runtime_compat import prepare_six
     prepare_six()
     from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget, QVBoxLayout
     from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QRadialGradient
     from PySide6.QtCore import Qt, QThread, Signal, QTimer, QRectF
+    record('startup.qt_import',time.monotonic()-qt_import_started)
     app = QApplication(sys.argv)
     app.setApplicationName('Chat AI')
     def report_error(error_type,error,tb):
@@ -33,8 +39,10 @@ def main():
             self.result, self.error = None, None
             try:
                 self.progress.emit('Đang nạp giao diện · phiên bản 2.6.5…')
-                from desktop_ui import Window, prepare_context
-                self.result = (Window, prepare_context(self.progress.emit))
+                with measure('startup.desktop_import'):
+                    from desktop_ui import Window, prepare_context
+                with measure('startup.prepare_context'):
+                    self.result = (Window, prepare_context(self.progress.emit))
             except Exception:
                 self.error = traceback.format_exc()
     class AnimatedLogo(QWidget):
@@ -95,10 +103,14 @@ def main():
         try:
             if loader.error: raise RuntimeError(loader.error)
             Window, context = loader.result
-            window = Window(context); windows.append(window)
+            with measure('startup.build_window'):
+                window = Window(context)
+            windows.append(window)
             splash.heading.setText('Sẵn sàng'); splash.dots.setText('●  ●  ●'); splash.logo.ready=True
             def reveal():
-                window.showNormal(); window.raise_(); window.activateWindow()
+                with measure('startup.show_window'):
+                    window.showNormal(); window.raise_(); window.activateWindow()
+                record('startup.total',time.monotonic()-LAUNCH_STARTED)
                 splash.loading=False; splash.logo.animation.stop(); splash.close()
             QTimer.singleShot(450,reveal)
             print('Chat AI Desktop 2.6.5 đã mở.',flush=True)
