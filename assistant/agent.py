@@ -305,7 +305,7 @@ class Agent:
         while state["running"]:
             if state["pending"]:
                 action=state['pending']['plan'].get('action','')
-                if not state['pending'].get('decision_started') and action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                if not state['pending'].get('decision_started') and action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
                     yield {'type':'app_activity','text':'Đang thực hiện: '+action}
                     self.approve(state,True)
                     continue
@@ -314,7 +314,7 @@ class Agent:
             while state["queue"]:
                 call = state["queue"][0]
                 name, args = call["function"]["name"], call["function"]["arguments"]
-                if name.startswith(('windows_','browser_','pdf_')) or name in {'word_create_open','cad_create_open'}:
+                if name.startswith(('windows_','browser_','pdf_')) or name in {'word_create_open','cad_create_open','cad3d_create_open'}:
                     yield {'type':'app_activity','text':'Đang thực hiện: '+name}
                 if name in {'image_generate','video_generate'} and state.get('ui_mode') in (2,3):
                     # Translate in Python and overwrite tool args so Vietnamese never
@@ -362,7 +362,7 @@ class Agent:
                                 else self.excel.prepare_edit(**args))
                         state["pending"] = {"plan": plan, "decision_started": False}
                         self.save(state)
-                        if name in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                        if name in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
                             self.approve(state,True)
                             continue
                         if name in {'python_run','python_search'} and self.cfg.get('auto_python',True):

@@ -567,7 +567,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def compact_app_activity(self,text):
         if not self.cfg.get('windows_apps_compact',True):return
-        labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','cad_create_open':'Đang tạo bản vẽ và mở AutoCAD','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
+        labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','cad3d_create_open':'Đang tạo mô hình 3D và mở AutoCAD','cad_create_open':'Đang tạo bản vẽ và mở AutoCAD','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
         text=labels.get(text.split(': ')[-1],text)
         if not hasattr(self,'automation_panel'):
             from assistant.automation_panel import AutomationPanel
@@ -1524,6 +1524,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.pdf_source import PDFSource
             from assistant.word_app import WordApp
             from assistant.cad_app import CadApp
+            from assistant.cad3d_app import Cad3DApp
             from assistant.cloud import cancellable_request
             cancellable_request(lambda:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8),self.worker.stop_requested)
             with execution_lock(ROOT/'data/agent.lock'):
@@ -1537,7 +1538,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
-                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit))
+                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit))
                 if prompt is not None:
                     agent.start(state,prompt,model,session['username'])
                     self.store.remember_conversation(session['username'],cid)
@@ -1673,7 +1674,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 elif allowed is not None:
                     if state['pending'] != expected: raise RuntimeError('Preview đã thay đổi. Xin duyệt lại.')
                     action=state['pending']['plan'].get('action','')
-                    if allowed and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open'}):
+                    if allowed and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open','cad3d_create_open'}):
                         emit({'type':'app_activity','text':'Đang thực hiện: '+action})
                     agent.approve(state, allowed)
                 def snapshot():
@@ -1716,13 +1717,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             state['running']=False;self.store.save(self.cid,state);self.render()
             self.status.setText('Luồng AI trên server đã bị ngắt. Nội dung đã lưu được giữ; bạn có thể gửi câu hỏi mới.');return
         action=(state.get('pending') or {}).get('plan',{}).get('action','')
-        automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open'}) and not (state.get('pending') or {}).get('decision_started')
+        automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open','cad3d_create_open'}) and not (state.get('pending') or {}).get('decision_started')
         if state['pending'] and not automatic_app: self.approve_pending(state['pending'])
         elif state['running']: self.chat_task()
 
     def approve_pending(self, pending):
         action=pending['plan'].get('action','')
-        app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open'}
+        app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'}
         if app_action and self.cfg.get('windows_apps_enabled') and self.cfg.get('windows_apps_auto_execute'):
             if pending.get('decision_started'):
                 self.status.setText('Thao tác trước chưa rõ kết quả; không chạy lại. Đang ghi nhận trạng thái.')
@@ -1867,7 +1868,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True));app_box.addWidget(self.windows_compact_check)
         self.windows_auto_execute_check=QCheckBox('Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước')
         self.windows_auto_execute_check.setChecked(self.cfg.get('windows_apps_auto_execute',False));app_box.addWidget(self.windows_auto_execute_check)
-        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright, pypdf, python-docx và ezdxf trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
+        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright, pypdf, python-docx, ezdxf và mapbox-earcut trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
         permission_note.setWordWrap(True);app_box.addWidget(permission_note)
         self.browser_background_check=QCheckBox('Chrome chạy nền (không hiện cửa sổ)')
         self.browser_background_check.setChecked(self.cfg.get('browser_background',False));app_box.addWidget(self.browser_background_check)
@@ -2014,7 +2015,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.account_status.setText('Đang đăng nhập…')
         def task(emit):
             from assistant.accounts import request_account,save_login,forget_login
+            started=time.monotonic()
             result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
+            authenticated=time.monotonic()
             if result.get('session_token'):session['key']=result['session_token']
             # The login endpoint already returns identity and role; optional profile
             # enrichment must not hold up authentication or the chat controls.
@@ -2031,6 +2034,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.model_preferences import load_model
             result['_custom_ai']=self.cfg.get('custom_ai',[])
             result['_saved_ai']=load_model(self.store,session)
+            self.trial.adopt(session['username'])
+            result['_login_timings']={'server_seconds':round(authenticated-started,3),'local_seconds':round(time.monotonic()-authenticated,3)}
             return result,[],warning
         def done(result):
             self.server_session=dict(session);self.server_session['fullname']=result[0].get('fullname') or session['username'];self.server_session['role']=result[0].get('role','user');self.personal_memories=result[1]
@@ -2043,9 +2048,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if hasattr(self,'api_key_group'):self.api_key_group.setVisible(admin_session(self.server_session))
             self.settings_server.setText(session['endpoint'])
             self.chat_login.setText('Tài khoản: '+session['username'])
-            self.account_status.setText('Đã đăng nhập: '+session['username']+result[2])
+            timings=result[0].get('_login_timings',{})
+            self.store.audit(self.cid,'login_timing',timings)
+            seconds=timings.get('server_seconds',0)+timings.get('local_seconds',0)
+            self.account_status.setText('Đã đăng nhập: '+session['username']+f' · {seconds:.1f} giây'+result[2])
+            self.account_status.setToolTip(f"Chờ server: {timings.get('server_seconds',0):.1f} giây; xử lý trên máy: {timings.get('local_seconds',0):.1f} giây")
             self.load_account_enrichment(dict(self.server_session))
-            self.trial.adopt(session['username'])
             current=self.store.load(self.cid)
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
             self.store.remember_conversation(session['username'],self.cid)

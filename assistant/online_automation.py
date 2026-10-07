@@ -21,6 +21,7 @@ def parse_plan(raw, schemas):
     if isinstance(args,str):args=json.loads(args or '{}')
     if not isinstance(args,dict):raise ValueError('arguments phải là đối tượng JSON.')
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
+    if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
     if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
     if tool:validate_call(tool,args,schemas)
     elif not answer.strip():raise ValueError('Thiếu câu trả lời hoặc công cụ.')
@@ -29,7 +30,7 @@ def parse_plan(raw, schemas):
 
 def requested_automation(prompt):
     general_open=re.search(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?!rộng\b|lòng\b|bài\b|đầu\b).+',prompt,re.I)
-    return bool(general_open or (re.search(r'(mở|vẽ|đọc|tải|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
+    return bool(general_open or re.search(r'(?:vẽ|tạo).*\b3[dD]\b',prompt,re.I) or (re.search(r'(mở|vẽ|tạo|đọc|tải|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
                 and re.search(r'(ứng dụng|phần mềm|\bapp\b|chrome|chorme|foxit|autocad|\bcad\b|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I)))
 
 
@@ -89,13 +90,14 @@ def app_permissions(cfg):
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
+        self.cad3d_app=cad3d_app
         self.cad_app=cad_app
         self.word_app=word_app
         self.pdf_source=pdf_source
-        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set())
+        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
 
     def save(self,state):self.store.save(self.cid,state)
@@ -113,6 +115,7 @@ class OnlineAutomation:
         self.save(state)
 
     def component(self,name):
+        if name=='cad3d_create_open':return self.cad3d_app
         if name=='cad_create_open':return self.cad_app
         if name=='word_create_open':return self.word_app
         if name in {'pdf_source_open','pdf_read'}:return self.pdf_source
@@ -175,6 +178,7 @@ class OnlineAutomation:
                          'Khi đã đủ kết quả hoặc bị từ chối, tool rỗng và answer trả lời tiếng Việt. '
                          'Không tuyên bố không có công cụ khi danh sách có công cụ phù hợp; gọi công cụ để xin duyệt. '
                          'Không đoán đường dẫn/control; dùng danh sách EXE và kết quả windows_inspect. '
+                         'Yêu cầu 3D dùng cad3d_create_open với box/cylinder/flange. Đây là lưới kín trong DXF, không phải ACIS solid và chưa bo cạnh; không dùng công cụ 2D để báo đã vẽ 3D. '
                          'Khi cần vẽ bằng AutoCAD, dùng cad_create_open để tạo DXF và mở acad.exe. Nếu thiếu kích thước/đơn vị, hỏi rõ rồi tiếp tục dùng công cụ khi người dùng bổ sung. Không tự đoán kích thước. '
                          'Khi cần mở Word và viết bài, tìm WINWORD.EXE rồi gọi word_create_open với toàn bộ bài viết; công cụ tạo DOCX có nội dung và mở Word, không cần gõ qua UIA. '
                          'Khi chưa biết đường dẫn hoặc được cấp mở mọi app đã cài, dùng windows_list_apps(query=tên app) để tìm EXE thật trước. Không tự chạy lệnh cài thư viện; ChatAI tự quản lý gói theo quyền Cài đặt. '

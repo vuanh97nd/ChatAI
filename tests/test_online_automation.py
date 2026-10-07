@@ -144,6 +144,23 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed[0]['action'],'cad_create_open')
         self.assertEqual(json.loads(self.committed[0]['entities'])[0]['radius'],50)
 
+    def test_3d_flange_plan_uses_saved_permission_without_extra_dialog(self):
+        self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True)
+        self.agent.windows.check=lambda:dict(self.cfg)
+        self.agent.cad3d_app=self.agent.windows
+        from assistant.tools import EXTRA_TOOLS
+        self.agent.schemas.extend(s for m,s in EXTRA_TOOLS if m=='cad3d_app')
+        shape={'type':'flange','origin':[0,0,0],'outer_radius':120,'inner_radius':40,'height':20,'hole_radius':9,'hole_count':8,'bolt_radius':90}
+        self.responses=[json.dumps({'answer':'','tool':'cad3d_create_open','arguments':{'app':r'C:\CAD\acad.exe','units':'mm','shape':shape}}),
+                        json.dumps({'answer':'Đã tạo lưới 3D','tool':'','arguments':{}})]
+        prompt='Tạo mặt bích 3D trong AutoCAD'
+        self.assertTrue(requested_automation('Tạo mặt bích 3D'))
+        self.agent.start(self.state,prompt,'DeepSeek API','admin')
+        events=list(self.agent.run(self.state))
+        self.assertFalse(any(e['type']=='pending' for e in events))
+        self.assertEqual(self.committed[0]['action'],'cad3d_create_open')
+        self.assertEqual(json.loads(self.committed[0]['shape']),shape)
+
     def test_song_name_reply_stays_in_online_tool_workflow(self):
         from assistant.online_automation import use_automation
         cfg={'windows_apps_enabled':True}

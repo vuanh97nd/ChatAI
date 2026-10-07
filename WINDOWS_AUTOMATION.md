@@ -94,3 +94,12 @@ Nút **Dừng app AI** hủy lượt hiện tại và chặn các bước tiếp
 Đăng nhập hoàn tất ngay sau xác thực; hồ sơ và danh mục AI bổ sung tải nền riêng (timeout 8 giây), không chặn chat. Kết quả nền chỉ áp dụng nếu đúng phiên đăng nhập hiện tại. Tự đăng nhập bắt đầu sớm sau khi cửa sổ dựng xong. Quyền và xác thực server vẫn được giữ.
 
 Yêu cầu một đường tròn có đủ thông số, ví dụ **Vẽ trong AutoCAD đường tròn tâm (0,0), bán kính 50 mm**, được phân tích trực tiếp nếu chỉ có một AutoCAD được phép. Luồng này tạo DXF và báo kết quả công cụ, không gọi model thêm để lập kế hoạch hoặc viết lại kết quả. Không đoán tâm, kích thước hoặc đơn vị khi dùng luồng nhanh; yêu cầu phức tạp hoặc ứng dụng chưa xác định tiếp tục qua AI. Khi chờ API lập kế hoạch, trạng thái hiện số giây chờ dịch vụ.
+
+
+### Tạo bản vẽ 3D
+
+Công cụ `cad3d_create_open` dùng cho cả AI trên máy và AI trực tuyến. Hỗ trợ khối hộp, khối trụ, mặt bích có lỗ tâm và 1–32 lỗ bu-lông chia đều xuyên chiều cao. Tạo DXF R2010 dạng MESH kín, kiểm tra cạnh kín trước khi lưu; đường tròn xấp xỉ 64 cạnh. Không phải ACIS solid, chưa hỗ trợ bo cạnh, không sửa DWG đang mở. Chỉ mở bằng acad.exe, chưa hỗ trợ AutoCAD LT. Kết quả gửi lệnh mở không đồng nghĩa đã xác minh cửa sổ AutoCAD.
+
+Ví dụ: **Tạo mặt bích 3D trong AutoCAD, đường kính ngoài 240 mm, lỗ tâm 80 mm, dày 20 mm; 8 lỗ xuyên đường kính 18 mm trên vòng bu-lông đường kính 180 mm; tâm đáy (0,0,0), lỗ đầu ở hướng +X.** AI hỏi kích thước/đơn vị thiếu; không đoán. Quyền tự thực hiện đã lưu áp dụng công cụ này, vẫn có đếm ngược và nút dừng. Thư viện mapbox-earcut được cài nền theo quyền cài gói hiện có.
+
+Khi đăng nhập, chuyển lịch sử khách sang tài khoản chạy trong worker, chỉ cập nhật hội thoại khách bằng SQLite JSON, không giải mã toàn bộ lịch sử trong giao diện. Trạng thái tài khoản hiển thị số giây; tooltip tách thời gian chờ server và xử lý trên máy. Nhật ký `login_timing` chỉ chứa hai số thời gian, không ghi mật khẩu/token. Thời gian này đo xác thực và chuẩn bị dữ liệu, không đo toàn bộ quá trình khởi động Windows/AutoCAD.

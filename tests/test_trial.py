@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 from assistant.storage import Store
 from assistant.trial import GuestTrial, GUEST_OWNER, TrialLimitError
 
@@ -66,7 +67,8 @@ class TrialTest(unittest.TestCase):
         other_state = self.store.load(other)
         other_state['account_username'] = 'bob'
         self.store.save(other, other_state)
-        self.trial.adopt('alice')
+        with patch('assistant.trial.json.loads',side_effect=AssertionError('Không giải mã toàn bộ lịch sử khi đăng nhập')):
+            self.trial.adopt('alice')
         self.assertEqual(self.store.load(cid)['account_username'], 'alice')
         self.assertEqual(self.store.load(other)['account_username'], 'bob')
         self.assertEqual(self.trial.remaining(), 2)

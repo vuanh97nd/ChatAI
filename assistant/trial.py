@@ -66,9 +66,4 @@ class GuestTrial:
         if not username or username==GUEST_OWNER:raise ValueError('Cần tài khoản đăng nhập thật.')
         with self.store.connection() as db:
             db.execute('BEGIN IMMEDIATE')
-            rows=db.execute('SELECT id,state FROM conversations').fetchall()
-            for cid,raw in rows:
-                state=json.loads(raw)
-                if state.get('account_username')==GUEST_OWNER:
-                    state['account_username']=username
-                    db.execute('UPDATE conversations SET state=? WHERE id=?',(dumps(state),cid))
+            db.execute("UPDATE conversations SET state=json_set(state,'$.account_username',?) WHERE json_extract(state,'$.account_username')=?",(username,GUEST_OWNER))
