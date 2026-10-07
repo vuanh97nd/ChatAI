@@ -256,13 +256,17 @@ def _build_gsz_xml(problem, pts, lines, regions):
     return root
 
 
-def _to_xml_bytes(root):
+def _to_gsz_bytes(root, xml_name):
+    """Pack the XML tree into a ZIP archive (.gsz format expected by GeoStudio)."""
+    import io, zipfile
     ET.indent(root, space='  ')
     tree = ET.ElementTree(root)
-    import io
-    buf = io.BytesIO()
-    tree.write(buf, encoding='utf-8', xml_declaration=True)
-    return buf.getvalue()
+    xml_buf = io.BytesIO()
+    tree.write(xml_buf, encoding='utf-8', xml_declaration=True)
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(xml_name, xml_buf.getvalue())
+    return zip_buf.getvalue()
 
 
 class GeoslopeApp:
@@ -302,14 +306,15 @@ class GeoslopeApp:
 
         pts, lines, regions = _build_geometry(slope_def, layers)
         xml_root = _build_gsz_xml(problem, pts, lines, regions)
-        xml_bytes = _to_xml_bytes(xml_root)
-
         path = self.files.path(plan['path'], exists=False)
+        xml_name = path.stem + '.xml'
+        gsz_bytes = _to_gsz_bytes(xml_root, xml_name)
+
         if path.exists():
             raise FileExistsError('Không ghi đè file GeoSlope đã có.')
 
         with path.open('xb') as f:
-            f.write(xml_bytes)
+            f.write(gsz_bytes)
 
         self.audit('geoslope_file_created', {
             'path': str(path),
