@@ -353,6 +353,9 @@ class Agent:
                                 else self.excel.prepare_edit(**args))
                         state["pending"] = {"plan": plan, "decision_started": False}
                         self.save(state)
+                        if name in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                            self.approve(state,True)
+                            continue
                         if name in {'python_run','python_search'} and self.cfg.get('auto_python',True):
                             self.store.audit(self.cid,'auto_python_authorized',{'name':name})
                             self.approve(state,True)

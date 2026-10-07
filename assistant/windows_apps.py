@@ -59,9 +59,10 @@ def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
     background = cfg.setdefault('browser_background', False)
     auto_install=cfg.setdefault('automation_auto_install',False)
+    auto_execute=cfg.setdefault('windows_apps_auto_execute',False)
     all_installed=cfg.setdefault('windows_apps_all_installed',False)
     paths = cfg.setdefault('windows_apps_allowed', [])
-    if any(type(v) is not bool for v in (enabled,background,auto_install,all_installed)) or not isinstance(paths, list) or len(paths) > 30:
+    if any(type(v) is not bool for v in (enabled,background,auto_install,all_installed,auto_execute)) or not isinstance(paths, list) or len(paths) > 30:
         raise ValueError('Quyền ứng dụng Windows không hợp lệ.')
     if any(not isinstance(p, str) or not p.strip() or len(p)>4096 or '\n' in p or '\x00' in p for p in paths):
         raise ValueError('Mỗi ứng dụng cần một đường dẫn EXE riêng.')

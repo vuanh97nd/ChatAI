@@ -103,3 +103,6 @@ def validate_call(name, args, schemas=None):
                 limits={'width':(64,4096),'height':(64,4096),'seconds_per_image':(2,8)}[key]
                 if type(value) is not int or not limits[0]<=value<=limits[1]:raise ValueError(f'{key} ngoài giới hạn.')
             else:raise ValueError(f"{key} phải là chuỗi.")
+
+WRITES.add('word_create_open')
+EXTRA_TOOLS.append(('word_app',schema('word_create_open','Soạn nội dung rồi tạo DOCX mới trong thư mục được phép và mở bằng Word. Dùng công cụ này khi người dùng yêu cầu mở Word và viết bài; không nhập vùng soạn thảo qua UIA. app phải là WINWORD.EXE đã tìm bằng windows_list_apps. content là nội dung đầy đủ, tối đa 30000 ký tự.',{'app':TEXT,'title':TEXT,'content':TEXT},['app','content'])))

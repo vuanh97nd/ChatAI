@@ -60,6 +60,7 @@ class SettingsTest(unittest.TestCase):
         u.settings_theme=Combo(cfg['theme']);u.preview_theme=cfg['theme'];u.preview_font_size=cfg['font_size'];u.settings_provider=Combo(PROVIDER_NAMES[cfg['chat_provider']]);u.auto_python_check=Check();u.settings_server=Text(cfg['server_url']);u.settings_roots=Text('workspace')
         u.windows_apps_check=Check(cfg['windows_apps_enabled']);u.windows_apps_paths=Text('\n'.join(cfg['windows_apps_allowed']))
         u.browser_background_check=Check(cfg['browser_background'])
+        u.windows_auto_execute_check=Check(cfg.get('windows_apps_auto_execute',False))
         u.automation_auto_install_check=Check(cfg['automation_auto_install'])
         u.windows_all_apps_check=Check(cfg['windows_apps_all_installed'])
         u.machine_profile=Combo(cfg['machine_profile']);u.machine_auto=Check(cfg['machine_auto_ai']);u.api_model_fields={};u.api_key_fields={}
@@ -86,6 +87,7 @@ class SettingsTest(unittest.TestCase):
         u.browser_background_check.setChecked(True)
         u.automation_auto_install_check.setChecked(True)
         u.windows_all_apps_check.setChecked(True)
+        u.windows_auto_execute_check.setChecked(True)
         u.windows_apps_paths.setPlainText(r'C:\Apps\demo.exe')
         self.assertTrue(u.settings_dirty());u.save_settings()
         saved=config.load_config()
@@ -93,6 +95,7 @@ class SettingsTest(unittest.TestCase):
         self.assertTrue(saved['browser_background'])
         self.assertTrue(saved['automation_auto_install'])
         self.assertTrue(saved['windows_apps_all_installed'])
+        self.assertTrue(saved['windows_apps_auto_execute'])
         self.assertEqual(saved['windows_apps_allowed'],[r'C:\Apps\demo.exe'])
         u.windows_apps_paths.setPlainText(r'C:\Apps\other.exe')
         self.assertTrue(u.settings_dirty());u.discard_settings()

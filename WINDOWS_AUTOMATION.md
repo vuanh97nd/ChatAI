@@ -60,3 +60,9 @@ Các test tự động kiểm tra danh sách được phép, xác nhận, hash E
 Khi yêu cầu mở ứng dụng (Word, Excel, Photoshop hoặc app khác), ChatAI đưa bước `windows_list_apps` vào luồng duyệt trước khi model lập kế hoạch mở. Quyền mở mọi ứng dụng đăng ký Windows được mô tả riêng với danh sách EXE thêm thủ công; danh sách thủ công không giới hạn quyền này. Các bước mở và thao tác vẫn kiểm tra quyền hiện tại và cần duyệt.
 
 Trong cuộc trò chuyện điều khiển app trực tuyến, câu trả lời bổ sung như tên bài hát tiếp tục được gửi tới bộ lập kế hoạch công cụ khi quyền điều khiển còn bật. Tạo cuộc trò chuyện mới để quay về chat thường. Không bảo đảm mọi app hỗ trợ UI Automation; Word có thể không cung cấp ô Edit để nhập nội dung. Phiên browser_run hiện đóng sau quy trình nên chưa hỗ trợ duy trì phát nhạc.
+
+### Quyền một lần và viết tài liệu Word
+
+Trong Cài đặt → Điều khiển ứng dụng, bật **Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước** rồi Lưu. Quyền này mặc định tắt; khi bật cùng quyền điều khiển ứng dụng, các công cụ Windows, Chrome, PDF và tạo DOCX/mở Word tự thực hiện yêu cầu trong cả luồng local và trực tuyến. Các công cụ xóa file, chạy lệnh và sửa tài liệu khác vẫn theo quyền riêng. Tắt quyền hoặc bấm Dừng để ngắt các bước tiếp theo. Không tự chạy lại thao tác bị ngắt có kết quả chưa rõ.
+
+`word_create_open` tạo DOCX mới trong thư mục được phép từ nội dung AI soạn, sau đó mở bằng WINWORD.EXE được phép. Không ghi đè tài liệu đang có; không thao tác vùng soạn thảo Word bằng phím toàn hệ thống. Kết quả phân biệt tài liệu đã tạo với lệnh mở Word đã gửi; chưa xác minh cửa sổ Word thực tế.

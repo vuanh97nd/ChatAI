@@ -1,0 +1,34 @@
+"""Create a new DOCX in the permitted workspace and open it in authorized Word."""
+import uuid
+import subprocess
+from .office import OfficeTools
+from .windows_apps import fingerprint
+
+
+class WordApp:
+    def __init__(self, windows, files):
+        self.windows, self.files = windows, files
+        self.office = OfficeTools(files)
+
+    def prepare(self, name, args):
+        self.windows.check()
+        app = self.windows.allowed_path(args['app'])
+        if app.name.lower() != 'winword.exe':
+            raise ValueError('Chọn WINWORD.EXE từ windows_list_apps.')
+        if not self.files.roots:
+            raise PermissionError('Thêm thư mục lưu tài liệu được phép trong Cài đặt.')
+        path = self.files.roots[0] / ('ChatAI-' + uuid.uuid4().hex + '.docx')
+        document = self.office.prepare('office_create', {'path':str(path), 'title':args.get('title',''), 'content':args['content']})
+        return {'action':'word_create_open', 'app':str(app), 'sha256':fingerprint(app), 'document':document}
+
+    def commit(self, plan):
+        self.windows.check()
+        app = self.windows.allowed_path(plan['app'])
+        if fingerprint(app) != plan['sha256']:
+            raise PermissionError('Word đã thay đổi sau khi lập kế hoạch.')
+        result = self.office.commit(plan['document'])
+        self.windows.check()
+        self.windows.allowed_path(str(app))
+        subprocess.Popen([str(app),plan['document']['path']], shell=False)
+        return {'ok':True, 'path':plan['document']['path'], 'document_created':True,
+                'word_launch_requested':True, 'note':'Đã tạo DOCX có nội dung và gửi lệnh mở Word; chưa xác minh cửa sổ hiển thị.', 'document':result}
