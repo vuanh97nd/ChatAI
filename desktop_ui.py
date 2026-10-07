@@ -1647,9 +1647,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(app_box,'Thêm ứng dụng EXE…',self.add_windows_app)
         self.button(app_box,'Dừng điều khiển app',self.stop_windows_apps)
         self.button(app_box,'Tiếp tục điều khiển app',self.resume_windows_apps)
-        from assistant.windows_apps import available
-        dependency=QLabel('Đã có thư viện UI Automation.' if available() else 'Cần Windows và thư viện tùy chọn: xem WINDOWS_AUTOMATION.md trong thư mục dự án.')
+        from assistant.windows_apps import readiness
+        dependency=QLabel(readiness(self.cfg))
         dependency.setWordWrap(True);app_box.addWidget(dependency)
+        self.windows_readiness_label=dependency
         self.windows_apps_check.toggled.connect(lambda enabled:self.stop_windows_apps() if not enabled else None)
         layout.addWidget(automation)
         history = QGroupBox('Lịch sử và dữ liệu'); box = QVBoxLayout(history)
@@ -2112,6 +2113,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     def stop_windows_apps(self):
         from assistant.windows_apps import stop_automation
         stop_automation()
+        if hasattr(self,'windows_readiness_label'):
+            from assistant.windows_apps import readiness
+            self.windows_readiness_label.setText(readiness(self.cfg))
         self.status.setText('Đã chặn các bước điều khiển app tiếp theo. Thao tác Windows đang thực hiện có thể cần hoàn tất.')
 
     def resume_windows_apps(self):
@@ -2119,6 +2123,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if not self.cfg.get('windows_apps_enabled'):
             QMessageBox.information(self,'Điều khiển app','Bật quyền và Lưu cài đặt trước.');return
         resume_automation();self.status.setText('Đã cho phép lại điều khiển app; từng bước vẫn cần xác nhận.')
+        if hasattr(self,'windows_readiness_label'):
+            from assistant.windows_apps import readiness
+            self.windows_readiness_label.setText(readiness(self.cfg))
 
     def proposed_settings(self):
         proposed = {k:v for k,v in self.cfg.items() if k != 'roots'}
@@ -2197,6 +2204,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def done(cfg):
             self.cfg=cfg
             if hasattr(self,'windows_stop_button'):self.windows_stop_button.setVisible(cfg.get('windows_apps_enabled',False))
+            if hasattr(self,'windows_readiness_label'):
+                from assistant.windows_apps import readiness
+                self.windows_readiness_label.setText(readiness(cfg))
             if old_endpoint!=cfg.get('server_url'):
                 self.server_session=None;self.personal_memories=[]
                 from assistant.accounts import forget_login

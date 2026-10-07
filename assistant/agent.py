@@ -77,6 +77,7 @@ class Agent:
             raise ValueError("Tin nhắn phải có nội dung và tối đa 6000 ký tự.")
         if self.schemas and not CHAT_MODELS[model]['tools'] and not expert_mode:
             raise ValueError('Model này chỉ bật Chat nhanh trong bản ứng dụng hiện tại.')
+        state['windows_readiness_reported']=False
         message={"role":"user","content":prompt}
         if images:
             import base64
@@ -193,6 +194,12 @@ class Agent:
                     if component is not None:component.client=self.client
         if not self.web_allowed(state):
             self.schemas=[schema for schema in self.schemas if schema["function"]["name"] not in {"web_search","web_read","python_search"}]
+        if not state.get('windows_readiness_reported'):
+            prompt = next((m.get('content','') for m in reversed(state['messages']) if m['role']=='user'), '').lower()
+            if any(term in prompt for term in ('mở app', 'mở ứng dụng', 'mở chrome', 'mở chorme', 'mở word', 'mở excel')):
+                from .windows_apps import readiness
+                yield {'type':'status', 'text':readiness(self.cfg)}
+            state['windows_readiness_reported']=True
         if state["running"] and not state.get("routing"):
             yield {"type": "status", "text": "Đang phân tích sâu · xác định yêu cầu…" if state.get('deep_analysis') else "Đang xác định loại câu hỏi…"}
             from .document_intent import classifier_model
@@ -409,6 +416,13 @@ class Agent:
                 review_needed=bool(state.get('deep_analysis') or state['routing'].get('complex') or state['routing'].get('high_accuracy'))
                 internal_stage=bool((plan.get('enabled') and plan['stage'] in ('media','vision')) or state.get('ui_mode') in (2,3))
                 instruction = SYSTEM if self.schemas else FAST_SYSTEM
+                from .windows_apps import readiness
+                instruction += '\nTrạng thái điều khiển ứng dụng Windows: ' + readiness(self.cfg)
+                if any(t['function']['name']=='windows_open' for t in self.schemas):
+                    instruction += ('\nKhi người dùng yêu cầu mở app có trong danh sách EXE được phép, gọi windows_open với đường dẫn trong schema để xin xác nhận; không tự khẳng định thiếu công cụ. '
+                                    'Chrome cũng có thể được viết là chorme. Không đoán đường dẫn hoặc nói đã mở khi chưa có kết quả công cụ. '
+                                    'Tìm thông tin dùng web_search khi khả dụng; việc mở trình duyệt không tự cấp quyền tìm web. '
+                                    'Không hứa thao tác trình duyệt mà các công cụ UIA không hỗ trợ.')
                 if not self.web_allowed(state):
                     instruction += "\nTrạng thái công cụ: web_enabled=false."
                 from .context import compact_evidence

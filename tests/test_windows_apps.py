@@ -128,6 +128,21 @@ class WindowsAgentApprovalTest(unittest.TestCase):
 
 
 class UIAPatternTest(unittest.TestCase):
+    def test_readiness_reports_missing_libraries_and_permissions(self):
+        from unittest.mock import patch
+        from assistant.windows_apps import readiness
+        resume_automation()
+        with patch('assistant.windows_apps.os.name','nt'), patch('assistant.windows_apps.importlib.util.find_spec',return_value=None):
+            self.assertIn('requirements-windows-automation.txt',readiness({}))
+        with patch('assistant.windows_apps.os.name','nt'), patch('assistant.windows_apps.importlib.util.find_spec',return_value=object()):
+            self.assertIn('Chưa bật quyền',readiness({}))
+            self.assertIn('Chưa có app',readiness({'windows_apps_enabled':True}))
+            cfg={'windows_apps_enabled':True,'windows_apps_allowed':['demo.exe']}
+            self.assertIn('Sẵn sàng',readiness(cfg))
+            stop_automation()
+            try:self.assertIn('đang dừng',readiness(cfg))
+            finally:resume_automation()
+
     def test_actions_use_only_targeted_patterns(self):
         from assistant.windows_apps import WindowsBackend
         actions=[]

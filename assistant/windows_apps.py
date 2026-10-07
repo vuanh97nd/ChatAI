@@ -28,6 +28,25 @@ def available():
                                  for name in ('pywinauto', 'psutil', 'comtypes'))
 
 
+def readiness(cfg):
+    """Report actual prerequisites, without importing COM or granting permission."""
+    if os.name != 'nt':
+        return 'Không thể điều khiển app: tính năng này cần chạy ChatAI trên Windows.'
+    missing = [name for name in ('pywinauto', 'psutil', 'comtypes')
+               if importlib.util.find_spec(name) is None]
+    if missing:
+        return ('Thiếu thư viện: ' + ', '.join(missing) +
+                '. Trong thư mục dự án chạy .\\.venv\\Scripts\\python.exe -m pip install '
+                '-r requirements-windows-automation.txt rồi khởi động lại ChatAI.')
+    if not cfg.get('windows_apps_enabled'):
+        return 'Chưa bật quyền: vào Cài đặt → Điều khiển ứng dụng, bật quyền và Lưu.'
+    if _STOP.is_set():
+        return 'Điều khiển app đang dừng: bấm Tiếp tục điều khiển app trong Cài đặt.'
+    if not cfg.get('windows_apps_allowed'):
+        return 'Chưa có app được phép: vào Cài đặt → Điều khiển ứng dụng → Thêm ứng dụng EXE, rồi Lưu.'
+    return 'Sẵn sàng: có thể yêu cầu mở EXE được phép; mỗi thao tác cần xác nhận. Không hỗ trợ đọc ảnh màn hình hoặc điều khiển đầy đủ Chrome.'
+
+
 def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
     paths = cfg.setdefault('windows_apps_allowed', [])
