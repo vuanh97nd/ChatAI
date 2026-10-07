@@ -340,6 +340,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.delete_btn = self.button(nav, 'Xóa cuộc trò chuyện', self.delete_chat)
         self.button(nav,'Trò chuyện',self.open_normal_chat)
         self.button(nav,'Chuyên gia',self.open_expert_chat)
+        self.work_support_button=self.button(nav,'🗂️  Hỗ trợ Công việc',self.open_work_support)
         self.support_button=self.button(nav,'Quản lý hỗ trợ',self.open_support)
         self.support_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton))
         self.button(nav,'ⓘ  Giới thiệu',self.open_about)
@@ -1224,6 +1225,254 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             preferred=next((x for x in (self.cfg['default_model'],'qwen2.5:7b','qwen2.5:3b') if x in self.models),self.cfg['default_model'])
             self.select_ai(preferred)
             self.status.setText('Chuyên gia dùng AI local; AI chưa tải sẽ hỏi trước khi tải.')
+
+    # ── Hỗ trợ Công việc ──────────────────────────────────────────────────────
+
+    def open_work_support(self):
+        """Mở tab Hỗ trợ Công việc (tab động, tạo lại mỗi lần)."""
+        old = getattr(self, 'work_support_page_index', None)
+        if old is not None:
+            w = self.tabs.widget(old); self.tabs.removeTab(old); w.deleteLater()
+            for attr in ('memory_page_index', 'profile_page_index'):
+                if getattr(self, attr, -1) > old:
+                    setattr(self, attr, getattr(self, attr) - 1)
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(16)
+        self.button(layout, '← Quay lại chat', lambda: self.tabs.setCurrentIndex(0))
+        title_lbl = QLabel('🗂️  Hỗ trợ Công việc')
+        title_lbl.setStyleSheet('font-size:22px;font-weight:600;margin-bottom:4px;')
+        layout.addWidget(title_lbl)
+
+        # ── 1. Thư mục công việc ────────────────────────────────────────────
+        folder_box = QGroupBox('📁 Thư mục công việc')
+        fb = QVBoxLayout(folder_box)
+        roots = self.cfg.get('whitelist', [])
+        self._work_folder_list = QListWidget(); self._work_folder_list.setMaximumHeight(90)
+        for r in roots:
+            self._work_folder_list.addItem(r)
+        fb.addWidget(self._work_folder_list)
+        fb_row = QHBoxLayout()
+        def _add_work_folder():
+            from PySide6.QtWidgets import QFileDialog
+            path = QFileDialog.getExistingDirectory(page, 'Chọn thư mục công việc')
+            if not path: return
+            if path not in self.cfg.get('whitelist', []):
+                self.cfg.setdefault('whitelist', []).append(path)
+                from assistant.config import save_config
+                save_config(self.cfg)
+                self._work_folder_list.addItem(path)
+        def _scan_templates():
+            folders = [self._work_folder_list.item(i).text() for i in range(self._work_folder_list.count())]
+            if not folders:
+                QMessageBox.information(page, 'Quét mẫu', 'Thêm ít nhất một thư mục trước.')
+                return
+            self._work_scan_templates(folders, page)
+        self.button(fb_row, 'Thêm thư mục…', _add_work_folder)
+        self.button(fb_row, '🔍 Quét mẫu & Form biểu', _scan_templates)
+        fb.addLayout(fb_row)
+        layout.addWidget(folder_box)
+
+        # ── 2. Kho mẫu ──────────────────────────────────────────────────────
+        template_box = QGroupBox('📄 Mẫu thuyết minh & Form biểu')
+        tb = QVBoxLayout(template_box)
+        self._template_status = QLabel('Nhấn "Quét mẫu" để nạp tài liệu mẫu từ thư mục công việc.')
+        self._template_status.setWordWrap(True)
+        self._template_status.setStyleSheet('color:#9aa0a6;font-size:12px;')
+        tb.addWidget(self._template_status)
+        self._template_list = QListWidget(); self._template_list.setMaximumHeight(130)
+        self._template_list.setToolTip('Bấm đúp để gửi mẫu này vào chat')
+        self._template_list.itemDoubleClicked.connect(self._send_template_to_chat)
+        tb.addWidget(self._template_list)
+        tb_row = QHBoxLayout()
+        self.button(tb_row, 'Gửi mẫu vào chat', lambda: self._send_template_to_chat(self._template_list.currentItem()))
+        self.button(tb_row, 'Xóa khỏi danh sách', self._remove_template)
+        tb.addLayout(tb_row)
+        layout.addWidget(template_box)
+        self._refresh_template_list()
+
+        # ── 3. Tạo nhanh cho dự án mới ──────────────────────────────────────
+        project_box = QGroupBox('✏️  Dự án mới — Tạo tài liệu nhanh')
+        pb = QVBoxLayout(project_box)
+        pf = QFormLayout()
+        self._work_project_name = QLineEdit(); self._work_project_name.setPlaceholderText('Ví dụ: Nhà phố Quận 7 - A1')
+        self._work_project_name.setMaxLength(120)
+        pf.addRow('Tên dự án:', self._work_project_name)
+        self._work_project_type = QComboBox()
+        for t in ['Móng đơn', 'Móng băng', 'Móng bè', 'Móng cọc khoan nhồi', 'Móng cọc ép',
+                  'Tường chắn đất', 'Mái dốc / taluy', 'Nền đường', 'Mặt cắt địa chất', 'Khác']:
+            self._work_project_type.addItem(t)
+        pf.addRow('Loại công trình:', self._work_project_type)
+        self._work_project_scale = QComboBox()
+        for s in ['1:50', '1:100', '1:200', '1:500', '1:1000', 'Không cần']:
+            self._work_project_scale.addItem(s)
+        self._work_project_scale.setCurrentText('1:100')
+        pf.addRow('Tỉ lệ bản vẽ:', self._work_project_scale)
+        pb.addLayout(pf)
+        btn_grid = QHBoxLayout()
+        self.button(btn_grid, '📝 Viết thuyết minh', lambda: self._quick_action('thuyet_minh'))
+        self.button(btn_grid, '📐 Vẽ mặt cắt CAD', lambda: self._quick_action('mat_cat_cad'))
+        pb.addLayout(btn_grid)
+        btn_grid2 = QHBoxLayout()
+        self.button(btn_grid2, '📊 Bảng tính Excel', lambda: self._quick_action('bang_tinh'))
+        self.button(btn_grid2, '📋 Báo cáo Word', lambda: self._quick_action('bao_cao_word'))
+        pb.addLayout(btn_grid2)
+        btn_grid3 = QHBoxLayout()
+        self.button(btn_grid3, '🔩 Tính lún (SoilFim)', lambda: self._quick_action('tinh_lun'))
+        self.button(btn_grid3, '📈 Tính ổn định mái', lambda: self._quick_action('on_dinh_mai'))
+        pb.addLayout(btn_grid3)
+        layout.addWidget(project_box)
+
+        # ── 4. Công cụ nhanh ────────────────────────────────────────────────
+        tools_box = QGroupBox('🔧 Công cụ nhanh — không cần nhập dự án')
+        qb = QVBoxLayout(tools_box)
+        quick_items = [
+            ('🗺️  Vẽ mặt cắt địa chất nhiều lớp', 'Vẽ mặt cắt địa chất gồm nhiều lớp đất. Hỏi tôi số lớp và thông số từng lớp.'),
+            ('🏗️  Tạo bản vẽ móng AutoCAD', 'Tạo bản vẽ AutoCAD cho móng công trình. Hỏi tôi loại móng và kích thước.'),
+            ('📐 Tính toán sức chịu tải cọc', 'Tính sức chịu tải cọc theo phương pháp tĩnh. Hỏi tôi thông số đất và cọc.'),
+            ('📊 Lập bảng tổng hợp số liệu địa chất', 'Lập bảng tổng hợp số liệu địa chất từ báo cáo khảo sát. Hỏi tôi số liệu hố khoan.'),
+            ('📝 Viết thuyết minh từ mẫu đã học', 'Dùng mẫu thuyết minh đã lưu trong thư viện để viết thuyết minh tính toán mới. Hỏi tôi loại công trình.'),
+            ('🔢 Kiểm tra nội lực / tổ hợp tải trọng', 'Kiểm tra nội lực và tổ hợp tải trọng cho cấu kiện. Hỏi tôi loại kết cấu và số liệu.'),
+            ('🌊 Tính lún cố kết theo thời gian', 'Tính lún cố kết theo thời gian cho nền đất. Hỏi tôi thông số lớp đất và tải trọng.'),
+            ('🔍 Tìm tiêu chuẩn TCVN / QCVN liên quan', 'Tìm và giải thích các tiêu chuẩn TCVN / QCVN liên quan đến yêu cầu kỹ thuật. Hỏi tôi lĩnh vực cần tra.'),
+        ]
+        for label, prompt in quick_items:
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda chk=False, p=prompt: self._send_quick_prompt(p))
+            btn.setStyleSheet('text-align:left;padding:6px 10px;')
+            qb.addWidget(btn)
+        layout.addWidget(tools_box)
+        layout.addStretch(1)
+
+        self.add_scroll_page(page, '🗂️ Công việc')
+        self.work_support_page_index = self.tabs.count() - 1
+        self.tabs.setCurrentIndex(self.work_support_page_index)
+
+    def _refresh_template_list(self):
+        """Điền danh sách mẫu đã lưu trong RAG/library vào widget."""
+        if not hasattr(self, '_template_list'): return
+        self._template_list.clear()
+        try:
+            from assistant.rag import RagSearch
+            rag = RagSearch(self.store, self.cfg)
+            hits = rag.rag_search('thuyết minh tính toán mẫu form biểu')
+            seen = set()
+            for h in hits.get('sources', [])[:20]:
+                src = h.get('source') or h.get('file') or ''
+                if src and src not in seen:
+                    seen.add(src)
+                    from pathlib import Path as _P
+                    item = QListWidgetItem('📄 ' + _P(src).name)
+                    item.setData(Qt.ItemDataRole.UserRole, src)
+                    item.setToolTip(src)
+                    self._template_list.addItem(item)
+            if seen:
+                self._template_status.setText(f'Đã nạp {len(seen)} mẫu từ thư viện RAG.')
+        except Exception:
+            pass
+
+    def _work_scan_templates(self, folders, parent_widget):
+        """Quét thư mục, nạp tài liệu mẫu vào RAG và library."""
+        from pathlib import Path
+        exts = {'.docx', '.xlsx', '.pdf', '.txt', '.md'}
+        files = []
+        for folder in folders:
+            p = Path(folder)
+            if p.is_dir():
+                for f in p.rglob('*'):
+                    if f.suffix.lower() in exts and f.is_file() and f.stat().st_size < 32*1024*1024:
+                        files.append(f)
+        if not files:
+            QMessageBox.information(parent_widget, 'Quét mẫu', 'Không tìm thấy file Word/Excel/PDF/TXT trong thư mục đã chọn.')
+            return
+        count = len(files)
+        reply = QMessageBox.question(parent_widget, 'Quét mẫu',
+            f'Tìm thấy {count} file.\nNạp vào thư viện để AI học mẫu?\n\n' +
+            '\n'.join(str(f.name) for f in files[:8]) + (f'\n... và {count-8} file khác' if count > 8 else ''),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        if reply != QMessageBox.StandardButton.Yes: return
+        scanned = {'ok': 0, 'fail': 0}
+        def task(emit):
+            from assistant.rag import RagSearch
+            rag = RagSearch(self.store, self.cfg)
+            for i, f in enumerate(files):
+                emit({'type': 'status', 'text': f'Đang nạp ({i+1}/{count}): {f.name}…'})
+                try:
+                    rag.rag_index(str(f))
+                    scanned['ok'] += 1
+                except Exception:
+                    scanned['fail'] += 1
+            return scanned
+        def done(result):
+            msg = f"Đã nạp {result['ok']} mẫu vào thư viện."
+            if result['fail']: msg += f" {result['fail']} file lỗi (bỏ qua)."
+            self._template_status.setText(msg)
+            self._refresh_template_list()
+            QMessageBox.information(parent_widget, 'Quét mẫu', msg)
+        self.work({'type': 'status', 'text': 'Đang quét thư mục…'} if False else None, None)
+        self.work(task, done)
+
+    def _send_template_to_chat(self, item):
+        """Gửi mẫu đã chọn vào chat để AI phân tích và học."""
+        if not item: return
+        src = item.data(Qt.ItemDataRole.UserRole) or ''
+        name = item.text().lstrip('📄 ')
+        self.tabs.setCurrentIndex(0)
+        self.input.setPlainText(
+            f'Hãy đọc và phân tích cấu trúc mẫu tài liệu "{name}". '
+            f'Ghi nhớ định dạng, các mục tiêu đề, bảng biểu và chỗ điền số liệu để '
+            f'dùng làm mẫu cho dự án mới. Đường dẫn: {src}'
+        )
+        self.input.setFocus()
+
+    def _remove_template(self):
+        item = self._template_list.currentItem()
+        if not item: return
+        self._template_list.takeItem(self._template_list.row(item))
+
+    def _quick_action(self, action: str):
+        """Tạo prompt từ thông tin dự án đã nhập và gửi vào chat."""
+        name = self._work_project_name.text().strip()
+        kind = self._work_project_type.currentText()
+        scale = self._work_project_scale.currentText()
+        project_ctx = f' cho dự án "{name}"' if name else ''
+        prompts = {
+            'thuyet_minh': (
+                f'Viết thuyết minh tính toán {kind.lower()}{project_ctx}. '
+                f'Dùng mẫu thuyết minh đã lưu trong thư viện nếu có. '
+                f'Hỏi tôi các số liệu cần thiết (địa chất, tải trọng, kích thước).'
+            ),
+            'mat_cat_cad': (
+                f'Vẽ mặt cắt {kind.lower()}{project_ctx} bằng AutoCAD, tỉ lệ {scale}. '
+                f'Hỏi tôi thông số lớp đất, kích thước kết cấu và cao độ nền.'
+            ),
+            'bang_tinh': (
+                f'Tạo bảng tính Excel{project_ctx} cho {kind.lower()}. '
+                f'Dùng form biểu mẫu đã lưu nếu có. '
+                f'Hỏi tôi số liệu đầu vào cần điền.'
+            ),
+            'bao_cao_word': (
+                f'Tạo báo cáo kỹ thuật Word{project_ctx} về {kind.lower()}. '
+                f'Dùng mẫu báo cáo đã lưu trong thư viện nếu có. '
+                f'Hỏi tôi nội dung cần đưa vào.'
+            ),
+            'tinh_lun': (
+                f'Tính lún cố kết{project_ctx} cho {kind.lower()}. '
+                f'Hỏi tôi: số lớp đất, chiều dày, e₀, Cc, Cs, áp lực tiền cố kết, tải trọng và diện tích gia tải.'
+            ),
+            'on_dinh_mai': (
+                f'Kiểm tra ổn định mái dốc{project_ctx}. '
+                f'Hỏi tôi: góc dốc, chiều cao, thông số cường độ (c, φ), mực nước ngầm và phương pháp tính (Bishop, Fellenius).'
+            ),
+        }
+        prompt = prompts.get(action, f'Hỗ trợ {action}{project_ctx}.')
+        self._send_quick_prompt(prompt)
+
+    def _send_quick_prompt(self, prompt: str):
+        """Chuyển sang chat và điền prompt sẵn."""
+        self.tabs.setCurrentIndex(0)
+        self.input.setPlainText(prompt)
+        self.input.setFocus()
+
+    # ── Kết thúc Hỗ trợ Công việc ─────────────────────────────────────────
 
     def show_expert_details(self):
         state=self.store.load(self.cid);details=state.get('orchestration')
@@ -2692,7 +2941,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if hasattr(self, 'sidebar'):
             collapsed=getattr(self,'sidebar_collapsed',False)
             self.sidebar.setFixedWidth(92 if collapsed else 260)
-            self.sidebar_stack.setCurrentIndex(1 if self.tabs.currentIndex() in (1,3) or self.tabs.currentIndex()==getattr(self,'memory_page_index',-1) else 0)
+            _dynamic_pages={getattr(self,'memory_page_index',-1),getattr(self,'profile_page_index',-1),getattr(self,'work_support_page_index',-1)}-{-1}
+            self.sidebar_stack.setCurrentIndex(1 if self.tabs.currentIndex() in (1,3) or self.tabs.currentIndex() in _dynamic_pages else 0)
             self.main_splitter.setStretchFactor(0,0)
             self.main_splitter.setStretchFactor(1,1)
 
