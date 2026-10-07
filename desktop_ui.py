@@ -14,12 +14,12 @@ print("Chat AI Desktop 2.6.5: giao diện không chờ Ollama/SSL.",flush=True)
 from assistant.runtime_compat import prepare_six
 prepare_six()
 
-from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation, QSize
+from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation, QSize, QEasingCurve
 from PySide6.QtGui import QDesktopServices, QTextDocument, QTextCursor, QIcon, QPixmap, QImage, QKeySequence, QPainter, QColor, QRadialGradient, QPainterPath, QTextTable, QTextCharFormat, QTextFormat
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QComboBox,
     QPlainTextEdit, QTextBrowser, QTabWidget, QSplitter, QMessageBox, QDialog,
-    QDialogButtonBox, QProgressBar, QFileDialog, QStackedWidget, QScrollArea, QFrame, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QMenu, QGraphicsOpacityEffect, QInputDialog, QStyle)
+    QDialogButtonBox, QProgressBar, QFileDialog, QStackedWidget, QScrollArea, QFrame, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QMenu, QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QInputDialog, QStyle)
 from assistant import initialize_runtime
 initialize_runtime()
 
@@ -52,6 +52,25 @@ class WelcomeRobot(QWidget):
         painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(glow)
         painter.drawEllipse(QRectF(1,y-55,110,110))
         painter.drawPixmap(QRectF(16,y-40,80,80),self.pixmap,QRectF(self.pixmap.rect()))
+
+
+class FadingStatusLabel(QLabel):
+    """QLabel that fades in each time setText is called."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._opacity = QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity)
+        self._anim = QPropertyAnimation(self._opacity, b'opacity', self)
+        self._anim.setDuration(280)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def setText(self, text):
+        super().setText(text)
+        self._anim.stop()
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
 
 
 class PromptEdit(QPlainTextEdit):
@@ -404,6 +423,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.welcome_subtitle.setGraphicsEffect(self.welcome_opacity)
         self.welcome_fade=QPropertyAnimation(self.welcome_opacity,b'opacity',self)
         self.welcome_fade.setDuration(400);self.welcome_fade.setStartValue(0.0);self.welcome_fade.setEndValue(1.0)
+        self.welcome_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.greeting_timer=QTimer(self);self.greeting_timer.setInterval(60);self.greeting_timer.timeout.connect(self.advance_greeting)
         self.welcome_conversation=None
         suggestions = QHBoxLayout()
@@ -415,7 +435,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         wl.addLayout(suggestions); wl.addStretch(3); self.chat_stack.addWidget(welcome)
         self.code_actions={};self.copied_codes={};self.saved_code_files=[]
         self.view = ChatView();self.view.codeActionRequested.connect(self.handle_code_action); self.view.setObjectName('chatView'); self.chat_stack.addWidget(self.view)
-        self.status = QLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
+        self.status = FadingStatusLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
         status_row=QHBoxLayout(); self.reply_logo=self.logo_label(22);self.reply_logo.hide();status_row.addWidget(self.reply_logo)
         status_row.addWidget(self.status,1)
         self.cancel_countdown_button=QPushButton('Hủy yêu cầu');self.cancel_countdown_button.clicked.connect(self.send_or_stop);self.cancel_countdown_button.hide();status_row.addWidget(self.cancel_countdown_button)
@@ -446,6 +466,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
         composer = QWidget(); composer.setObjectName('composer'); cl = QVBoxLayout(composer)
         cl.setContentsMargins(10, 6, 10, 9); cl.setSpacing(3)
+        _shadow = QGraphicsDropShadowEffect(composer)
+        _shadow.setBlurRadius(20); _shadow.setOffset(0, 4); _shadow.setColor(QColor(0, 0, 0, 60))
+        composer.setGraphicsEffect(_shadow)
         self.input = PromptEdit(); self.input.setObjectName('prompt')
         self.input.setPlaceholderText('Hỏi Chat AI…'); self.input.setMinimumHeight(60); self.input.setMaximumHeight(130)
         self.input.setAccessibleName('Tin nhắn. Enter gửi; Shift Enter xuống dòng.')
@@ -711,6 +734,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.render()
             return
         if event['type'] == 'token':
+            if not self.stream: self._flash_chat_view()
             self.stream += event['text']
             if not self.paint_timer.isActive(): self.paint_timer.start(250)
         elif event['type'] == 'snapshot':
@@ -899,13 +923,31 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def animate_reply(self):
         self.reply_frame=(self.reply_frame+1)%3
-        self.reply_dots.setText(['● · ·','· ● ·','· · ●'][self.reply_frame])
+        dots=['● · ·','· ● ·','· · ●'][self.reply_frame]
+        # Update text without triggering FadingStatusLabel animation
+        QPushButton.setText(self.reply_dots, dots)
+
+    def _smooth_scroll_to_bottom(self):
+        bar = self.view.verticalScrollBar()
+        anim = QPropertyAnimation(bar, b'value', self.view)
+        anim.setDuration(280); anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setStartValue(bar.value()); anim.setEndValue(bar.maximum())
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _flash_chat_view(self):
+        if not hasattr(self, '_view_opacity'):
+            self._view_opacity = QGraphicsOpacityEffect(self.view)
+            self.view.setGraphicsEffect(self._view_opacity)
+        eff = self._view_opacity
+        anim = QPropertyAnimation(eff, b'opacity', self.view)
+        anim.setDuration(300); anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setKeyValueAt(0, 0.7); anim.setKeyValueAt(0.5, 1.0); anim.setKeyValueAt(1, 1.0)
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def jump_to_reply(self):
         self.paint_timer.stop(); self.draw()
         self.tabs.setCurrentIndex(0)
-        bar=self.view.verticalScrollBar(); bar.setValue(bar.maximum())
-        QTimer.singleShot(0,lambda:bar.setValue(bar.maximum()))
+        self._smooth_scroll_to_bottom()
 
     def draw(self):
         messages = self.chat_messages[-40:]
@@ -2340,20 +2382,33 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.apply_theme(self.settings_theme.currentData(),self.settings_fields['font_size'].value())
 
     def apply_theme(self,theme,font_size=None):
-        self.preview_theme=theme
-        self.preview_font_size=self.cfg.get('font_size',13) if font_size is None else font_size
-        self.setStyleSheet(style_sheet(theme))
-        for widget in self.findChildren(QWidget):
-            original=widget.property('chatBaseStyle')
-            if original is None:
-                original=widget.styleSheet()
-                if not re.search(r'#[0-9a-fA-F]{6}',original):continue
-                widget.setProperty('chatBaseStyle',original)
-            widget.setStyleSheet(recolor(original,theme))
-        if hasattr(self,'settings_button'):self.settings_button.set_theme(theme)
-        if hasattr(self,'profile_avatar') and hasattr(self,'account_register_button'):self.refresh_account_ui()
-        self.apply_font();self.html_cache.clear()
-        if hasattr(self,'paint_timer'):self.draw()
+        if not hasattr(self, '_win_opacity'):
+            self._win_opacity = QGraphicsOpacityEffect(self.centralWidget() or self)
+            (self.centralWidget() or self).setGraphicsEffect(self._win_opacity)
+        eff = self._win_opacity
+        def _do_apply():
+            self.preview_theme=theme
+            self.preview_font_size=self.cfg.get('font_size',13) if font_size is None else font_size
+            self.setStyleSheet(style_sheet(theme))
+            for widget in self.findChildren(QWidget):
+                original=widget.property('chatBaseStyle')
+                if original is None:
+                    original=widget.styleSheet()
+                    if not re.search(r'#[0-9a-fA-F]{6}',original):continue
+                    widget.setProperty('chatBaseStyle',original)
+                widget.setStyleSheet(recolor(original,theme))
+            if hasattr(self,'settings_button'):self.settings_button.set_theme(theme)
+            if hasattr(self,'profile_avatar') and hasattr(self,'account_register_button'):self.refresh_account_ui()
+            self.apply_font();self.html_cache.clear()
+            if hasattr(self,'paint_timer'):self.draw()
+            fade_in = QPropertyAnimation(eff, b'opacity', self)
+            fade_in.setDuration(200); fade_in.setStartValue(0.85); fade_in.setEndValue(1.0)
+            fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+            fade_in.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        fade_out = QPropertyAnimation(eff, b'opacity', self)
+        fade_out.setDuration(80); fade_out.setStartValue(1.0); fade_out.setEndValue(0.85)
+        fade_out.finished.connect(_do_apply)
+        fade_out.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def light_settings(self):
         self.settings_fields['default_model'].setCurrentText('qwen2.5:3b')
