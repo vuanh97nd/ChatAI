@@ -95,6 +95,7 @@ class Capabilities:
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action=='geoslope_create':return self.geoslope_app.commit(plan)
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
         if action=='cad_create_open':return self.cad_app.commit(plan)
