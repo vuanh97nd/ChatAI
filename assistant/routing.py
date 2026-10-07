@@ -3,6 +3,7 @@ import json
 import re
 from dataclasses import asdict, dataclass
 from .document_intent import INTENT_SCHEMA, INTENT_GUIDANCE, recent_conversation, normalize_intent, load_glossary
+from .text_normalize import detect_abbreviations
 
 CATEGORIES = ("conversation", "knowledge", "calculation", "coding",
               "writing_translation", "current_web", "personal_documents")
@@ -45,7 +46,12 @@ class Route:
 
 
 def fallback_route(text, has_documents=False):
-    value = text.casefold()
+    try:
+        from .text_normalize import expand_for_ai
+        expanded, _ = expand_for_ai(text)
+        value = expanded.casefold()
+    except Exception:
+        value = text.casefold()
     def contains(pattern):
         return bool(re.search(pattern, value))
     category = "knowledge"
@@ -83,10 +89,12 @@ def classify_question(client, messages, has_documents=False, model="qwen2.5:7b",
             from .orchestrator import PLAN_SCHEMA, PLAN_GUIDANCE, expert_catalog
             schema=deepcopy(SCHEMA);schema['properties']['team']=PLAN_SCHEMA;schema['required'].append('team')
             guidance+="\n"+PLAN_GUIDANCE;catalog=expert_catalog()
+        user_abbrevs = detect_abbreviations(question)
+        merged_glossary = {**load_glossary(), **{k: v for k, v in user_abbrevs.items() if k not in load_glossary()}}
         response = client.chat(model=model, messages=[
             {"role": "system", "content": guidance},
             {"role": "user", "content": json.dumps({"conversation": recent,
-                "has_documents": bool(has_documents), "glossary": load_glossary(), "expert_mode":expert_mode, "experts":catalog, "inputs":{"images":any(m.get("images") for m in messages[-1:]),"files":bool(has_documents),"audio":False}}, ensure_ascii=False)}],
+                "has_documents": bool(has_documents), "glossary": merged_glossary, "expert_mode":expert_mode, "experts":catalog, "inputs":{"images":any(m.get("images") for m in messages[-1:]),"files":bool(has_documents),"audio":False}}, ensure_ascii=False)}],
             format=schema, stream=False, keep_alive=keep_alive,
             options={"temperature": 0, "num_ctx": 4096, "num_predict": 1000 if expert_mode else 600})
         message = response["message"] if isinstance(response, dict) else response.message
