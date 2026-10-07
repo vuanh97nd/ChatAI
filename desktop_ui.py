@@ -548,6 +548,47 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     def button(layout, text, callback):
         button = QPushButton(text); button.clicked.connect(callback); layout.addWidget(button); return button
 
+    def compact_app_activity(self,text):
+        if not self.cfg.get('windows_apps_compact',True):return
+        labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
+        text=labels.get(text.split(': ')[-1],text)
+        if not hasattr(self,'automation_panel'):
+            from assistant.automation_panel import AutomationPanel
+            self.automation_panel=AutomationPanel()
+            self.automation_panel.pauseRequested.connect(self.pause_app_activity)
+            self.automation_panel.chatRequested.connect(self.reveal_app_chat)
+            self.automation_panel.stopRequested.connect(self.end_app_activity)
+        if not getattr(self,'app_compact_active',False):
+            self.app_compact_active=True
+            self.app_was_maximized=self.isMaximized()
+            self.automation_panel.begin(text)
+            self.showMinimized()
+        else:
+            self.automation_panel.message=text;self.automation_panel.update_label()
+
+    def pause_app_activity(self,paused):
+        from assistant.windows_apps import pause_automation
+        pause_automation(paused)
+
+    def reveal_app_chat(self):
+        if getattr(self,'app_was_maximized',False):self.showMaximized()
+        else:self.showNormal()
+        self.raise_();self.activateWindow()
+
+    def end_app_activity(self):
+        self.stop_windows_apps()
+        if self.worker and self.worker.cancellable:self.worker.stop_requested.set()
+        self.automation_panel.pause.setEnabled(False)
+        self.automation_panel.message='Đang kết thúc sau thao tác hiện tại'
+        self.automation_panel.paused=False;self.automation_panel.update_label()
+
+    def finish_app_activity(self):
+        if not getattr(self,'app_compact_active',False):return
+        from assistant.windows_apps import pause_automation
+        pause_automation(False)
+        self.automation_panel.end();self.app_compact_active=False
+        self.reveal_app_chat()
+
     def busy(self):
         return self.worker is not None
 
@@ -582,6 +623,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         worker.start()
 
     def finished(self):
+        self.finish_app_activity()
         worker, callback = self.worker, self.callback
         if worker.failure and self.sent_prompt and not self.input.toPlainText().strip():
             self.input.setPlainText(self.sent_prompt);self.input.setFocus();self.sent_prompt=None
@@ -618,6 +660,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             callback(worker.result)
 
     def on_event(self, event):
+        if event['type']=='app_activity':
+            self.compact_app_activity(event['text']);return
+        if event['type']=='status' and getattr(self,'app_compact_active',False):
+            self.automation_panel.message=event['text'];self.automation_panel.update_label()
         if event['type']=='auth_failed':
             self.server_session=None;self.personal_memories=[]
             self.cid=self.store.create(persist=False)
@@ -1430,7 +1476,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     if not state.get('pending') or not state['pending'].get('decision_started'):raise RuntimeError('Không có thao tác cần phục hồi.')
                     state['messages'].append({'role':'assistant','content':'Thao tác trước bị ngắt; kết quả chưa rõ. Không tự thực hiện lại.'})
                     state.update(running=False,pending=None,queue=[]);agent.save(state)
-                elif allowed is not None:agent.approve(state,allowed,expected)
+                elif allowed is not None:
+                    if allowed:emit({'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']})
+                    agent.approve(state,allowed,expected)
                 def snapshot():
                     return [{'role':m['role'],'content':m.get('content',''),'source_index':i}
                             for i,m in enumerate(state['messages']) if m['role'] in ('user','assistant') and m.get('content')]
@@ -1554,6 +1602,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 elif recover: agent.recover_uncertain(state)
                 elif allowed is not None:
                     if state['pending'] != expected: raise RuntimeError('Preview đã thay đổi. Xin duyệt lại.')
+                    action=state['pending']['plan'].get('action','')
+                    if allowed and (action.startswith(('windows_','browser_','pdf_')) or action=='word_create_open'):
+                        emit({'type':'app_activity','text':'Đang thực hiện: '+action})
                     agent.approve(state, allowed)
                 def snapshot():
                     return [{'role': m['role'], 'content': m.get('content',''), 'images': m.get('images',[]),
@@ -1722,6 +1773,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.automation_auto_install_check.setChecked(self.cfg.get('automation_auto_install',False));app_box.addWidget(self.automation_auto_install_check)
         self.windows_all_apps_check=QCheckBox('Cho phép mở mọi ứng dụng đã cài')
         self.windows_all_apps_check.setChecked(self.cfg.get('windows_apps_all_installed',False));app_box.addWidget(self.windows_all_apps_check)
+        self.windows_compact_check=QCheckBox('Tự thu gọn chat khi AI điều khiển ứng dụng')
+        self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True));app_box.addWidget(self.windows_compact_check)
         self.windows_auto_execute_check=QCheckBox('Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước')
         self.windows_auto_execute_check.setChecked(self.cfg.get('windows_apps_auto_execute',False));app_box.addWidget(self.windows_auto_execute_check)
         permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright và pypdf trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Quyền tự thực hiện áp dụng các công cụ điều khiển app khi được bật.')
@@ -1787,6 +1840,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.auto_python_check.toggled.connect(self.account_settings_changed)
         self.settings_roots.textChanged.connect(self.account_settings_changed)
         self.windows_apps_check.toggled.connect(self.account_settings_changed)
+        self.windows_compact_check.toggled.connect(self.account_settings_changed)
         self.windows_auto_execute_check.toggled.connect(self.account_settings_changed)
         self.automation_auto_install_check.toggled.connect(self.account_settings_changed)
         self.windows_all_apps_check.toggled.connect(self.account_settings_changed)
@@ -2236,6 +2290,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
         if hasattr(self,'windows_apps_check'):
             proposed['windows_apps_enabled']=self.windows_apps_check.isChecked()
+            proposed['windows_apps_compact']=self.windows_compact_check.isChecked()
             proposed['windows_apps_auto_execute']=self.windows_auto_execute_check.isChecked()
             proposed['automation_auto_install']=self.automation_auto_install_check.isChecked()
             proposed['windows_apps_all_installed']=self.windows_all_apps_check.isChecked()
@@ -2259,6 +2314,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
         if hasattr(self,'windows_apps_check'):
             self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False))
+            self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True))
             self.windows_auto_execute_check.setChecked(self.cfg.get('windows_apps_auto_execute',False))
             self.automation_auto_install_check.setChecked(self.cfg.get('automation_auto_install',False))
             self.windows_all_apps_check.setChecked(self.cfg.get('windows_apps_all_installed',False))

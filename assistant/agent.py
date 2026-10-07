@@ -307,6 +307,8 @@ class Agent:
             while state["queue"]:
                 call = state["queue"][0]
                 name, args = call["function"]["name"], call["function"]["arguments"]
+                if name.startswith(('windows_','browser_','pdf_')) or name=='word_create_open':
+                    yield {'type':'app_activity','text':'Đang thực hiện: '+name}
                 if name in {'image_generate','video_generate'} and state.get('ui_mode') in (2,3):
                     # Translate in Python and overwrite tool args so Vietnamese never
                     # reaches the diffusion model directly.

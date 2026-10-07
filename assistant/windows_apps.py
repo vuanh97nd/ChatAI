@@ -11,17 +11,28 @@ import uuid
 from pathlib import Path
 
 _STOP = threading.Event()
+_PAUSED = threading.Event()
 _SESSIONS = {}
 _LOCK = threading.RLock()
 
 
 def stop_automation():
     _STOP.set()
+    _PAUSED.clear()
 
 
 def resume_automation():
     _STOP.clear()
+    _PAUSED.clear()
 
+
+def pause_automation(paused=True):
+    if paused:_PAUSED.set()
+    else:_PAUSED.clear()
+
+def wait_automation():
+    while _PAUSED.is_set() and not _STOP.is_set():
+        _STOP.wait(.1)
 
 def available():
     return os.name == 'nt' and all(importlib.util.find_spec(name) is not None
@@ -59,10 +70,11 @@ def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
     background = cfg.setdefault('browser_background', False)
     auto_install=cfg.setdefault('automation_auto_install',False)
+    compact=cfg.setdefault('windows_apps_compact',True)
     auto_execute=cfg.setdefault('windows_apps_auto_execute',False)
     all_installed=cfg.setdefault('windows_apps_all_installed',False)
     paths = cfg.setdefault('windows_apps_allowed', [])
-    if any(type(v) is not bool for v in (enabled,background,auto_install,all_installed,auto_execute)) or not isinstance(paths, list) or len(paths) > 30:
+    if any(type(v) is not bool for v in (enabled,background,auto_install,all_installed,auto_execute,compact)) or not isinstance(paths, list) or len(paths) > 30:
         raise ValueError('Quyền ứng dụng Windows không hợp lệ.')
     if any(not isinstance(p, str) or not p.strip() or len(p)>4096 or '\n' in p or '\x00' in p for p in paths):
         raise ValueError('Mỗi ứng dụng cần một đường dẫn EXE riêng.')
@@ -137,6 +149,7 @@ class WindowsApps:
         self.backend = backend or WindowsBackend()
 
     def check(self):
+        wait_automation()
         if _STOP.is_set():
             raise PermissionError('Đã dừng điều khiển app. Bấm Tiếp tục trong Cài đặt để cho phép lại.')
         if self.policy_path:

@@ -66,3 +66,9 @@ Trong cuộc trò chuyện điều khiển app trực tuyến, câu trả lời 
 Trong Cài đặt → Điều khiển ứng dụng, bật **Tự thực hiện yêu cầu điều khiển app, không hỏi lại từng bước** rồi Lưu. Quyền này mặc định tắt; khi bật cùng quyền điều khiển ứng dụng, các công cụ Windows, Chrome, PDF và tạo DOCX/mở Word tự thực hiện yêu cầu trong cả luồng local và trực tuyến. Các công cụ xóa file, chạy lệnh và sửa tài liệu khác vẫn theo quyền riêng. Tắt quyền hoặc bấm Dừng để ngắt các bước tiếp theo. Không tự chạy lại thao tác bị ngắt có kết quả chưa rõ.
 
 `word_create_open` tạo DOCX mới trong thư mục được phép từ nội dung AI soạn, sau đó mở bằng WINWORD.EXE được phép. Không ghi đè tài liệu đang có; không thao tác vùng soạn thảo Word bằng phím toàn hệ thống. Kết quả phân biệt tài liệu đã tạo với lệnh mở Word đã gửi; chưa xác minh cửa sổ Word thực tế.
+
+### Thanh điều khiển khi AI làm việc
+
+Tùy chọn **Tự thu gọn chat khi AI điều khiển ứng dụng** mặc định bật. Khi bắt đầu công cụ ứng dụng, chat thu nhỏ và thanh nổi luôn trên cùng hiện trạng thái, thời gian chạy, **Tạm dừng / Tiếp tục**, **Mở chat** và **Kết thúc**. Kéo phần nền thanh để đổi vị trí; vị trí được lưu riêng trên máy.
+
+Tạm dừng giữ tác vụ và chờ ở lần kiểm tra quyền tiếp theo, không cưỡng ép dừng thao tác native đang chạy. Tiếp tục gỡ trạng thái tạm dừng. Kết thúc chặn các bước sau và hủy lượt chat, không đóng Word/Chrome bên ngoài hoặc xóa tài liệu. Mở chat chỉ hiện cửa sổ chính để theo dõi. Khi tác vụ xong, lỗi hoặc cần duyệt thủ công, chat tự hiện lại và thanh nổi đóng.

@@ -9,7 +9,7 @@ import socket
 import time
 from urllib.parse import urlencode, urlsplit
 
-from .windows_apps import _STOP, fingerprint
+from .windows_apps import _STOP, fingerprint, wait_automation
 
 
 def available():
@@ -81,6 +81,7 @@ class BrowserTools:
         self.policy_path, self.on_status = policy_path, on_status
 
     def policy(self):
+        wait_automation()
         if _STOP.is_set():raise PermissionError('Đã dừng điều khiển app.')
         cfg = json.loads(Path(self.policy_path).read_text(encoding='utf-8')) if self.policy_path else self.cfg
         if not cfg.get('windows_apps_enabled'):raise PermissionError('Bật quyền Điều khiển ứng dụng và Lưu trước.')

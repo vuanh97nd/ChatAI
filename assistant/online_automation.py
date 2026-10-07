@@ -113,6 +113,7 @@ class OnlineAutomation:
                 yield {'type':'pending'};return
             if state['queue']:
                 call=state['queue'][0];name=call['function']['name'];args=call['function']['arguments']
+                yield {'type':'app_activity','text':'Đang thực hiện: '+name}
                 validate_call(name,args,self.schemas)
                 try:
                     repeated=repeated_failure(state,call)
