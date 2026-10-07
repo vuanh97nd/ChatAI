@@ -102,12 +102,19 @@ class SupportMixin:
         use_deep=bool(getattr(self,'deep_analysis_enabled',False))
         attached_paths=list(self.pending_documents)
         attached_image=self.pending_image
-        # Giữ tệp cho tới khi server chấp nhận tin nhắn.
+        # Chụp tệp đính kèm trước khi ghi nhận tin nhắn trên máy; không chờ API để hiển thị.
         self.answer_actions.hide();self.reply_active=True;self.reply_dots.show();self.reply_timer.start()
         self.status.setText('Đang phân tích sâu; lượt này có thể lâu hơn…' if use_deep else ('Đang tìm kiếm mạng…' if use_web else 'Đang kết nối AI trên server…'))
-        def task(emit):
+        def run_chat(emit):
             state=self.store.load(cid)
             history=[{'role':m['role'],'content':m['content'][:1600]} for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')][-20:]
+            state['account_username']=owner;state['model']=selected_model
+            state['online_automation']=False
+            state['messages'].append({'role':'user','content':prompt})
+            state['running']=True;state['pending']=None;state['queue']=[]
+            self.store.save(cid,state)
+            emit({'type':'sent','cid':cid,'prompt':prompt})
+            emit({'type':'snapshot','messages':[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]})
             body={'text':prompt,'history':history,'guest_token':token,'web_search':use_web,'deep_analysis':use_deep}
             if attached_image:body['image']={'mime':'image/jpeg','data':attached_image}
             if use_web:
@@ -172,13 +179,6 @@ class SupportMixin:
                     return {'cloud_action':error.code,'message':str(error)}
                 raise
             except StopIteration:raise RuntimeError('Server chưa trả về luồng AI.') from None
-            state['account_username']=owner;state['model']=selected_model
-            state['online_automation']=False
-            state['messages'].append({'role':'user','content':prompt})
-            state['running']=True;state['pending']=None;state['queue']=[]
-            self.store.save(cid,state)
-            emit({'type':'sent','cid':cid,'prompt':prompt})
-            emit({'type':'snapshot','messages':[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]})
             emit({'type':'status','text':'Đang trả lời bằng AI trên server…'})
             answer=[];completed=False;failure=None;switch_required=False
             try:
@@ -196,6 +196,15 @@ class SupportMixin:
                 state['running']=False;self.store.save(cid,state)
             if failure:emit({'type':'status','text':failure})
             return {'cloud_done':True,'message':failure or 'Hoàn tất','switch_required':switch_required}
+        def task(emit):
+            try:return run_chat(emit)
+            finally:
+                # Preparation/auth failures and cancellation must not leave a queued
+                # user message marked running. The local message remains available.
+                state=self.store.load(cid)
+                if state.get('running'):
+                    state['running']=False;self.store.save(cid,state)
+
         def done(result):
             if result.get('cloud_action'):
                 if self.sent_prompt==prompt and not self.input.toPlainText().strip():
