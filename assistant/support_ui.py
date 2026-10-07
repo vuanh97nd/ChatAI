@@ -115,7 +115,12 @@ class SupportMixin:
             if session:body.update(username=session['username'],key=session['key'])
             api_client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=getattr(self.worker,'stop_requested',None)) if provider!='cloudflare' else None
             import re
-            document_request=bool(attached_paths or use_web or re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            # Chỉ chạy pipeline tài liệu (nhiều lượt gọi LLM nối tiếp) khi thực sự có
+            # tài liệu: đính kèm, tìm kiếm web, hoặc hỏi tiếp về tài liệu đã gửi trước.
+            # Trước đây regex từ khóa khiến mọi tin nhắn nhắc "tài liệu/số liệu/báo cáo"
+            # đều kích hoạt pipeline → mỗi tin nhắn mất 40-50s dù dùng model nhanh.
+            follow_up_doc=bool(state.get('recent_documents')) and bool(re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            document_request=bool(attached_paths or use_web or follow_up_doc)
             if api_client and document_request:
                 from .cloud import CloudDocumentClient
                 from .document_intent import analyze_intent
