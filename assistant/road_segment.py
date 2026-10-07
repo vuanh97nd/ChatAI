@@ -175,7 +175,9 @@ def _nearest_borehole(boreholes: list[dict], station: float) -> Optional[dict]:
 
 def segment_profile(profile_points: list[dict],
                     boreholes: list[dict],
-                    segment_length: float = 200.0) -> list[Segment]:
+                    segment_length: float = 200.0,
+                    xsta_blocks: Optional[list[dict]] = None,
+                    mcn_sections: Optional[list[dict]] = None) -> list[Segment]:
     """Divide the alignment into segments and classify each one.
 
     profile_points: list of {station, ground_elev, design_elev} from read_profile_dxf.
@@ -184,6 +186,22 @@ def segment_profile(profile_points: list[dict],
 
     Returns list of Segment objects with treatment classification and settlement estimates.
     """
+    xsta_blocks = xsta_blocks or []
+    mcn_sections = mcn_sections or []
+    # Build lookup: station → {htk, b_nen} from XSTA blocks (trắc dọc) and MCN
+    _xsta_map = {b['station']: b for b in xsta_blocks}
+    _mcn_map = {s['station']: s for s in mcn_sections}
+
+    def _nearest_xsta(station: float) -> Optional[dict]:
+        if not xsta_blocks:
+            return None
+        return min(xsta_blocks, key=lambda b: abs(b['station'] - station))
+
+    def _nearest_mcn(station: float) -> Optional[dict]:
+        if not mcn_sections:
+            return None
+        return min(mcn_sections, key=lambda s: abs(s['station'] - station))
+
     if not profile_points:
         return []
 
@@ -212,9 +230,27 @@ def segment_profile(profile_points: list[dict],
 
         bh = _nearest_borehole(boreholes, sta_mid)
         hdy = float(bh.get('hdy', 0.0)) if bh else 0.0
-        b_nen = float(bh.get('b_nen', 12.0)) if bh else 12.0
+        b_nen = float(bh.get('b_nen', 0.0)) if bh else 0.0
         bh_name = bh.get('name', '') if bh else ''
         layers = bh.get('layers', []) if bh else []
+
+        # Refine htk and b_nen from XSTA blocks / MCN sections when borehole lacks them
+        xb = _nearest_xsta(sta_mid)
+        if xb:
+            if htk == 0.0 and xb.get('htk'):
+                htk = float(xb['htk'])
+            if b_nen == 0.0 and xb.get('b_nen'):
+                b_nen = float(xb['b_nen'])
+            if not bh_name and xb.get('borehole_ref'):
+                bh_name = xb['borehole_ref']
+        mcn = _nearest_mcn(sta_mid)
+        if mcn:
+            if htk == 0.0 and mcn.get('htk'):
+                htk = float(mcn['htk'])
+            if b_nen == 0.0 and mcn.get('b_nen'):
+                b_nen = float(mcn['b_nen'])
+        if b_nen == 0.0:
+            b_nen = 12.0  # default fallback
 
         slp = {}
         if bh:

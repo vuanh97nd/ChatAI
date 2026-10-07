@@ -228,15 +228,16 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
 
 WRITES.add('road_analyze')
 EXTRA_TOOLS.append(('road_pipeline', schema('road_analyze',
-    'Đọc DXF trắc dọc + danh sách lỗ khoan JSON → phân đoạn địa kỹ thuật → điền mẫu THSH. '
-    'profile_dxf: đường dẫn file DXF trắc dọc (TEXT nhãn lý trình và cao độ). '
+    'Đọc DXF trắc dọc + mặt cắt ngang (tuỳ chọn) + danh sách lỗ khoan JSON → phân đoạn địa kỹ thuật → điền mẫu THSH. '
+    'profile_dxf: đường dẫn file DXF trắc dọc (layers Prf-acc/Prf-ege/Prf-fge/XSTA). '
+    'mcn_dxf: đường dẫn file DXF mặt cắt ngang (tuỳ chọn, layers XSTA/XGRIDFGT/XGRIDT/XFG). '
     'boreholes: chuỗi JSON mảng hố khoan, mỗi hố gồm name, station (m), ground_elev, hdy (chiều sâu đất yếu), '
     'b_nen (m), layers (mảng {code, thickness, Cc, Cs, e0, Pc, Su, E, nu, p0}). '
     'template_xlsx: đường dẫn file Excel mẫu có sheet THSH. '
     'output_xlsx: đường dẫn file kết quả sẽ tạo. '
     'segment_length: độ dài đoạn tính toán (m, mặc định 200). '
     'Trả về danh sách đoạn với phương án xử lý, lún và Fs; ghi vào THSH sau khi duyệt.',
-    {'profile_dxf': TEXT, 'boreholes': TEXT, 'template_xlsx': TEXT,
+    {'profile_dxf': TEXT, 'mcn_dxf': TEXT, 'boreholes': TEXT, 'template_xlsx': TEXT,
      'output_xlsx': TEXT, 'segment_length': {'type': 'number'}},
     ['profile_dxf', 'template_xlsx', 'output_xlsx'])))
 

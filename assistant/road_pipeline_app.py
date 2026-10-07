@@ -19,15 +19,14 @@ class RoadPipelineApp:
     # ------------------------------------------------------------------
 
     def prepare_analyze(self, name: str, args: dict) -> dict:
-        """Step 1: Read DXF profile + boreholes JSON → segment analysis → preview."""
+        """Step 1: Read DXF profile + optional MCN DXF + boreholes JSON → segment analysis."""
         profile_dxf = args.get('profile_dxf', '')
+        mcn_dxf = args.get('mcn_dxf', '')          # optional cross-section DXF
         boreholes_json = args.get('boreholes', '[]')
         template_xlsx = args.get('template_xlsx', '')
         output_xlsx = args.get('output_xlsx', '')
 
         errors: list[str] = []
-
-        # Validate paths
         if not profile_dxf:
             errors.append('profile_dxf là bắt buộc.')
         if not template_xlsx:
@@ -35,7 +34,6 @@ class RoadPipelineApp:
         if not output_xlsx:
             errors.append('output_xlsx là bắt buộc.')
 
-        # Parse boreholes
         boreholes: list[dict] = []
         if isinstance(boreholes_json, str):
             try:
@@ -48,21 +46,51 @@ class RoadPipelineApp:
         if errors:
             raise ValueError(' | '.join(errors))
 
-        # Read DXF profile
-        from .dxf_profile import read_profile_dxf
+        from .dxf_profile import read_profile_dxf, read_xsta_blocks, read_cross_section_dxf
+
         try:
             profile_points = read_profile_dxf(profile_dxf)
         except Exception as exc:
             raise RuntimeError(f'Lỗi đọc DXF trắc dọc: {exc}') from exc
 
         if not profile_points:
-            raise RuntimeError('Không trích xuất được điểm trắc dọc từ DXF. '
-                               'Kiểm tra file DXF có chứa TEXT nhãn lý trình và cao độ.')
+            raise RuntimeError('Không trích xuất được điểm trắc dọc từ DXF.')
+
+        # Read XSTA blocks (Htk + Bn per cross-section station) from trắc dọc
+        xsta_blocks: list[dict] = []
+        try:
+            xsta_blocks = read_xsta_blocks(profile_dxf)
+        except Exception:
+            pass
+
+        # Read MCN cross-sections if provided
+        mcn_sections: list[dict] = []
+        if mcn_dxf:
+            try:
+                mcn_sections = read_cross_section_dxf(mcn_dxf)
+            except Exception:
+                pass
+
+        # Merge XSTA and MCN data into boreholes for segment_profile lookup
+        # Priority: borehole data (has hdy, layers) > xsta block > mcn section
+        xsta_by_sta = {b['station']: b for b in xsta_blocks}
+        mcn_by_sta = {s['station']: s for s in mcn_sections}
+        for bh in boreholes:
+            sta = float(bh.get('station', 0.0))
+            xb = xsta_by_sta.get(sta)
+            if xb:
+                if not bh.get('b_nen') and xb.get('b_nen'):
+                    bh['b_nen'] = xb['b_nen']
+                if not bh.get('htk') and xb.get('htk'):
+                    bh['htk'] = xb['htk']
+                if xb.get('borehole_ref') and not bh.get('name'):
+                    bh['name'] = xb['borehole_ref']
 
         # Segment analysis
         from .road_segment import segment_profile, segments_to_dicts
         segment_length = float(args.get('segment_length', 200.0))
-        segs = segment_profile(profile_points, boreholes, segment_length=segment_length)
+        segs = segment_profile(profile_points, boreholes, segment_length=segment_length,
+                               xsta_blocks=xsta_blocks, mcn_sections=mcn_sections)
         seg_dicts = segments_to_dicts(segs)
 
         # Build preview summary
@@ -79,6 +107,7 @@ class RoadPipelineApp:
         plan = {
             'action': name,
             'profile_dxf': profile_dxf,
+            'mcn_dxf': mcn_dxf,
             'template_xlsx': template_xlsx,
             'output_xlsx': output_xlsx,
             'segments': seg_dicts,
