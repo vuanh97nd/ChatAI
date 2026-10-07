@@ -93,7 +93,8 @@ class BrowserTools:
         path = Path(raw).resolve(strict=True)
         if not path.is_file() or path.name.lower() != 'chrome.exe':
             raise PermissionError('Chọn tệp chrome.exe thực tế.')
-        if path not in {Path(p).resolve() for p in cfg.get('windows_apps_allowed',[])}:
+        from .installed_apps import authorized_apps
+        if path not in {Path(row['path']).resolve() for row in authorized_apps(cfg)}:
             raise PermissionError('Thêm chrome.exe vào danh sách ứng dụng được phép rồi Lưu.')
         return path
 

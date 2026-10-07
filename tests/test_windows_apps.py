@@ -97,7 +97,7 @@ class WindowsAppsTest(unittest.TestCase):
             with self.assertRaises(ValueError):validate_settings(cfg)
     def test_registry_requires_approval_and_rejects_shell_arguments(self):
         specs=[s for module,s in EXTRA_TOOLS if module=='windows']
-        self.assertEqual({s['function']['name'] for s in specs},{'windows_open','windows_inspect','windows_action'})
+        self.assertEqual({s['function']['name'] for s in specs},{'windows_open','windows_inspect','windows_action','windows_list_apps'})
         self.assertTrue(all(s['function']['name'] in WRITES for s in specs))
         with self.assertRaises(ValueError):validate_call('windows_open',{'path':'demo.exe','args':'/c command'},specs)
         with self.assertRaises(ValueError):self.tools.prepare('windows_action',{'session':self.open(),'control':'bad','operation':'shell'})

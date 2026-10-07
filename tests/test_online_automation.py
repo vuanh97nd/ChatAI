@@ -146,6 +146,8 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed,[])
     def test_intent_excludes_discussion_and_preserves_exact_query(self):
         self.assertTrue(requested_automation('Mở Word và đọc giao diện'))
+        self.assertTrue(requested_automation('Hãy mở Photoshop'))
+        self.assertFalse(requested_automation('Hãy mở rộng giải thích về vật lý'))
         self.assertFalse(requested_automation('Tiêu chuẩn 41-2022 là gì'))
         self.assertIsNone(search_call('Đừng mở chrome và tìm abc',self.cfg))
         self.assertIsNone(search_call('Cách mở chrome và tìm abc',self.cfg))

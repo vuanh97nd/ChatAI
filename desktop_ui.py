@@ -1413,6 +1413,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,session['username']):raise RuntimeError('Hội thoại thuộc tài khoản khác.')
                 audit=lambda action,details:self.store.audit(cid,action,details)
+                from assistant.automation_setup import ensure_dependencies
+                ensure_dependencies(cfg,ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text}),audit=audit)
                 client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=self.worker.stop_requested)
                 windows=WindowsApps(cfg,audit,owner=session['username'],policy_path=ROOT/'config.json')
                 files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
@@ -1476,6 +1478,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 if state.get('account_username') and state['account_username']!=owner:
                     raise RuntimeError('Hội thoại thuộc tài khoản khác. Hãy tạo cuộc trò chuyện mới.')
                 audit = lambda action, details: self.store.audit(cid, action, details)
+                if self.cfg.get('windows_apps_enabled'):
+                    from assistant.automation_setup import ensure_dependencies
+                    ensure_dependencies(self.cfg,ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text}),audit=audit)
                 use_tools = requested_tools if prompt is not None else state.get('tools_enabled', True)
                 excel, caps = None, None
                 if use_tools:
@@ -1712,6 +1717,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         automation = QGroupBox('Công cụ AI · Điều khiển ứng dụng Windows'); app_box = QVBoxLayout(automation)
         self.windows_apps_check = QCheckBox('Cho AI mở và điều khiển các ứng dụng được phép')
         self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False));app_box.addWidget(self.windows_apps_check)
+        self.automation_auto_install_check=QCheckBox('Tự cài thư viện cần thiết đã được kiểm tra')
+        self.automation_auto_install_check.setChecked(self.cfg.get('automation_auto_install',False));app_box.addWidget(self.automation_auto_install_check)
+        self.windows_all_apps_check=QCheckBox('Cho phép mở mọi ứng dụng đã cài')
+        self.windows_all_apps_check.setChecked(self.cfg.get('windows_apps_all_installed',False));app_box.addWidget(self.windows_all_apps_check)
+        permission_note=QLabel('Tự cài chỉ áp dụng pywinauto, psutil, comtypes, Playwright và pypdf trong Python riêng của ChatAI. Mở mọi app dùng danh sách đăng ký Windows; không tự cấp quyền quản trị. Thao tác trong app vẫn cần duyệt.')
+        permission_note.setWordWrap(True);app_box.addWidget(permission_note)
         self.browser_background_check=QCheckBox('Chrome chạy nền (không hiện cửa sổ)')
         self.browser_background_check.setChecked(self.cfg.get('browser_background',False));app_box.addWidget(self.browser_background_check)
         note=QLabel('Mỗi bước mở/đọc/bấm/nhập/đóng cần xác nhận. Cửa sổ có thể hiện; chỉ hỗ trợ app UI Automation. Không tự sao lưu dữ liệu của app bên ngoài.')
@@ -1773,6 +1784,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.auto_python_check.toggled.connect(self.account_settings_changed)
         self.settings_roots.textChanged.connect(self.account_settings_changed)
         self.windows_apps_check.toggled.connect(self.account_settings_changed)
+        self.automation_auto_install_check.toggled.connect(self.account_settings_changed)
+        self.windows_all_apps_check.toggled.connect(self.account_settings_changed)
         self.browser_background_check.toggled.connect(self.account_settings_changed)
         self.windows_apps_paths.textChanged.connect(self.account_settings_changed)
         self.settings_server.textChanged.connect(self.account_settings_changed)
@@ -2219,6 +2232,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
         if hasattr(self,'windows_apps_check'):
             proposed['windows_apps_enabled']=self.windows_apps_check.isChecked()
+            proposed['automation_auto_install']=self.automation_auto_install_check.isChecked()
+            proposed['windows_apps_all_installed']=self.windows_all_apps_check.isChecked()
             proposed['browser_background']=self.browser_background_check.isChecked()
             proposed['windows_apps_allowed']=[p.strip() for p in self.windows_apps_paths.toPlainText().splitlines() if p.strip()]
         return proposed
@@ -2239,6 +2254,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
         if hasattr(self,'windows_apps_check'):
             self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False))
+            self.automation_auto_install_check.setChecked(self.cfg.get('automation_auto_install',False))
+            self.windows_all_apps_check.setChecked(self.cfg.get('windows_apps_all_installed',False))
             self.browser_background_check.setChecked(self.cfg.get('browser_background',False))
             self.windows_apps_paths.setPlainText('\n'.join(self.cfg.get('windows_apps_allowed',[])))
         self.machine_profile.setCurrentIndex(self.machine_profile.findData(self.cfg.get('machine_profile','medium')))

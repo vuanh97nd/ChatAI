@@ -35,14 +35,19 @@ def readiness(cfg):
     missing = [name for name in ('pywinauto', 'psutil', 'comtypes')
                if importlib.util.find_spec(name) is None]
     if missing:
+        if cfg.get('automation_auto_install'):
+            return 'Thiếu thư viện: '+', '.join(missing)+'. ChatAI sẽ tự cài vào Python đang chạy khi dùng công cụ, theo quyền đã lưu.'
+        python=Path(sys.executable)
+        if python.name.lower()=='pythonw.exe':python=python.with_name('python.exe')
+        quoted=str(python).replace("'","''")
         return ('Thiếu thư viện: ' + ', '.join(missing) +
-                '. Trong thư mục dự án chạy .\\.venv\\Scripts\\python.exe -m pip install '
+                ". Trong thư mục dự án chạy & '"+quoted+"' -m pip install "
                 '-r requirements-windows-automation.txt rồi khởi động lại ChatAI.')
     if not cfg.get('windows_apps_enabled'):
         return 'Chưa bật quyền: vào Cài đặt → Điều khiển ứng dụng, bật quyền và Lưu.'
     if _STOP.is_set():
         return 'Điều khiển app đang dừng: bấm Tiếp tục điều khiển app trong Cài đặt.'
-    if not cfg.get('windows_apps_allowed'):
+    if not cfg.get('windows_apps_allowed') and not cfg.get('windows_apps_all_installed'):
         return 'Chưa có app được phép: vào Cài đặt → Điều khiển ứng dụng → Thêm ứng dụng EXE, rồi Lưu.'
     browser_ready = importlib.util.find_spec('playwright') is not None
     browser_note = (' Chrome: đã có Playwright, hỗ trợ quy trình web sau khi duyệt.' if browser_ready else
@@ -53,8 +58,10 @@ def readiness(cfg):
 def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
     background = cfg.setdefault('browser_background', False)
+    auto_install=cfg.setdefault('automation_auto_install',False)
+    all_installed=cfg.setdefault('windows_apps_all_installed',False)
     paths = cfg.setdefault('windows_apps_allowed', [])
-    if type(enabled) is not bool or type(background) is not bool or not isinstance(paths, list) or len(paths) > 30:
+    if any(type(v) is not bool for v in (enabled,background,auto_install,all_installed)) or not isinstance(paths, list) or len(paths) > 30:
         raise ValueError('Quyền ứng dụng Windows không hợp lệ.')
     if any(not isinstance(p, str) or not p.strip() or len(p)>4096 or '\n' in p or '\x00' in p for p in paths):
         raise ValueError('Mỗi ứng dụng cần một đường dẫn EXE riêng.')
@@ -146,7 +153,8 @@ class WindowsApps:
         path = Path(raw).resolve(strict=True)
         if not path.is_file() or path.suffix.lower() != '.exe':
             raise PermissionError('Ứng dụng phải là tệp EXE.')
-        allowed = {Path(p).resolve() for p in policy.get('windows_apps_allowed', [])}
+        from .installed_apps import authorized_apps
+        allowed = {Path(row['path']).resolve() for row in authorized_apps(policy)}
         if path not in allowed:
             raise PermissionError('Ứng dụng chưa có trong danh sách được phép.')
         return path
@@ -163,6 +171,9 @@ class WindowsApps:
 
     def prepare(self, name, args):
         self.check()
+        if name=='windows_list_apps':
+            return {'action':name,'query':args.get('query',''),
+                    'notice':'Liệt kê tên và đường dẫn ứng dụng được phép; danh sách được đưa vào hội thoại AI.'}
         if name == 'windows_open':
             path = self.allowed_path(args['path'])
             return {'action': name, 'path': str(path), 'sha256': fingerprint(path),
@@ -203,6 +214,12 @@ class WindowsApps:
     def _commit(self, plan):
         self.check()
         action = plan['action']
+        if action=='windows_list_apps':
+            from .installed_apps import authorized_apps
+            rows=authorized_apps(self.check());query=plan.get('query','').casefold().strip()
+            matches=[row for row in rows if not query or query in (row['name']+' '+row['path']).casefold()]
+            return {'ok':True,'apps':matches[:100],'truncated':len(matches)>100,
+                    'note':'Chỉ mở đường dẫn được trả về. Tìm theo query nếu danh sách bị cắt. App không đăng ký với Windows hoặc portable cần thêm EXE thủ công.'}
         if action == 'windows_open':
             path = self.allowed_path(plan['path'])
             if fingerprint(path) != plan['sha256']:
