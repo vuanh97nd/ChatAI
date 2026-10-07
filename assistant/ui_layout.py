@@ -89,6 +89,7 @@ def header(win):
     menu.addAction('Xóa cuộc trò chuyện', win.delete_chat)
     menu.addAction('Xem toàn bộ lịch sử', win.full_history)
     menu.addAction('Nhật ký thao tác', win.show_audit)
+    menu.addAction('Sao chép thời gian khởi động/đăng nhập', win.copy_performance_report)
     menu.addSeparator()
     menu.addAction('Kết nối lại Ollama', win.refresh_models)
     menu.addAction('Cấu hình máy và AI', lambda: win.open_settings_section('Cấu hình máy và AI'))

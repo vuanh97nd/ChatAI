@@ -200,6 +200,8 @@ def api_answer_events(client,body):
     from .answer_policy import guard_answer
     result=body.get('document_result') or {}
     instruction=FAST_SYSTEM+'\nKhông có công cụ thao tác máy trong lượt API này.'
+    if body.get('document_sources_unavailable'):
+        instruction+='\nLượt này chưa có nguồn tài liệu để đọc/đối chiếu. Không tuyên bố đã đọc file, tra cứu tiêu chuẩn hoặc trích dẫn điều khoản. Nếu cần kiểm tra tài liệu cụ thể, yêu cầu người dùng đính kèm hoặc bật tìm web; câu hỏi kiến thức chung có thể trả lời với giới hạn này.'
     if result.get('documents') or result.get('intent',{}).get('target_type')=='document':instruction+='\n'+document_instruction(result)
     web_context=body.get('document_context')
     if body.get('web_search'):

@@ -122,7 +122,12 @@ class SupportMixin:
             if session:body.update(username=session['username'],key=session['key'])
             api_client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=getattr(self.worker,'stop_requested',None)) if provider!='cloudflare' else None
             import re
-            document_request=bool(attached_paths or use_web or re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            document_hint=bool(re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            # A document-related word alone does not require a separate model
+            # request when there is no file, document library or web permission.
+            document_request=bool(attached_paths or use_web or
+                                  (document_hint and (state.get('recent_documents') or self.manager.ready('rag'))))
+            if document_hint and not document_request:body['document_sources_unavailable']=True
             if api_client and document_request:
                 from .cloud import CloudDocumentClient
                 from .document_intent import analyze_intent

@@ -46,6 +46,7 @@ class OnlineSendVisibilityTest(unittest.TestCase):
                 self.assertEqual([m['content'] for m in state['messages']],['Xin chào','OK'])
                 self.assertFalse(state['running'])
     def test_document_preparation_failure_preserves_user_prompt_and_clears_running(self):
+        self.view.manager.ready.return_value=True
         events=[]
         def fail(*args,**kwargs):
             self.assert_visible(events,'Đọc tài liệu');raise CloudError('Network failure')
@@ -63,3 +64,17 @@ class OnlineSendVisibilityTest(unittest.TestCase):
         self.assertEqual(result['cloud_action'],'CLOUD_BUSY')
         self.assertFalse(self.view.store.load(self.view.cid)['running'])
         self.assertEqual(len(self.view.store.load(self.view.cid)['messages']),1)
+
+    def test_document_word_without_sources_skips_extra_intent_api_call(self):
+        seen=[]
+        def answer(client,body):
+            seen.append(body)
+            yield 'meta',{}
+            yield 'delta',{'text':'OK'}
+            yield 'done',{}
+        with patch('assistant.document_intent.analyze_intent',side_effect=AssertionError('Unneeded intent call')),patch('assistant.support_ui.api_answer_events',answer):
+            self.start('Viết báo cáo giải thích số liệu')
+            self.view.task(lambda event:None)
+        self.assertEqual(len(seen),1)
+        self.assertTrue(seen[0]['document_sources_unavailable'])
+        self.assertFalse(self.view.store.load(self.view.cid)['running'])
