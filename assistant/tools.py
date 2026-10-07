@@ -261,6 +261,31 @@ EXTRA_TOOLS.append(('cad_drawing', schema('cad_tracdoc_xldy',
     {'segments_json': TEXT, 'output_dxf': TEXT},
     ['segments_json', 'output_dxf'])))
 
+WRITES.add('klxldy_write')
+EXTRA_TOOLS.append(('klxldy', schema('klxldy_write',
+    'Lập bảng khối lượng xử lý đất yếu (XLDY) ra file Excel theo form XLDY_THU_THIEM. '
+    'Tự động tính số lượng cọc CDM, bấc thấm/giếng cát, khối đào thay, cọc tre/cừ tràm, '
+    'vải địa kỹ thuật, bàn đo lún theo từng đoạn. '
+    'segments_json: mảng JSON đoạn (từ road_analyze/road_verify). '
+    'output_xlsx: đường dẫn file kết quả. '
+    'project_name: tên dự án (tuỳ chọn).',
+    {'segments_json': TEXT, 'output_xlsx': TEXT, 'project_name': TEXT},
+    ['segments_json', 'output_xlsx'])))
+
+WRITES.add('tm_xldy_write')
+EXTRA_TOOLS.append(('tm_xldy', schema('tm_xldy_write',
+    'Soạn thuyết minh tính toán xử lý đất yếu (XLDY) ra file Word (.docx) theo form TMXLDY. '
+    'Gồm 5 chương: Giới thiệu, Cơ sở tính toán, Lý thuyết công thức, Kết quả tính toán, Quan trắc. '
+    'Đúng cả nội dung chữ lẫn bảng số liệu theo mẫu chuẩn. '
+    'segments_json: mảng JSON đoạn. '
+    'output_docx: đường dẫn file kết quả. '
+    'project_name, sta_from, sta_to: thông tin dự án (tuỳ chọn). '
+    'soil_params_json: mảng JSON chỉ tiêu đất [{"code","description","gamma","Su","e0","Cc","Cs","Cv","Pc"}] (tuỳ chọn).',
+    {'segments_json': TEXT, 'output_docx': TEXT,
+     'project_name': TEXT, 'sta_from': TEXT, 'sta_to': TEXT,
+     'soil_params_json': TEXT},
+    ['segments_json', 'output_docx'])))
+
 WRITES.add('cad_mcn_xldy')
 EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
     'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '

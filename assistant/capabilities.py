@@ -57,6 +57,8 @@ class Capabilities:
         self.road_pipeline=RoadPipelineApp(self.files,self.soilfirm_app,audit)
         from .cad_drawing import CadDrawingApp
         self.cad_drawing=CadDrawingApp(self.files,audit)
+        self.active.add('klxldy')
+        self.active.add('tm_xldy')
         if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
         self.active.add('plaxis_app')
         self.active.add('geoslope_app')
@@ -72,6 +74,7 @@ class Capabilities:
         if name=='road_analyze':return self.road_pipeline.prepare_analyze(name,args)
         if name=='road_verify':return self.road_pipeline.prepare_verify(name,args)
         if name in {'cad_tracdoc_xldy','cad_mcn_xldy'}:return self.cad_drawing.prepare(name,args)
+        if name in {'klxldy_write','tm_xldy_write'}:return self._prepare_xldy_docs(name,args)
         if name=='soilfirm_create':return self.soilfirm_app.prepare_create(name,args)
         if name=='borehole_dxf':return self.borehole_dxf.prepare(name,args)
         if name=='geoslope_create':return self.geoslope_app.prepare(name,args)
@@ -115,6 +118,8 @@ class Capabilities:
             r=self.cad_drawing.commit(plan)
             if r.get('status')=='error':raise RuntimeError(r['message'])
             return f"Đã xuất {r['segments']} đoạn → {r['output']}"
+        if action=='klxldy_write':return self._commit_xldy_docs(plan)
+        if action=='tm_xldy_write':return self._commit_xldy_docs(plan)
         if action=='soilfirm_create':return self.soilfirm_app.commit_create(plan)
         if action=='borehole_dxf':return self.borehole_dxf.commit(plan)
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
@@ -168,3 +173,40 @@ class Capabilities:
                     "rag_search": self.rag.rag_search, "office_read": self.office.office_read,
                     "template_scan": self.template.scan_template}
         return registry[name](**args)
+
+    # ------------------------------------------------------------------
+    # XLDY document helpers
+    # ------------------------------------------------------------------
+
+    def _prepare_xldy_docs(self, name, args):
+        import json
+        segs_raw = args.get('segments_json', [])
+        segments = json.loads(segs_raw) if isinstance(segs_raw, str) else segs_raw
+        if name == 'klxldy_write':
+            output = args.get('output_xlsx', '')
+            if not output: raise ValueError('output_xlsx là bắt buộc.')
+            preview = f'Lập bảng khối lượng XLDY cho {len(segments)} đoạn → {output}'
+        else:
+            output = args.get('output_docx', '')
+            if not output: raise ValueError('output_docx là bắt buộc.')
+            preview = f'Soạn thuyết minh XLDY cho {len(segments)} đoạn → {output}'
+        return {'action': name, 'segments': segments, 'args': args, 'preview': preview}
+
+    def _commit_xldy_docs(self, plan):
+        import json
+        action   = plan['action']
+        segments = plan['segments']
+        args     = plan.get('args', {})
+        if action == 'klxldy_write':
+            from .klxldy_writer import write_klxldy
+            r = write_klxldy(args['output_xlsx'], segments,
+                             project_name=args.get('project_name', ''))
+            return f"Đã lập bảng khối lượng {r['rows_written']} đoạn → {r['output_path']}"
+        else:
+            from .tm_xldy_writer import write_tm_xldy
+            sp_raw = args.get('soil_params_json', [])
+            soil_params = json.loads(sp_raw) if isinstance(sp_raw, str) and sp_raw else (sp_raw or [])
+            meta = {k: args[k] for k in ('project_name','sta_from','sta_to') if args.get(k)}
+            r = write_tm_xldy(args['output_docx'], segments,
+                              project_meta=meta or None, soil_params=soil_params or None)
+            return f"Đã soạn thuyết minh XLDY (~{r['pages_estimate']} trang) → {r['output_path']}"
