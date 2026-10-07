@@ -13,7 +13,7 @@ print("Chat AI Desktop 2.6.5: giao diện không chờ Ollama/SSL.",flush=True)
 from assistant.runtime_compat import prepare_six
 prepare_six()
 
-from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation
+from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation, QSize
 from PySide6.QtGui import QDesktopServices, QTextDocument, QTextCursor, QIcon, QPixmap, QImage, QKeySequence, QPainter, QColor, QRadialGradient, QPainterPath, QTextTable, QTextCharFormat, QTextFormat
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QComboBox,
@@ -672,7 +672,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.status.setText(worker.failure)
             QMessageBox.warning(self, 'Chat AI', worker.failure)
         elif callback:
-            callback(worker.result)
+            if not getattr(self,'exit_when_idle',False):callback(worker.result)
+        if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
         if event['type']=='app_countdown':
@@ -988,15 +989,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if cid == self.cid: self.history.setCurrentItem(item)
             row=QWidget();buttons=QHBoxLayout(row);buttons.setContentsMargins(4,2,4,2);buttons.setSpacing(2)
             choose=QPushButton(row.fontMetrics().elidedText(title,Qt.TextElideMode.ElideRight,165));choose.setToolTip(title)
-            choose.setStyleSheet('text-align:left;background:transparent;border:none;padding:6px;')
+            row.setMinimumHeight(48)
+            choose.setMinimumHeight(36)
+            choose.setStyleSheet('text-align:left;background:transparent;border:none;padding:0 4px;')
             choose.clicked.connect(lambda checked=False,i=item:self.select_chat(i));buttons.addWidget(choose,1)
             action=QPushButton('🗑' if cid==self.cid else '⋯');action.setFixedSize(30,30)
+            action.setStyleSheet('padding:0;border:none;background:transparent;')
             action.setToolTip('Xóa cuộc trò chuyện' if cid==self.cid else 'Đổi tên hoặc xóa')
             action.setAccessibleName(action.toolTip())
             if cid==self.cid:action.clicked.connect(lambda checked=False,c=cid:self.delete_chat(c))
             else:
                 menu=QMenu(action);menu.addAction('Đổi tên',lambda checked=False,c=cid:self.rename_chat(c));menu.addAction('Xóa',lambda checked=False,c=cid:self.delete_chat(c));action.setMenu(menu)
-            buttons.addWidget(action);item.setSizeHint(row.sizeHint());self.history.setItemWidget(item,row)
+            buttons.addWidget(action);item.setSizeHint(QSize(210, max(64,row.sizeHint().height()+20)));self.history.setItemWidget(item,row)
         self.filter_history(self.history_search.text())
         selected=self.history.currentItem()
         full_title=selected.text() if selected else 'Chat AI'
@@ -1509,7 +1513,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.pdf_source import PDFSource
             from assistant.word_app import WordApp
             from assistant.cad_app import CadApp
-            request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+            from assistant.cloud import cancellable_request
+            cancellable_request(lambda:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8),self.worker.stop_requested)
             with execution_lock(ROOT/'data/agent.lock'):
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,session['username']):raise RuntimeError('Hội thoại thuộc tài khoản khác.')
@@ -2334,10 +2339,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     def stop_windows_apps(self):
         from assistant.windows_apps import stop_automation
         stop_automation()
+        if self.worker and self.worker.cancellable:self.worker.stop_requested.set()
         if hasattr(self,'windows_readiness_label'):
-            from assistant.windows_apps import readiness
-            self.windows_readiness_label.setText(readiness(self.cfg))
-        self.status.setText('Đã chặn các bước điều khiển app tiếp theo. Thao tác Windows đang thực hiện có thể cần hoàn tất.')
+            self.windows_readiness_label.setText('Đã dừng điều khiển ứng dụng; bấm Tiếp tục để cho phép lại.')
+        self.status.setText('Đang dừng lượt hiện tại. Thao tác Windows đang thực hiện có thể cần hoàn tất.')
 
     def resume_windows_apps(self):
         from assistant.windows_apps import resume_automation
@@ -2626,6 +2631,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def closeEvent(self, event):
+        if getattr(self,'exit_when_idle',False) and not self.busy():
+            if hasattr(self,'automation_panel'):self.automation_panel.end()
+            event.accept();return
+        if self.worker and self.worker.cancellable and getattr(self,'update_worker',None) is None:
+            self.exit_when_idle=True
+            self.send_or_stop()
+            self.status.setText('Đang dừng tác vụ để thoát; không đóng ứng dụng bên ngoài.')
+            event.ignore();return
         if self.busy() or getattr(self,'update_worker',None) is not None:
             QMessageBox.information(self, 'Chat AI', 'Đang xử lý câu trả lời hoặc cập nhật ứng dụng. Vui lòng đợi hoàn tất rồi đóng.'); event.ignore()
         else:

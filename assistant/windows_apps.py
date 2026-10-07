@@ -88,6 +88,7 @@ def fingerprint(path):
     digest = hashlib.sha256()
     with path.open('rb') as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b''):
+            if _STOP.is_set():raise PermissionError('Đã dừng kiểm tra ứng dụng.')
             digest.update(block)
     return digest.hexdigest()
 

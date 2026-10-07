@@ -205,6 +205,23 @@ def api_answer_events(client,body):
     yield 'done',{'success':True,'switch_required':False}
 
 
+def cancellable_request(request, cancel):
+    """Detach a read-only model request on cancellation; never execute its late result."""
+    from threading import Event, Thread
+    if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
+    completed=Event();output={}
+    def receive():
+        try:output['result']=request()
+        except Exception as error:output['error']=error
+        finally:completed.set()
+    Thread(target=receive,daemon=True,name='ChatAI-model-request').start()
+    while not completed.wait(.1):
+        if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
+    if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
+    if 'error' in output:raise output['error']
+    return output['result']
+
+
 class ServerApiClient:
     """Authenticated proxy: provider API credentials never reach ordinary users."""
     def __init__(self,session,provider,on_status=None,cancel_event=None,timeout=125,retry_limit=3):
@@ -229,7 +246,8 @@ class ServerApiClient:
         for attempt in range(self.retry_limit):
             if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
             try:
-                result=request_account(self.session['endpoint'],'/api/provider/model',body,timeout=self.timeout)
+                request=lambda:request_account(self.session['endpoint'],'/api/provider/model',body,timeout=self.timeout)
+                result=cancellable_request(request,cancel) if self.cancel_event is not None else request()
                 break
             except AccountAPIError as error:
                 if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)!='nvidia' or error.status!=429 or error.code=='QUOTA_EXHAUSTED' or attempt==self.retry_limit-1:raise

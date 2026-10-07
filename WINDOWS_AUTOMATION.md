@@ -86,3 +86,5 @@ Nhận diện AutoCAD hỗ trợ tên EXE acad.exe/acadlt.exe và InstallLocatio
 Trước bước công cụ app đầu tiên của mỗi yêu cầu mới, chat hiện đếm ngược 3–2–1 giây và nút **Hủy yêu cầu**. Hủy trong khoảng này ngăn công cụ được thực hiện. Các bước sau hoặc tiếp tục duyệt trong cùng yêu cầu không đếm ngược lại.
 
 Trong mục Gần đây, hội thoại đang chọn có nút thùng rác ngay bên phải; các dòng khác có menu đổi tên/xóa. Sau khi xóa, nút **Hoàn tác** xuất hiện 5 giây. Hội thoại được backup trước khi xóa; hoàn tác khôi phục lịch sử và tên, không ghi đè hội thoại đã tồn tại. File Word/PDF/DXF đã tạo không bị xóa.
+
+Nút **Dừng app AI** hủy lượt hiện tại và chặn các bước tiếp theo. Khi đang chờ API model, bộ lập kế hoạch dừng mà không chờ phản hồi mạng; phản hồi tới muộn bị bỏ qua và không được dùng để chạy công cụ. Yêu cầu HTTP đã gửi có thể vẫn xử lý phía dịch vụ đến khi hết timeout. Nút đóng cửa sổ khi tác vụ có thể hủy sẽ yêu cầu dừng rồi tự thoát khi worker kết thúc, không đóng AutoCAD/Word ngoài ChatAI. I/O Windows hoặc Google Drive đang bị chặn vẫn có thể cần đợi hệ điều hành trả về.
