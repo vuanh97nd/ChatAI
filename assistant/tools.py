@@ -153,6 +153,25 @@ EXTRA_TOOLS.append(('cad_app',schema('cad_create_open',
 
 WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
+WRITES.add('geoslope_create')
+EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
+    'Tạo file GeoSlope/W (.gsz) phân tích ổn định mái dốc. '
+    'project_name: tên dự án (1–100 ký tự). '
+    'problem: chuỗi JSON mô tả bài toán gồm slope (height, angle, crest_width, toe_width), '
+    'materials (name, cohesion, phi, unit_weight, model), layers (material_index, top_y, bottom_y), '
+    'method (Bishop/Morgenstern-Price/Spencer/Janbu/Ordinary), water_table (null hoặc cao trình). '
+    'Lưu file .gsz vào thư mục whitelist; mở bằng GeoStudio để chạy phân tích.',
+    {'project_name': TEXT, 'problem': TEXT},
+    ['project_name', 'problem'])))
+
+EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
+    'Đọc file dự án SoilFirm Pro (.json, format saspro-python-1) và trả về dữ liệu địa chất, '
+    'thông số thiết kế và kết quả tính (nếu có). '
+    'Dùng để lấy số liệu địa kỹ thuật chuẩn bị lập báo cáo hoặc phân tích. '
+    'path: đường dẫn đầy đủ file dự án SoilFirm Pro trong whitelist. '
+    'mode: "summary" (tóm tắt nhanh, mặc định) hoặc "full" (toàn bộ trường dữ liệu).',
+    {'path': TEXT, 'mode': {'type': 'string', 'enum': ['summary', 'full']}},
+    ['path'])))
 
 WRITES.add('plaxis_generate_script')
 EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
