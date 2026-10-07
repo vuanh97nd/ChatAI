@@ -164,6 +164,54 @@ EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
     {'project_name': TEXT, 'problem': TEXT},
     ['project_name', 'problem'])))
 
+EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
+    'Đọc file dự án SoilFirm Pro (.json, format saspro-python-1) và trả về dữ liệu địa chất, '
+    'thông số thiết kế và kết quả tính (nếu có). '
+    'Dùng để lấy số liệu địa kỹ thuật chuẩn bị lập báo cáo hoặc phân tích. '
+    'path: đường dẫn đầy đủ file dự án SoilFirm Pro trong whitelist. '
+    'mode: "summary" (tóm tắt nhanh, mặc định) hoặc "full" (toàn bộ trường dữ liệu).',
+    {'path': TEXT, 'mode': {'type': 'string', 'enum': ['summary', 'full']}},
+    ['path'])))
+
+WRITES.add('soilfirm_create')
+EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_create',
+    'Tạo file dự án SoilFirm Pro từ dữ liệu địa chất AI đọc từ Excel hoặc nhập tay. '
+    'Dùng sau khi đọc Excel bằng excel_read/excel_summary và ánh xạ cột → chỉ tiêu đất. '
+    'project_name: tên công trình/dự án. '
+    'output_name: tên file kết quả (ví dụ KM32-BH1.json). '
+    'soils: chuỗi JSON mảng lớp đất, mỗi lớp gồm: '
+    'name (tên lớp), thickness (m), gamma (kN/m³), e0, cc, cs, pc (kPa), '
+    'cv_constant (cm²/s, tùy chọn), cohesion_c (kPa), friction_phi (°), '
+    'phi_cu_effective (°, tùy chọn), spt_n, category (Đất dính/Đất rời/Đất hữu cơ/Đá), '
+    'state (Quá cố kết/Cố kết thường/Chưa cố kết xong). '
+    'Ví dụ soils: [{"name":"Lớp 1 – Bùn sét","thickness":3.5,"gamma":15.2,'
+    '"e0":1.35,"cc":0.42,"cs":0.05,"pc":25,"cohesion_c":8.5,"friction_phi":6.2,'
+    '"category":"Đất dính","state":"Chưa cố kết xong"}]. '
+    'Các trường tùy chọn để null nếu không có số liệu; không tự bịa số.',
+    {'project_name': TEXT, 'output_name': TEXT, 'soils': TEXT,
+     'design_stage': TEXT, 'borehole_name': TEXT,
+     'h_design': {'type': 'number'}, 'gamma_fill': {'type': 'number'},
+     'water_depth': {'type': 'number'}, 'ground_elevation': {'type': 'number'}},
+    ['project_name', 'output_name', 'soils'])))
+
+WRITES.add('borehole_dxf')
+EXTRA_TOOLS.append(('borehole_dxf', schema('borehole_dxf',
+    'Vẽ trụ địa chất (borehole log) dạng DXF và mở AutoCAD. '
+    'Tạo bản vẽ chuẩn với cột hatch lớp đất, cột số liệu γ/e₀/Cc/c/φ/N-SPT, '
+    'đường mực nước ngầm. Font .VnArial Unicode. '
+    'app: đường dẫn acad.exe đã tìm bằng windows_list_apps. '
+    'borehole_name: mã lỗ khoan (VD: BH-1). '
+    'ground_elevation: cao độ mặt đất (m). '
+    'water_depth: chiều sâu mực nước ngầm từ mặt đất (m, 0 nếu không có). '
+    'soils: chuỗi JSON mảng lớp đất, mỗi lớp: '
+    '{"name":"Sét xám","thickness":3.5,"gamma":15.2,"e0":1.35,'
+    '"cc":0.42,"cohesion_c":8.5,"friction_phi":6.2,"spt_n":4,'
+    '"category":"Đất dính"}. '
+    'Dùng soilfirm_read hoặc excel_read để lấy số liệu trước.',
+    {'app': TEXT, 'borehole_name': TEXT, 'ground_elevation': {'type': 'number'},
+     'water_depth': {'type': 'number'}, 'soils': TEXT},
+    ['app', 'borehole_name', 'soils'])))
+
 WRITES.add('plaxis_generate_script')
 EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Tạo script Python cho Plaxis 2D/3D để phân tích địa kỹ thuật. '
@@ -177,3 +225,86 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Script sinh ra cần mở trong Plaxis bằng File > Run Script.',
     {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
     ['project_name', 'version', 'problem'])))
+
+WRITES.add('road_analyze')
+EXTRA_TOOLS.append(('road_pipeline', schema('road_analyze',
+    'Đọc DXF trắc dọc + mặt cắt ngang (tuỳ chọn) + danh sách lỗ khoan JSON → phân đoạn địa kỹ thuật → điền mẫu THSH. '
+    'profile_dxf: đường dẫn file DXF trắc dọc (layers Prf-acc/Prf-ege/Prf-fge/XSTA). '
+    'mcn_dxf: đường dẫn file DXF mặt cắt ngang (tuỳ chọn, layers XSTA/XGRIDFGT/XGRIDT/XFG). '
+    'boreholes: chuỗi JSON mảng hố khoan, mỗi hố gồm name, station (m), ground_elev, hdy (chiều sâu đất yếu), '
+    'b_nen (m), layers (mảng {code, thickness, Cc, Cs, e0, Pc, Su, E, nu, p0}). '
+    'template_xlsx: đường dẫn file Excel mẫu có sheet THSH. '
+    'output_xlsx: đường dẫn file kết quả sẽ tạo. '
+    'segment_length: độ dài đoạn tính toán (m, mặc định 200). '
+    'Trả về danh sách đoạn với phương án xử lý, lún và Fs; ghi vào THSH sau khi duyệt.',
+    {'profile_dxf': TEXT, 'mcn_dxf': TEXT, 'boreholes': TEXT, 'template_xlsx': TEXT,
+     'output_xlsx': TEXT, 'segment_length': {'type': 'number'}},
+    ['profile_dxf', 'template_xlsx', 'output_xlsx'])))
+
+WRITES.add('road_verify')
+EXTRA_TOOLS.append(('road_pipeline', schema('road_verify',
+    'Xác nhận lại và điền lại THSH với thông số xử lý người dùng điều chỉnh. '
+    'segments: chuỗi JSON mảng đoạn (từ road_analyze) có thể có thêm treatment_override. '
+    'template_xlsx: đường dẫn file mẫu THSH. '
+    'output_xlsx: đường dẫn file kết quả. '
+    'Tính lại lún và Fs rồi ghi vào THSH sau khi duyệt.',
+    {'segments': TEXT, 'template_xlsx': TEXT, 'output_xlsx': TEXT},
+    ['segments', 'template_xlsx', 'output_xlsx'])))
+
+WRITES.add('cad_tracdoc_xldy')
+EXTRA_TOOLS.append(('cad_drawing', schema('cad_tracdoc_xldy',
+    'Vẽ bản vẽ trắc dọc xử lý đất yếu (XLDY) dạng DXF từ danh sách đoạn THSH. '
+    'Xuất file DXF với bảng số liệu 9 hàng (Lý trình, Tên cọc, Cao độ TN/TK, Htk…) '
+    'và mặt cắt profile có vùng PVD/CDM, đường thiết kế, đường tự nhiên. '
+    'segments_json: mảng JSON các đoạn (từ road_analyze/road_verify). '
+    'output_dxf: đường dẫn file DXF kết quả.',
+    {'segments_json': TEXT, 'output_dxf': TEXT},
+    ['segments_json', 'output_dxf'])))
+
+WRITES.add('klxldy_write')
+EXTRA_TOOLS.append(('klxldy', schema('klxldy_write',
+    'Lập bảng khối lượng xử lý đất yếu (XLDY) ra file Excel theo form XLDY_THU_THIEM. '
+    'Tự động tính số lượng cọc CDM, bấc thấm/giếng cát, khối đào thay, cọc tre/cừ tràm, '
+    'vải địa kỹ thuật, bàn đo lún theo từng đoạn. '
+    'segments_json: mảng JSON đoạn (từ road_analyze/road_verify). '
+    'output_xlsx: đường dẫn file kết quả. '
+    'project_name: tên dự án (tuỳ chọn).',
+    {'segments_json': TEXT, 'output_xlsx': TEXT, 'project_name': TEXT},
+    ['segments_json', 'output_xlsx'])))
+
+WRITES.add('tm_xldy_write')
+EXTRA_TOOLS.append(('tm_xldy', schema('tm_xldy_write',
+    'Soạn thuyết minh tính toán xử lý đất yếu (XLDY) ra file Word (.docx) theo form TMXLDY. '
+    'Gồm 5 chương: Giới thiệu, Cơ sở tính toán, Lý thuyết công thức, Kết quả tính toán, Quan trắc. '
+    'Đúng cả nội dung chữ lẫn bảng số liệu theo mẫu chuẩn. '
+    'segments_json: mảng JSON đoạn. '
+    'output_docx: đường dẫn file kết quả. '
+    'project_name, sta_from, sta_to: thông tin dự án (tuỳ chọn). '
+    'soil_params_json: mảng JSON chỉ tiêu đất [{"code","description","gamma","Su","e0","Cc","Cs","Cv","Pc"}] (tuỳ chọn).',
+    {'segments_json': TEXT, 'output_docx': TEXT,
+     'project_name': TEXT, 'sta_from': TEXT, 'sta_to': TEXT,
+     'soil_params_json': TEXT},
+    ['segments_json', 'output_docx'])))
+
+WRITES.add('geoslope_write')
+EXTRA_TOOLS.append(('geoslope_xldy', schema('geoslope_write',
+    'Tạo file phân tích ổn định mái dốc GeoSlope SLOPE/W (.gsz) cho đoạn đường. '
+    'Xây dựng mặt cắt ngang đắp (hdy), lớp đất yếu (htk), vùng xử lý (CDM/PVD/đào thay đất/cọc tre). '
+    'Phân tích Bishop, bề mặt trượt GridAndRadius; Fs ≥ 1.2 (thi công), ≥ 1.4 (khai thác). '
+    'output_gsz: đường dẫn file .gsz đầu ra. '
+    'segments_json: JSON list các đoạn đường (từ road_analyze/road_verify). '
+    'soil_params_json: JSON list thông số đất nền [{"role","name","gamma","cohesion","c_prime","phi_prime"}] (tuỳ chọn). '
+    'project_name: tên dự án (tuỳ chọn). '
+    'method: Bishop (mặc định)/Morgenstern-Price/Spencer/Janbu/Ordinary.',
+    {'output_gsz': TEXT, 'segments_json': TEXT,
+     'soil_params_json': TEXT, 'project_name': TEXT, 'method': TEXT},
+    ['output_gsz', 'segments_json'])))
+
+WRITES.add('cad_mcn_xldy')
+EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
+    'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '
+    'Mỗi đoạn vẽ một mặt cắt ngang với nền đường, đất yếu, ký hiệu PVD hoặc CDM, kích thước Bn/Htk/hdy. '
+    'segments_json: mảng JSON các đoạn (từ road_analyze/road_verify). '
+    'output_dxf: đường dẫn file DXF kết quả.',
+    {'segments_json': TEXT, 'output_dxf': TEXT},
+    ['segments_json', 'output_dxf'])))

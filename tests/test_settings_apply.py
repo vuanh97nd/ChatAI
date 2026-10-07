@@ -54,6 +54,7 @@ class SettingsTest(unittest.TestCase):
         namespace={'PROVIDER_NAMES':PROVIDER_NAMES,'REMOTE_MODELS':REMOTE_MODELS,'admin_session':admin_session,'re':re,'style_sheet':style_sheet,'recolor':recolor,'QWidget':Text,'QComboBox':Combo,'CLOUD_MODEL':'Cloudflare AI','QMessageBox':SimpleNamespace(information=lambda *args:None)}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[klass],type_ignores=[])),'settings','exec'),namespace)
         self.ui=namespace['TestWindow']();u=self.ui;u.cfg=cfg
+        u.isVisible=lambda:False # Settings doubles represent a window before show; visible transitions have Qt paint tests.
         from assistant.storage import Store
         u.store=Store(self.root/'history.db');u.server_session={'username':'test','endpoint':cfg['server_url']}
         u.settings_fields={key:Combo(cfg[key]) if key.endswith('model') else Spin(cfg[key]) for key in ('default_model','code_model','num_ctx','num_predict','font_size','max_rounds','temperature')}

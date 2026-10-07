@@ -15,7 +15,7 @@ GEMINI_MODEL = 'Gemini API'
 GROQ_MODEL = 'Groq API'
 REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_FLASH_MODEL:'deepseek_flash', DEEPSEEK_PRO_MODEL:'deepseek_pro', DEEPSEEK_R1_MODEL:'deepseek_r1', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
 PROVIDER_NAMES = {v:k for k,v in REMOTE_MODELS.items()}
-_DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner'}
+_DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash'}
 CUSTOM_PROVIDER_TYPES={}
 SWITCH_MESSAGE = 'Chọn AI phù hợp với tác vụ bạn muốn thực hiện.'
 
@@ -90,7 +90,7 @@ API_ENDPOINTS = {'nvidia':'https://integrate.api.nvidia.com/v1/chat/completions'
                  'deepseek':_DS_API,'deepseek_flash':_DS_API,'deepseek_pro':_DS_API,'deepseek_r1':_DS_API,
                  'gemini':'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                  'groq':'https://api.groq.com/openai/v1/chat/completions'}
-API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
+API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
 
 
 def _protect_key(value, decrypt=False):
@@ -208,6 +208,8 @@ def api_answer_events(client,body):
     from .answer_policy import guard_answer
     result=body.get('document_result') or {}
     instruction=FAST_SYSTEM+'\nKhông có công cụ thao tác máy trong lượt API này.'
+    if body.get('document_sources_unavailable'):
+        instruction+='\nLượt này chưa có nguồn tài liệu để đọc/đối chiếu. Không tuyên bố đã đọc file, tra cứu tiêu chuẩn hoặc trích dẫn điều khoản. Nếu cần kiểm tra tài liệu cụ thể, yêu cầu người dùng đính kèm hoặc bật tìm web; câu hỏi kiến thức chung có thể trả lời với giới hạn này.'
     if result.get('documents') or result.get('intent',{}).get('target_type')=='document':instruction+='\n'+document_instruction(result)
     web_context=body.get('document_context')
     if body.get('web_search'):
@@ -298,6 +300,59 @@ class ServerApiClient:
         self.session=dict(session);self.provider=provider;self.model=provider;self.on_status=on_status;self.cancel_event=cancel_event
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
+    def stream_answer(self,model,messages,**kwargs):
+        if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider) not in ('deepseek','deepseek_flash','deepseek_pro','deepseek_r1'):
+            yield self.chat(model,messages,**kwargs)['message']['content'];return
+        endpoint=self.session['endpoint']
+        url=urlparse(endpoint)
+        if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
+            raise ValueError('URL server phải là URL gốc HTTPS.')
+        options=kwargs.get('options',{})
+        body={'username':self.session['username'],'key':self.session['key'],'provider':self.provider,
+              'messages':messages,'max_tokens':options.get('num_predict',1600),
+              'temperature':options.get('temperature',.2),'stream':True}
+        request=Request(endpoint.rstrip('/')+'/api/provider/model',data=json.dumps(body).encode(),
+                        headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
+        import time
+        from .performance import record
+        started=time.monotonic();first_answer=True
+        try:
+            with urlopen(request,timeout=self.timeout) as response:
+                record('ai.wait_response_headers',time.monotonic()-started)
+                if 'text/event-stream' not in response.headers.get('Content-Type',''):
+                    value=json.load(response)
+                    if not value.get('success') or not value.get('answer'):raise CloudError(value.get('message','AI chưa trả nội dung.'))
+                    record('ai.wait_first_text_json',time.monotonic()-started)
+                    if self.on_status:self.on_status('Server trả toàn bộ câu trả lời; chưa dùng luồng trả lời dần.')
+                    yield value['answer'];return
+                for raw in response:
+                    if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
+                    if len(raw)>100000:raise CloudError('Phản hồi server quá lớn.')
+                    line=raw.decode('utf-8').strip()
+                    if not line.startswith('data:'):continue
+                    chunk=line[5:].strip()
+                    if chunk=='[DONE]':return
+                    try:value=json.loads(chunk)
+                    except ValueError:raise CloudError('Luồng AI trả dữ liệu không hợp lệ.') from None
+                    if value.get('error'):raise CloudError('Dịch vụ AI đã ngắt luồng trả lời.')
+                    choices=value.get('choices',[])
+                    delta=choices[0].get('delta',{}).get('content','') if choices else ''
+                    if isinstance(delta,str) and delta:
+                        if first_answer:
+                            record('ai.wait_first_text_stream',time.monotonic()-started);first_answer=False
+                        yield delta
+        except HTTPError as error:
+            try:detail=json.loads(error.read(20000))
+            except (ValueError,UnicodeDecodeError):detail={}
+            if not isinstance(detail,dict):detail={}
+            message=str(detail.get('message') or 'Server HTTP '+str(error.code))
+            message=message.replace(str(self.session['key']),'[ẨN]')
+            if error.code==403:
+                message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
+            raise CloudError(message,detail.get('code','')) from None
+        except (URLError,TimeoutError):raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
+        finally:record('ai.request_total',time.monotonic()-started)
+
     def chat(self,model,messages,**kwargs):
         from .accounts import request_account
         options=kwargs.get('options',{})
@@ -343,7 +398,7 @@ def register_custom_ai(entries):
         identifier=item.get('id','');label=item.get('label','')
         if not re.fullmatch(r'ai_[a-f0-9]{32}',identifier) or item.get('provider') not in ('nvidia','deepseek','gemini','groq') or not isinstance(label,str) or not 1<=len(label)<=80:continue
         name=label
-        if name in REMOTE_MODELS and REMOTE_MODELS[name]!=identifier:continue
+        if name in REMOTE_MODELS and REMOTE_MODELS[name]!=identifier and not (REMOTE_MODELS[name] in _DEEPSEEK_VARIANT_MODELS and item['provider']=='deepseek'):continue
         REMOTE_MODELS[name]=identifier;PROVIDER_NAMES[identifier]=name;CUSTOM_PROVIDER_TYPES[identifier]=item['provider']
-        accepted.append({k:item.get(k,'') for k in ('id','label','provider','model')})
+        accepted.append({k:item.get(k,'') for k in ('id','label','provider','model','thinking_enabled')})
     return accepted

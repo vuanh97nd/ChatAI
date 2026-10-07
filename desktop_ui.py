@@ -2171,6 +2171,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 field.editingFinished.connect(lambda p=provider:QTimer.singleShot(200,lambda:self.load_provider_catalog(False,p)))
             self.button(api_form,'Kiểm tra '+label,lambda checked=False,p=provider:self.check_online_provider(p))
         self.button(api_form,'Thêm AI',self.add_ai_dialog)
+        self.button(api_form,'Cấu hình 3 AI DeepSeek dùng chung key',self.configure_deepseek_presets)
         self.button(api_form,'Lưu key API',self.save_settings)
         self.button(api_form,'Xem trạng thái key trên server',self.provider_key_status)
         self.api_key_group.setVisible(admin_session(self.server_session));layout.addWidget(self.api_key_group)
@@ -2655,11 +2656,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.apply_theme(self.settings_theme.currentData(),self.settings_fields['font_size'].value())
 
     def apply_theme(self,theme,font_size=None):
-        if not hasattr(self, '_win_opacity'):
-            self._win_opacity = QGraphicsOpacityEffect(self.centralWidget() or self)
-            (self.centralWidget() or self).setGraphicsEffect(self._win_opacity)
-        eff = self._win_opacity
-        def _do_apply():
+        # Fade the native window, not a QGraphicsEffect on the central widget.
+        # Parent effects nest with composer shadows/child fades and Qt can skip
+        # painting their subtrees. Keep the transition without that nesting.
+        previous=getattr(self,'_theme_animation',None)
+        if previous is not None:
+            previous.stop();previous.deleteLater()
+        self._theme_animation=None
+        def apply_colors():
             self.preview_theme=theme
             self.preview_font_size=self.cfg.get('font_size',13) if font_size is None else font_size
             self.setStyleSheet(style_sheet(theme))
@@ -2674,14 +2678,22 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if hasattr(self,'profile_avatar') and hasattr(self,'account_register_button'):self.refresh_account_ui()
             self.apply_font();self.html_cache.clear()
             if hasattr(self,'paint_timer'):self.draw()
-            fade_in = QPropertyAnimation(eff, b'opacity', self)
-            fade_in.setDuration(200); fade_in.setStartValue(0.85); fade_in.setEndValue(1.0)
-            fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
-            fade_in.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
-        fade_out = QPropertyAnimation(eff, b'opacity', self)
-        fade_out.setDuration(80); fade_out.setStartValue(1.0); fade_out.setEndValue(0.85)
-        fade_out.finished.connect(_do_apply)
-        fade_out.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+        if not self.isVisible():
+            apply_colors();return
+        fade_out=QPropertyAnimation(self,b'windowOpacity',self)
+        fade_out.setDuration(80);fade_out.setStartValue(self.windowOpacity());fade_out.setEndValue(.85)
+        def fade_in():
+            apply_colors();fade_out.deleteLater()
+            animation=QPropertyAnimation(self,b'windowOpacity',self)
+            animation.setDuration(200);animation.setStartValue(self.windowOpacity());animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            def complete():
+                if self._theme_animation is animation:self._theme_animation=None
+                animation.deleteLater()
+            animation.finished.connect(complete)
+            self._theme_animation=animation;animation.start()
+        fade_out.finished.connect(fade_in)
+        self._theme_animation=fade_out;fade_out.start()
 
     def light_settings(self):
         self.settings_fields['default_model'].setCurrentText('qwen2.5:3b')
@@ -2698,6 +2710,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if self.settings_provider.findText(name)<0:self.settings_provider.addItem(name)
         from assistant.config import save_config
         self.cfg=save_config(self.cfg)
+
+    def configure_deepseek_presets(self):
+        if not admin_session(self.server_session) or self.busy():return
+        from assistant.accounts import request_account
+        session=dict(self.server_session)
+        def done(value):
+            replacements={item['id'] for item in value['entries']}
+            entries=[item for item in self.cfg.get('custom_ai',[]) if item['id'] not in replacements]
+            self.install_custom_ai([*entries,*value['entries']])
+            self.select_ai('DeepSeek Flash')
+            QMessageBox.information(self,'DeepSeek',value.get('message','Đã lưu cấu hình.'))
+        self.work(lambda emit:request_account(session['endpoint'],'/api/admin/providers/deepseek-presets',dict(username=session['username'],key=session['key']),timeout=30),done)
 
     def add_ai_dialog(self):
         if not admin_session(self.server_session) or self.busy():return
