@@ -250,3 +250,22 @@ EXTRA_TOOLS.append(('road_pipeline', schema('road_verify',
     'Tính lại lún và Fs rồi ghi vào THSH sau khi duyệt.',
     {'segments': TEXT, 'template_xlsx': TEXT, 'output_xlsx': TEXT},
     ['segments', 'template_xlsx', 'output_xlsx'])))
+
+WRITES.add('cad_tracdoc_xldy')
+EXTRA_TOOLS.append(('cad_drawing', schema('cad_tracdoc_xldy',
+    'Vẽ bản vẽ trắc dọc xử lý đất yếu (XLDY) dạng DXF từ danh sách đoạn THSH. '
+    'Xuất file DXF với bảng số liệu 9 hàng (Lý trình, Tên cọc, Cao độ TN/TK, Htk…) '
+    'và mặt cắt profile có vùng PVD/CDM, đường thiết kế, đường tự nhiên. '
+    'segments_json: mảng JSON các đoạn (từ road_analyze/road_verify). '
+    'output_dxf: đường dẫn file DXF kết quả.',
+    {'segments_json': TEXT, 'output_dxf': TEXT},
+    ['segments_json', 'output_dxf'])))
+
+WRITES.add('cad_mcn_xldy')
+EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
+    'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '
+    'Mỗi đoạn vẽ một mặt cắt ngang với nền đường, đất yếu, ký hiệu PVD hoặc CDM, kích thước Bn/Htk/hdy. '
+    'segments_json: mảng JSON các đoạn (từ road_analyze/road_verify). '
+    'output_dxf: đường dẫn file DXF kết quả.',
+    {'segments_json': TEXT, 'output_dxf': TEXT},
+    ['segments_json', 'output_dxf'])))

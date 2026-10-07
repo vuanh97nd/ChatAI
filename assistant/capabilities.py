@@ -55,11 +55,14 @@ class Capabilities:
         self.borehole_dxf=BoreholeDxfApp(self.files,self.windows,audit)
         from .road_pipeline_app import RoadPipelineApp
         self.road_pipeline=RoadPipelineApp(self.files,self.soilfirm_app,audit)
+        from .cad_drawing import CadDrawingApp
+        self.cad_drawing=CadDrawingApp(self.files,audit)
         if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
         self.active.add('plaxis_app')
         self.active.add('geoslope_app')
         self.active.add('soilfirm_app')
         self.active.add('road_pipeline')
+        self.active.add('cad_drawing')
         if 'windows' in self.active:self.active.add('borehole_dxf')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         from .online_automation import app_permissions
@@ -68,6 +71,7 @@ class Capabilities:
     def prepare(self, name, args):
         if name=='road_analyze':return self.road_pipeline.prepare_analyze(name,args)
         if name=='road_verify':return self.road_pipeline.prepare_verify(name,args)
+        if name in {'cad_tracdoc_xldy','cad_mcn_xldy'}:return self.cad_drawing.prepare(name,args)
         if name=='soilfirm_create':return self.soilfirm_app.prepare_create(name,args)
         if name=='borehole_dxf':return self.borehole_dxf.prepare(name,args)
         if name=='geoslope_create':return self.geoslope_app.prepare(name,args)
@@ -107,6 +111,10 @@ class Capabilities:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
         if action=='road_analyze':return self.road_pipeline.commit_analyze(plan)
         if action=='road_verify':return self.road_pipeline.commit_verify(plan)
+        if action in {'cad_tracdoc_xldy','cad_mcn_xldy'}:
+            r=self.cad_drawing.commit(plan)
+            if r.get('status')=='error':raise RuntimeError(r['message'])
+            return f"Đã xuất {r['segments']} đoạn → {r['output']}"
         if action=='soilfirm_create':return self.soilfirm_app.commit_create(plan)
         if action=='borehole_dxf':return self.borehole_dxf.commit(plan)
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
