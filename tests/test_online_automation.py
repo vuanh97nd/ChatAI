@@ -14,6 +14,19 @@ from assistant.windows_apps import resume_automation,stop_automation
 class BrowserPolicyTest(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_dependency_error_names_the_running_runtime(self):
+        from assistant.browser import dependency_error
+        import builtins
+        original_import=builtins.__import__
+        def unavailable(name,*args,**kwargs):
+            if name=='playwright.sync_api':raise ModuleNotFoundError('missing')
+            return original_import(name,*args,**kwargs)
+        with patch('assistant.browser.os.name','nt'), patch('assistant.browser.sys.executable','/tmp/runtime/pythonw.exe'), patch('builtins.__import__',side_effect=unavailable):
+            # Path selection on Linux must stay POSIX despite the mocked platform.
+            with patch('assistant.browser.Path',__import__('pathlib').PosixPath):
+                message=dependency_error()
+        self.assertIn('/tmp/runtime/pythonw.exe',message)
+        self.assertIn("& '/tmp/runtime/python.exe' -m pip install",message)
     def test_public_https_only(self):
         for url in ('file:///C:/secret','http://example.org','https://u:p@example.org','https://example.org:8443'):
             with self.assertRaises(ValueError):public_url(url)
@@ -37,7 +50,7 @@ class BrowserPolicyTest(unittest.TestCase):
         self.assertEqual(record['coverage'],'partial')
         self.assertEqual(guard_answer('Đã tìm trên web.',state)[1],[])
     def test_saved_policy_and_executable_rechecked_before_launch(self):
-        with tempfile.TemporaryDirectory() as folder, patch('assistant.browser.available',return_value=True):
+        with tempfile.TemporaryDirectory() as folder, patch('assistant.browser.dependency_error',return_value=None):
             path=Path(folder)/'chrome.exe';path.write_bytes(b'fixture')
             cfg={'windows_apps_enabled':True,'windows_apps_allowed':[str(path)]}
             policy=Path(folder)/'config.json';policy.write_text(json.dumps(cfg))

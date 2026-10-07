@@ -3,6 +3,7 @@ import importlib.util
 import ipaddress
 import json
 import os
+import sys
 from pathlib import Path
 import socket
 import time
@@ -13,6 +14,21 @@ from .windows_apps import _STOP, fingerprint
 
 def available():
     return os.name == 'nt' and importlib.util.find_spec('playwright') is not None
+
+
+def dependency_error():
+    executable = Path(sys.executable)
+    if os.name != 'nt':
+        return 'Điều khiển Chrome cần chạy ChatAI trên Windows. Python hiện tại: ' + str(executable)
+    try:
+        from playwright.sync_api import sync_playwright
+    except (ImportError, OSError) as exc:
+        python = executable.with_name('python.exe') if executable.name.lower() == 'pythonw.exe' else executable
+        quoted = str(python).replace("'", "''")
+        return (f'Python đang chạy ChatAI: {executable}. Chưa nạp được Playwright ({type(exc).__name__}). '
+                f'Đóng ChatAI, mở PowerShell và chạy: & \'{quoted}\' -m pip install "playwright>=1.50,<2". '
+                'Sau đó mở lại ChatAI bằng cách bạn thường dùng. Cài vào .venv không bổ sung thư viện cho runtime của bản EXE.')
+    return None
 
 
 def public_url(url):
@@ -55,7 +71,8 @@ class BrowserTools:
         if _STOP.is_set():raise PermissionError('Đã dừng điều khiển app.')
         cfg = json.loads(Path(self.policy_path).read_text(encoding='utf-8')) if self.policy_path else self.cfg
         if not cfg.get('windows_apps_enabled'):raise PermissionError('Bật quyền Điều khiển ứng dụng và Lưu trước.')
-        if not available():raise RuntimeError('Cần Windows và playwright: cài requirements-windows-automation.txt rồi khởi động lại ChatAI.')
+        problem=dependency_error()
+        if problem:raise RuntimeError(problem)
         return cfg
 
     def chrome_path(self, raw):
