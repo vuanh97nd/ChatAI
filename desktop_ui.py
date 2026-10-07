@@ -232,6 +232,24 @@ class ChatView(QTextBrowser):
                 if path.suffix.lower()!='.mp4' or not path.is_file() or not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
             except Exception:return
+        elif url.scheme()=='chatai-file':
+            try:
+                import base64
+                value=url.toString().partition(':')[2]
+                value+='='*((4-len(value)%4)%4)
+                path=Path(base64.urlsafe_b64decode(value.encode()).decode()).resolve(strict=True)
+                if not path.is_file() or not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+            except Exception:return
+        elif url.scheme()=='chatai-folder':
+            try:
+                import base64
+                value=url.toString().partition(':')[2]
+                value+='='*((4-len(value)%4)%4)
+                path=Path(base64.urlsafe_b64decode(value.encode()).decode()).resolve(strict=True)
+                if not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent if path.is_file() else path)))
+            except Exception:return
         elif url.scheme() in ('https', 'http'):
             QDesktopServices.openUrl(url)
 
@@ -994,6 +1012,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         import base64
                         token=base64.urlsafe_b64encode(str(path).encode()).decode().rstrip('=')
                         media_html+='<p><a href="chatai-media:'+token+'">▶ Mở video MP4</a></p>'
+                    elif item.get('kind')=='file':
+                        import base64
+                        ft=base64.urlsafe_b64encode(str(path).encode()).decode().rstrip('=')
+                        fdt=base64.urlsafe_b64encode(str(path.parent).encode()).decode().rstrip('=')
+                        media_html+=('<p>📄 <a href="chatai-file:'+ft+'">'+html.escape(path.name)+'</a>'
+                                     +'&nbsp;&nbsp;<a href="chatai-folder:'+fdt+'">📁 Mở thư mục</a></p>')
                 except Exception:continue
             if media_html and not safe_content:safe_content=media_html
             elif media_html:safe_content+='<br>'+media_html
