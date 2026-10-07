@@ -14,6 +14,12 @@ from assistant.windows_apps import resume_automation,stop_automation
 class BrowserPolicyTest(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_challenge_detection_and_search_engine(self):
+        from assistant.browser import challenge_detected
+        self.assertTrue(challenge_detected('https://www.google.com/sorry/index',''))
+        self.assertTrue(challenge_detected('https://www.bing.com/turing/captcha',''))
+        self.assertTrue(challenge_detected('https://www.bing.com/search?q=test','Verify you are human'))
+        self.assertFalse(challenge_detected('https://example.org/article','Bài viết giải thích CAPTCHA và unusual traffic.'))
     def test_dependency_error_names_the_running_runtime(self):
         from assistant.browser import dependency_error
         import builtins
@@ -57,6 +63,7 @@ class BrowserPolicyTest(unittest.TestCase):
             browser=BrowserTools(cfg,lambda *a:None,policy_path=policy)
             plan=browser.prepare('browser_search',{'path':str(path),'query':'tiêu chuẩn 41-2022'})
             self.assertIn('q=',plan['steps'][0]['url'])
+            self.assertTrue(plan['steps'][0]['url'].startswith('https://www.bing.com/search?'))
             policy.write_text(json.dumps(dict(cfg,windows_apps_allowed=[])))
             with self.assertRaises(PermissionError):browser.commit(plan)
             policy.write_text(json.dumps(cfg));path.write_bytes(b'changed')

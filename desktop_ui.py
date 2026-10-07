@@ -1406,15 +1406,19 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.browser import BrowserTools
             from assistant.windows_apps import WindowsApps
             from assistant.online_automation import OnlineAutomation
+            from assistant.files import FileTools
+            from assistant.pdf_source import PDFSource
             request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
             with execution_lock(ROOT/'data/agent.lock'):
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,session['username']):raise RuntimeError('Hội thoại thuộc tài khoản khác.')
                 audit=lambda action,details:self.store.audit(cid,action,details)
                 client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=self.worker.stop_requested)
-                agent=OnlineAutomation(client,cfg,self.store,cid,
-                    WindowsApps(cfg,audit,owner=session['username'],policy_path=ROOT/'config.json'),
-                    BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})))
+                windows=WindowsApps(cfg,audit,owner=session['username'],policy_path=ROOT/'config.json')
+                files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
+                agent=OnlineAutomation(client,cfg,self.store,cid,windows,
+                    BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
+                    PDFSource(windows,files,audit))
                 if prompt is not None:
                     agent.start(state,prompt,model,session['username'])
                     self.store.remember_conversation(session['username'],cid)

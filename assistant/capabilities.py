@@ -35,10 +35,14 @@ class Capabilities:
         from .browser import BrowserTools, available as browser_available
         self.browser = BrowserTools(cfg,audit,policy_path=root/'config.json',on_status=on_status)
         if cfg.get('windows_apps_enabled') and browser_available():self.active.add('browser')
+        from .pdf_source import PDFSource
+        self.pdf_source=PDFSource(self.windows,self.files,audit)
+        if 'windows' in self.active:self.active.add('pdf_source')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' Danh sách EXE được phép: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        if name in {'pdf_source_open','pdf_read'}:return self.pdf_source.prepare(name,args)
         if name.startswith('browser_'):return self.browser.prepare(name,args)
         if name.startswith("windows_"):return self.windows.prepare(name,args)
         if name=="python_search" and not self.allow_web:raise PermissionError("Bật nút Tìm kiếm mạng trước.")
@@ -66,6 +70,7 @@ class Capabilities:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
         if action.startswith("windows_"):return self.windows.commit(plan)
         if action.startswith('browser_'):return self.browser.commit(plan)
+        if action in {'pdf_source_open','pdf_read'}:return self.pdf_source.commit(plan)
         if action=="python_search":
             if not self.allow_web:raise PermissionError("Bật nút Tìm kiếm mạng trước.")
             if not {"web","python"}.issubset(self.active):raise RuntimeError("Bật module Web và Python trước.")

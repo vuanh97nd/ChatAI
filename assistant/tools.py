@@ -1,5 +1,6 @@
 WRITES = {"excel_edit_cell", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
           "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace", "windows_open", "windows_inspect", "windows_action", "browser_search", "browser_run"}
+WRITES.update({'pdf_source_open','pdf_read'})
 
 def schema(name, description, properties, required):
     return {"type": "function", "function": {"name": name, "description": description,
@@ -66,7 +67,9 @@ EXTRA_TOOLS.append(('python',schema('python_search',
 
 
 EXTRA_TOOLS.extend([
-    ('browser', schema('browser_search', 'Tự mở Chrome riêng, tìm Google và đọc kết quả sau khi duyệt một lần. Không cần bật Tìm web riêng: quy trình này xin quyền truy cập mạng trong preview. Không đăng nhập, không tải file. Trả text và URL thực.', {'path':TEXT,'query':TEXT}, ['path','query'])),
+    ('pdf_source', schema('pdf_source_open','Tải URL PDF HTTPS công khai tối đa 20 MiB vào thư mục được phép và mở Foxit Reader được phép; xin duyệt một lần. Trả text phần đầu và next_start. Dùng browser_search tìm URL thật trước; không đoán URL. app là đường dẫn EXE Foxit trong danh sách.',{'url':TEXT,'app':TEXT},['url','app'])),
+    ('pdf_source', schema('pdf_read','Đọc tiếp PDF đã tải trong thư mục được phép, tối đa 8000 ký tự mỗi lần; cần duyệt. start là chuỗi số từ next_start. Không xem màn hình Foxit.',{'path':TEXT,'start':TEXT},['path'])),
+    ('browser', schema('browser_search', 'Tự mở Chrome riêng, tìm Bing và đọc kết quả sau khi duyệt một lần. Không cần bật Tìm web riêng: quy trình này xin quyền truy cập mạng trong preview. Không đăng nhập, không tải file. Trả text và URL thực. Nếu có CAPTCHA, báo bị chặn và đề nghị URL nguồn; không yêu cầu giải CAPTCHA trong Chrome thường vì phiên riêng đã đóng.', {'path':TEXT,'query':TEXT}, ['path','query'])),
     ('browser', schema('browser_run', 'Thực hiện 1–12 bước Chrome sau khi duyệt toàn bộ quy trình. steps là chuỗi JSON mảng: [{"action":"navigate","url":"https://..."},{"action":"fill","selector":"...","text":"..."},{"action":"click","selector":"..."},{"action":"read"}]. Mỗi lần chạy có Chrome riêng mới, đóng khi xong; không tiếp tục phiên trước. Chỉ HTTPS công khai. Click có thể gửi biểu mẫu. Không nhập mật khẩu hoặc tải file.', {'path':TEXT,'steps':TEXT}, ['path','steps'])),
     ('windows', schema('windows_open', 'Mở ứng dụng Windows trong danh sách được phép, không shell/arguments. Bắt buộc người dùng duyệt.', {'path': TEXT}, ['path'])),
     ('windows', schema('windows_inspect', 'Đọc control UIA của phiên ứng dụng đã mở. Cần duyệt vì dữ liệu giao diện sẽ vào hội thoại. Không đọc ô mật khẩu.', {'session': TEXT}, ['session'])),

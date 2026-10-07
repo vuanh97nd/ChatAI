@@ -24,7 +24,7 @@ Chọn **AI trực tuyến → DeepSeek API**, đăng nhập tài khoản đã �
 
 > Hãy mở Chrome và tìm kiếm thông tin về tiêu chuẩn 41-2022.
 
-ChatAI đưa quy trình mở Chrome → truy vấn Google → đọc text/URL vào một hộp duyệt. Đồng ý một lần để chạy toàn bộ quy trình; kết quả được gửi tới DeepSeek để tổng hợp. Công cụ `browser_search` có quyền truy cập Google nằm trong preview, không cần bật nút Tìm web cho quy trình này. Nếu số hiệu không đủ rõ, CAPTCHA hoặc trang lỗi, AI phải báo giới hạn và chưa được coi là đã tìm thấy tài liệu. Nếu Chrome không có trong danh sách, thêm EXE và gửi lại yêu cầu.
+ChatAI đưa quy trình mở Chrome → truy vấn Bing → đọc text/URL vào một hộp duyệt. Đồng ý một lần để chạy toàn bộ quy trình; kết quả được gửi tới DeepSeek để tổng hợp. Công cụ `browser_search` có quyền truy cập Bing nằm trong preview, không cần bật nút Tìm web cho quy trình này. Bing thay cho Google vì Google có thể chặn profile tự động bằng CAPTCHA; Bing vẫn có thể chặn truy cập. Nếu gặp dấu hiệu CAPTCHA, công cụ báo `blocked` và AI chưa được coi là đã tìm thấy tài liệu. Phiên Chrome riêng đóng sau quy trình nên giải CAPTCHA trong Chrome thường rồi thử lại không giúp phiên này. Có thể dùng nút Tìm web (tra cứu trực tiếp bằng công cụ của ChatAI), hoặc cung cấp URL trang nguồn/PDF để đọc. Nếu số hiệu không đủ rõ hoặc trang lỗi, phải báo giới hạn. Nếu Chrome không có trong danh sách, thêm EXE và gửi lại yêu cầu.
 
 `browser_run` hỗ trợ quy trình 1–12 bước **navigate → fill → click → read**. AI có thể mở trang, đọc các control/selector, đề nghị quy trình nhập/bấm, rồi đọc lại để kiểm tra kết quả. Mỗi quy trình cần duyệt toàn bộ trước khi chạy; AI không được chạy JavaScript/shell tùy ý. Quy trình được giới hạn khoảng 90 giây, mỗi thao tác có timeout riêng. Chỉ HTTPS công khai; chặn localhost/mạng riêng, download, popup và WebSocket. DNS thay đổi giữa lần kiểm tra và kết nối vẫn là giới hạn của cơ chế kiểm tra địa chỉ; không dùng tính năng như ranh giới mạng thay cho firewall.
 
@@ -33,6 +33,10 @@ Chrome dùng profile riêng không có cookie/tài khoản của trình duyệt 
 DeepSeek, NVIDIA, Gemini và các AI trực tuyến qua proxy tương thích có thể lập kế hoạch bằng JSON cho cả công cụ Chrome và `windows_open`/`windows_inspect`/`windows_action`. ChatAI desktop thực hiện tại máy; server không tự truy cập máy Windows. Công cụ Windows vẫn duyệt từng bước, còn một quy trình Chrome chạy tự động sau một lần duyệt. Không cần Ollama cho luồng trực tuyến này. Cloudflare chat chưa hỗ trợ luồng điều khiển app. Cần kiểm thử API thật và Windows thật trên máy người dùng; test cloud dùng phản hồi nhà cung cấp giả lập.
 
 **Dừng app AI** ở khung chat hoặc **Dừng điều khiển app** trong Cài đặt chặn các bước tiếp theo. Không cưỡng ép tắt app/tiến trình vì có thể mất tài liệu. Thao tác UIA đang thực hiện có thể cần hoàn tất. Bấm **Tiếp tục điều khiển app** trong Cài đặt để cấp lại quyền. Tắt quyền hoặc xóa EXE khỏi danh sách rồi lưu cũng chặn bước đang chờ duyệt. Phiên điều khiển không được giữ qua lần khởi động lại ChatAI.
+
+## Tải PDF và mở Foxit Reader
+
+Thêm EXE **Foxit PDF Reader** vào danh sách ứng dụng được phép và Lưu. Cài đặt thư mục được phép để lưu PDF (không lưu ngoài whitelist). Có thể gửi DeepSeek: “Tìm nguồn PDF chính thức của TCCS 41-2022, tải về, mở bằng Foxit Reader rồi đọc và tóm tắt.” AI tìm URL nguồn, đề nghị `pdf_source_open` để tải PDF tối đa 20 MiB, lưu một file mới và gửi lệnh mở Foxit. Đọc văn bản bằng thư viện PDF, không chụp/đọc màn hình Foxit; file scan cần OCR và không được coi là đã đọc toàn văn khi thiếu text. Dùng `pdf_read` và `next_start` để đọc tiếp phần còn lại; mỗi lượt đọc vẫn cần duyệt. Việc mở Foxit thành công không chứng minh tài liệu đúng số hiệu hoặc nội dung đã được kiểm chứng. Không ghi đè file, không hỗ trợ PDF mã hóa. Chrome vẫn chặn download; việc tải được thực hiện bởi công cụ PDF riêng với preview URL và đường dẫn đích.
 
 ## Phạm vi hỗ trợ
 

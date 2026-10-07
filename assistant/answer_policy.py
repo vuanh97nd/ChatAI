@@ -46,6 +46,7 @@ def evidence_record(state,web_allowed=False):
     pages=web.get('pages',[])
     tools=turn_tools(state)
     urls={s.get('url') for s in web.get('sources',[])+pages if s.get('url')}
+    pdf_full=False
     for row in tools:
         if row['name']=='web_read' and row['result'].get('text'):
             pages=pages+[row['result']]
@@ -58,11 +59,16 @@ def evidence_record(state,web_allowed=False):
                     pages=pages+[observed]
                     if observed.get('url'):urls.add(observed['url'])
                     urls.update(link.get('url') for link in observed.get('links',[]) if link.get('url'))
+        if row['name'] in {'pdf_source_open','pdf_read'} and row['result'].get('read_ok'):
+            observed=row['result']
+            if observed.get('content'):pages=pages+[observed]
+            if observed.get('source_url'):urls.add(observed['source_url'])
+            pdf_full=pdf_full or observed.get('coverage')=='full_text'
     prepared=state.get('prepared_documents') or []
     urls.update(p.get('url') for p in prepared if p.get('url'))
     attached=state.get('attached_documents') or []
     rag=(state.get('rag_results') or {}).get('sources',[])
-    coverage=('full_document' if prepared and all(p.get('processed_full') and p.get('format')!='html' for p in prepared) else
+    coverage=('full_document' if pdf_full or prepared and all(p.get('processed_full') and p.get('format')!='html' for p in prepared) else
               'full_page' if prepared and all(p.get('processed_full') for p in prepared) else
               'partial' if pages or attached or rag or prepared else 'snippet' if web.get('sources') else 'none')
     # Không suy ra full_document từ HTML, một chunk RAG hoặc attachment bị giới hạn.
