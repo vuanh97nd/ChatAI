@@ -281,4 +281,3 @@ class Capabilities:
                 if 'output_path' in finfo:
                     self._drive_upload(finfo['output_path'], project)
         return msg
-
