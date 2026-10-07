@@ -1336,6 +1336,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if model in REMOTE_MODELS and (cooperation['media_tool'] or self.chat_mode.currentIndex()==5):
             QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI local để dùng mục này.');self.choose_other_model();return
         if model in REMOTE_MODELS:
+            from assistant.online_automation import requested_automation
+            if requested_automation(prompt) or (self.cfg.get('windows_apps_enabled') and self.chat_mode.currentIndex()==1):
+                if self.pending_documents or self.pending_image:
+                    QMessageBox.information(self,'Điều khiển ứng dụng','Gửi yêu cầu điều khiển app riêng; tài liệu/ảnh đính kèm vẫn đang được giữ.');return
+                self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
             if len(prompt)>6000:
@@ -1376,7 +1381,67 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.sent_prompt = prompt; self.input.clear(); self.status.setText('Đang chuẩn bị yêu cầu…')
         self.chat_task(prompt=prompt)
 
+    def online_windows_task(self,prompt=None,allowed=None,expected=None,recover=False):
+        from assistant.cloud import ServerApiClient
+        if self.busy():return
+        if not self.server_session:
+            self.login_dialog();return
+        state=self.store.load(self.cid)
+        model=self.model.currentText() if prompt is not None else state['model']
+        provider=REMOTE_MODELS.get(model)
+        if provider=='cloudflare' or not provider:
+            QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare chưa hỗ trợ lập kế hoạch điều khiển app.');return
+        if prompt is not None and len(prompt)>6000:
+            QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
+        session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
+        if state.get('account_username') not in (None,session['username']):
+            self.cid=self.store.create(persist=False);cid=self.cid
+        if prompt is not None:
+            self.sent_prompt=prompt;self.input.clear()
+        self.answer_actions.hide();self.reply_active=True;self.reply_frame=0
+        self.reply_logo.show();self.reply_dots.show();self.reply_timer.start()
+        self.status.setText('AI trực tuyến đang chuẩn bị điều khiển app trên máy Windows…')
+        def task(emit):
+            from assistant.accounts import request_account
+            from assistant.browser import BrowserTools
+            from assistant.windows_apps import WindowsApps
+            from assistant.online_automation import OnlineAutomation
+            request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+            with execution_lock(ROOT/'data/agent.lock'):
+                state=self.store.load(cid)
+                if state.get('account_username') not in (None,session['username']):raise RuntimeError('Hội thoại thuộc tài khoản khác.')
+                audit=lambda action,details:self.store.audit(cid,action,details)
+                client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=self.worker.stop_requested)
+                agent=OnlineAutomation(client,cfg,self.store,cid,
+                    WindowsApps(cfg,audit,owner=session['username'],policy_path=ROOT/'config.json'),
+                    BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})))
+                if prompt is not None:
+                    agent.start(state,prompt,model,session['username'])
+                    self.store.remember_conversation(session['username'],cid)
+                    emit({'type':'sent','cid':cid,'prompt':prompt})
+                elif recover:
+                    if not state.get('pending') or not state['pending'].get('decision_started'):raise RuntimeError('Không có thao tác cần phục hồi.')
+                    state['messages'].append({'role':'assistant','content':'Thao tác trước bị ngắt; kết quả chưa rõ. Không tự thực hiện lại.'})
+                    state.update(running=False,pending=None,queue=[]);agent.save(state)
+                elif allowed is not None:agent.approve(state,allowed,expected)
+                def snapshot():
+                    return [{'role':m['role'],'content':m.get('content',''),'source_index':i}
+                            for i,m in enumerate(state['messages']) if m['role'] in ('user','assistant') and m.get('content')]
+                emit({'type':'snapshot','messages':snapshot()})
+                try:
+                    for event in agent.run(state):
+                        if self.worker.stop_requested.is_set():
+                            state['running']=False;agent.save(state);break
+                        emit(event)
+                except Exception:
+                    state['running']=False;agent.save(state);raise
+                emit({'type':'snapshot','messages':snapshot()})
+                return state
+        self.work(task,self.after_chat,cancellable=True)
+
     def chat_task(self, prompt=None, allowed=None, expected=None, recover=False):
+        if prompt is None and self.store.load(self.cid).get('online_automation'):
+            self.online_windows_task(allowed=allowed,expected=expected,recover=recover);return
         if not self.server_session:
             if (prompt is not None and self.trial.remaining()==0) or (prompt is None and not self.trial.can_continue(self.cid,self.store.load(self.cid))):
                 self.login_dialog();return
@@ -1512,6 +1577,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def resume(self):
         state = self.store.load(self.cid)
+        if state.get('online_automation') and state.get('running'):
+            if state.get('pending'):self.approve_pending(state['pending'])
+            else:self.online_windows_task()
+            return
         if state.get('model') in REMOTE_MODELS and state['running']:
             state['running']=False;self.store.save(self.cid,state);self.render()
             self.status.setText('Luồng AI trên server đã bị ngắt. Nội dung đã lưu được giữ; bạn có thể gửi câu hỏi mới.');return
@@ -1639,6 +1708,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         automation = QGroupBox('Công cụ AI · Điều khiển ứng dụng Windows'); app_box = QVBoxLayout(automation)
         self.windows_apps_check = QCheckBox('Cho AI mở và điều khiển các ứng dụng được phép')
         self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False));app_box.addWidget(self.windows_apps_check)
+        self.browser_background_check=QCheckBox('Chrome chạy nền (không hiện cửa sổ)')
+        self.browser_background_check.setChecked(self.cfg.get('browser_background',False));app_box.addWidget(self.browser_background_check)
         note=QLabel('Mỗi bước mở/đọc/bấm/nhập/đóng cần xác nhận. Cửa sổ có thể hiện; chỉ hỗ trợ app UI Automation. Không tự sao lưu dữ liệu của app bên ngoài.')
         note.setWordWrap(True);app_box.addWidget(note)
         self.windows_apps_paths = QPlainTextEdit('\n'.join(self.cfg.get('windows_apps_allowed',[])))
@@ -1698,6 +1769,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.auto_python_check.toggled.connect(self.account_settings_changed)
         self.settings_roots.textChanged.connect(self.account_settings_changed)
         self.windows_apps_check.toggled.connect(self.account_settings_changed)
+        self.browser_background_check.toggled.connect(self.account_settings_changed)
         self.windows_apps_paths.textChanged.connect(self.account_settings_changed)
         self.settings_server.textChanged.connect(self.account_settings_changed)
         self.apply_font()
@@ -2143,6 +2215,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
         if hasattr(self,'windows_apps_check'):
             proposed['windows_apps_enabled']=self.windows_apps_check.isChecked()
+            proposed['browser_background']=self.browser_background_check.isChecked()
             proposed['windows_apps_allowed']=[p.strip() for p in self.windows_apps_paths.toPlainText().splitlines() if p.strip()]
         return proposed
 
@@ -2162,6 +2235,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
         if hasattr(self,'windows_apps_check'):
             self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False))
+            self.browser_background_check.setChecked(self.cfg.get('browser_background',False))
             self.windows_apps_paths.setPlainText('\n'.join(self.cfg.get('windows_apps_allowed',[])))
         self.machine_profile.setCurrentIndex(self.machine_profile.findData(self.cfg.get('machine_profile','medium')))
         self.machine_auto.setChecked(self.cfg.get('machine_auto_ai',True))

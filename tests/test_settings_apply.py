@@ -59,6 +59,7 @@ class SettingsTest(unittest.TestCase):
         u.settings_fields={key:Combo(cfg[key]) if key.endswith('model') else Spin(cfg[key]) for key in ('default_model','code_model','num_ctx','num_predict','font_size','max_rounds','temperature')}
         u.settings_theme=Combo(cfg['theme']);u.preview_theme=cfg['theme'];u.preview_font_size=cfg['font_size'];u.settings_provider=Combo(PROVIDER_NAMES[cfg['chat_provider']]);u.auto_python_check=Check();u.settings_server=Text(cfg['server_url']);u.settings_roots=Text('workspace')
         u.windows_apps_check=Check(cfg['windows_apps_enabled']);u.windows_apps_paths=Text('\n'.join(cfg['windows_apps_allowed']))
+        u.browser_background_check=Check(cfg['browser_background'])
         u.machine_profile=Combo(cfg['machine_profile']);u.machine_auto=Check(cfg['machine_auto_ai']);u.api_model_fields={};u.api_key_fields={}
         u.select_ai=lambda model:u.model.setCurrentText(model)
         u.model=Combo('Cloudflare AI');u.status=Text('');u.html_cache={};u.draw=lambda:None;u.render=lambda:None;u.busy=lambda:False
@@ -80,10 +81,12 @@ class SettingsTest(unittest.TestCase):
     def test_windows_app_permissions_save_and_discard(self):
         u=self.ui
         u.windows_apps_check.setChecked(True)
+        u.browser_background_check.setChecked(True)
         u.windows_apps_paths.setPlainText(r'C:\Apps\demo.exe')
         self.assertTrue(u.settings_dirty());u.save_settings()
         saved=config.load_config()
         self.assertTrue(saved['windows_apps_enabled'])
+        self.assertTrue(saved['browser_background'])
         self.assertEqual(saved['windows_apps_allowed'],[r'C:\Apps\demo.exe'])
         u.windows_apps_paths.setPlainText(r'C:\Apps\other.exe')
         self.assertTrue(u.settings_dirty());u.discard_settings()

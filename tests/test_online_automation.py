@@ -1,0 +1,121 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from assistant.browser import public_url, steps_from_json, BrowserTools
+from assistant.online_automation import OnlineAutomation, search_call, requested_automation
+from assistant.storage import Store
+from assistant.windows_apps import resume_automation,stop_automation
+
+
+class BrowserPolicyTest(unittest.TestCase):
+    def setUp(self):resume_automation()
+    def tearDown(self):resume_automation()
+    def test_public_https_only(self):
+        for url in ('file:///C:/secret','http://example.org','https://u:p@example.org','https://example.org:8443'):
+            with self.assertRaises(ValueError):public_url(url)
+        with patch('assistant.browser.socket.getaddrinfo',return_value=[(0,0,0,'',('127.0.0.1',443))]):
+            with self.assertRaises(ValueError):public_url('https://example.org')
+        with patch('assistant.browser.socket.getaddrinfo',return_value=[(0,0,0,'',('93.184.216.34',443))]):
+            self.assertEqual(public_url('https://example.org'),'https://example.org')
+    def test_steps_reject_code_and_unbounded_workflows(self):
+        invalid=[[{'action':'evaluate','script':'alert(1)'}],[{'action':'read'}],
+                 [{'action':'navigate','url':'file:///secret'}], [{'action':'read'}]*13]
+        for steps in invalid:
+            with self.assertRaises(ValueError):steps_from_json(json.dumps(steps))
+    def test_browser_evidence_is_recognized_without_claiming_full_document(self):
+        from assistant.answer_policy import evidence_record,guard_answer
+        result={'ok':True,'results':[{'text':'Nguồn đã đọc','url':'https://example.org',
+                                    'links':[{'url':'https://example.org/document'}]}]}
+        state={'messages':[{'role':'user','content':'mở chrome'},
+                           {'role':'tool','tool_name':'browser_search','content':json.dumps(result)}]}
+        record=evidence_record(state,False)
+        self.assertIn('https://example.org/document',record['urls'])
+        self.assertEqual(record['coverage'],'partial')
+        self.assertEqual(guard_answer('Đã tìm trên web.',state)[1],[])
+    def test_saved_policy_and_executable_rechecked_before_launch(self):
+        with tempfile.TemporaryDirectory() as folder, patch('assistant.browser.available',return_value=True):
+            path=Path(folder)/'chrome.exe';path.write_bytes(b'fixture')
+            cfg={'windows_apps_enabled':True,'windows_apps_allowed':[str(path)]}
+            policy=Path(folder)/'config.json';policy.write_text(json.dumps(cfg))
+            browser=BrowserTools(cfg,lambda *a:None,policy_path=policy)
+            plan=browser.prepare('browser_search',{'path':str(path),'query':'tiêu chuẩn 41-2022'})
+            self.assertIn('q=',plan['steps'][0]['url'])
+            policy.write_text(json.dumps(dict(cfg,windows_apps_allowed=[])))
+            with self.assertRaises(PermissionError):browser.commit(plan)
+            policy.write_text(json.dumps(cfg));path.write_bytes(b'changed')
+            with self.assertRaises(PermissionError):browser.commit(plan)
+            stop_automation()
+            with self.assertRaises(PermissionError):browser.prepare('browser_search',{'path':str(path),'query':'a'})
+
+
+class OnlineAutomationTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.store=Store(Path(self.tmp.name)/'history.db')
+        self.cid=self.store.create();self.state=self.store.load(self.cid)
+        self.cfg={'windows_apps_enabled':True,'windows_apps_allowed':[r'C:\Apps\chrome.exe']}
+        self.committed=[];self.requests=[];self.responses=[]
+        def prepare(name,args):return {'action':name,**args}
+        def commit(plan):self.committed.append(plan);return {'ok':True,'text':'Nguồn 41-2022','url':'https://example.org'}
+        tools=SimpleNamespace(prepare=prepare,commit=commit)
+        def chat(model,messages,**kwargs):
+            self.requests.append(messages)
+            return {'message':{'content':self.responses.pop(0)}}
+        client=SimpleNamespace(model='deepseek',chat=chat)
+        self.agent=OnlineAutomation(client,self.cfg,self.store,self.cid,tools,tools)
+    def tearDown(self):self.tmp.cleanup()
+    def test_chrome_search_routes_without_model_and_approval_is_required(self):
+        self.agent.start(self.state,'hãy mở ứng dụng chorme và tìm kiếm thông tin về tiêu chuẩn 41-2022','DeepSeek API','admin')
+        events=list(self.agent.run(self.state))
+        self.assertEqual(events[-1]['type'],'pending');self.assertEqual(self.requests,[]);self.assertEqual(self.committed,[])
+        pending=self.state['pending']
+        self.agent.approve(self.state,True,pending)
+        self.assertEqual(len(self.committed),1)
+        self.responses=[json.dumps({'answer':'Đã tìm thấy nguồn: https://example.org','tool':'','arguments':'{}'})]
+        events=list(self.agent.run(self.state))
+        self.assertIn('https://example.org',events[-1]['text'])
+        self.assertTrue(any('Nguồn 41-2022' in m['content'] for m in self.requests[0]))
+        self.assertFalse(self.state['running'])
+    def test_deepseek_can_plan_windows_app_action_without_ollama(self):
+        self.responses=[json.dumps({'answer':'','tool':'windows_open','arguments':json.dumps({'path':r'C:\Apps\word.exe'})})]
+        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        self.assertEqual(list(self.agent.run(self.state))[-1]['type'],'pending')
+        self.assertIn('windows_inspect',self.requests[0][0]['content'])
+        self.assertEqual(self.committed,[])
+        self.agent.approve(self.state,False,self.state['pending'])
+        self.assertEqual(self.committed,[])
+        self.assertIn('từ chối',self.state['messages'][-1]['content'])
+    def test_invalid_model_tools_never_execute(self):
+        self.responses=[json.dumps({'answer':'','tool':'run_command','arguments':'{"command":"bad"}'})]
+        self.agent.start(self.state,'Mở ứng dụng Word','DeepSeek API','admin')
+        list(self.agent.run(self.state))
+        self.assertFalse(self.state['running']);self.assertEqual(self.committed,[])
+    def test_local_model_chrome_search_also_waits_for_approval(self):
+        import test_app as fixtures
+        from assistant.agent import Agent
+        from assistant.tools import EXTRA_TOOLS
+        cfg=dict(self.cfg,roots=[],num_ctx=4096,num_predict=500,max_rounds=4)
+        tools=SimpleNamespace(schemas=[s for m,s in EXTRA_TOOLS if m=='browser'],
+            prepare=lambda name,args:{'action':name,**args},commit=lambda plan:self.committed.append(plan))
+        agent=Agent(fixtures.FakeClient([]),None,cfg,self.store,self.cid,tools)
+        agent.start(self.state,'Mở Chrome và tìm thông tin tiêu chuẩn 41-2022','qwen3:8b')
+        self.assertEqual(list(agent.run(self.state))[-1]['type'],'pending')
+        self.assertEqual(self.state['pending']['plan']['action'],'browser_search')
+        self.assertEqual(self.committed,[])
+    def test_stale_or_started_approval_cannot_execute_twice(self):
+        self.agent.start(self.state,'mở chrome và tìm thông tin abc','DeepSeek API','admin')
+        list(self.agent.run(self.state));pending=self.state['pending']
+        with self.assertRaises(RuntimeError):self.agent.approve(self.state,True,{})
+        pending['decision_started']=True
+        with self.assertRaises(RuntimeError):self.agent.approve(self.state,True,pending)
+        self.assertEqual(self.committed,[])
+    def test_intent_excludes_discussion_and_preserves_exact_query(self):
+        self.assertTrue(requested_automation('Mở Word và đọc giao diện'))
+        self.assertFalse(requested_automation('Tiêu chuẩn 41-2022 là gì'))
+        self.assertIsNone(search_call('Đừng mở chrome và tìm abc',self.cfg))
+        self.assertIsNone(search_call('Cách mở chrome và tìm abc',self.cfg))
+        call=search_call('Mở Chrome và tìm kiếm thông tin về tiêu chuẩn 41-2022',self.cfg)
+        self.assertEqual(call['function']['arguments']['query'],'tiêu chuẩn 41-2022')

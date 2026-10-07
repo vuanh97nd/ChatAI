@@ -44,13 +44,17 @@ def readiness(cfg):
         return 'Điều khiển app đang dừng: bấm Tiếp tục điều khiển app trong Cài đặt.'
     if not cfg.get('windows_apps_allowed'):
         return 'Chưa có app được phép: vào Cài đặt → Điều khiển ứng dụng → Thêm ứng dụng EXE, rồi Lưu.'
-    return 'Sẵn sàng: có thể yêu cầu mở EXE được phép; mỗi thao tác cần xác nhận. Không hỗ trợ đọc ảnh màn hình hoặc điều khiển đầy đủ Chrome.'
+    browser_ready = importlib.util.find_spec('playwright') is not None
+    browser_note = (' Chrome: đã có Playwright, hỗ trợ quy trình web sau khi duyệt.' if browser_ready else
+                    ' Chrome tự động cần playwright: cài lại requirements-windows-automation.txt rồi khởi động lại.')
+    return 'Sẵn sàng: có thể yêu cầu mở EXE được phép; thao tác UIA cần xác nhận.' + browser_note
 
 
 def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
+    background = cfg.setdefault('browser_background', False)
     paths = cfg.setdefault('windows_apps_allowed', [])
-    if type(enabled) is not bool or not isinstance(paths, list) or len(paths) > 30:
+    if type(enabled) is not bool or type(background) is not bool or not isinstance(paths, list) or len(paths) > 30:
         raise ValueError('Quyền ứng dụng Windows không hợp lệ.')
     if any(not isinstance(p, str) or not p.strip() or len(p)>4096 or '\n' in p or '\x00' in p for p in paths):
         raise ValueError('Mỗi ứng dụng cần một đường dẫn EXE riêng.')

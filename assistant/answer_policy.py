@@ -52,6 +52,12 @@ def evidence_record(state,web_allowed=False):
             if row['result'].get('url'):urls.add(row['result']['url'])
         if row['name']=='web_search':
             urls.update(s.get('url') for s in row['result'].get('sources',[]) if s.get('url'))
+        if row['name'] in {'browser_search','browser_run'} and row['result'].get('ok'):
+            for observed in row['result'].get('results',[]):
+                if observed.get('text'):
+                    pages=pages+[observed]
+                    if observed.get('url'):urls.add(observed['url'])
+                    urls.update(link.get('url') for link in observed.get('links',[]) if link.get('url'))
     prepared=state.get('prepared_documents') or []
     urls.update(p.get('url') for p in prepared if p.get('url'))
     attached=state.get('attached_documents') or []
@@ -94,7 +100,7 @@ def guard_answer(text,state,web_allowed=False,category='knowledge'):
     rules=[
         (r'(?:tôi\s+)?đã\s+(?:kiểm thử|chạy thử|test)\b',tested,'Chưa có kết quả công cụ xác nhận đã kiểm thử.'),
         (r'(?:tôi\s+)?đã\s+(?:sửa|ghi|xóa|di chuyển|tạo)\s+(?:file|tệp|ô|sheet|tài liệu)\b',bool(success & {'excel_edit_cell','file_write','file_edit','file_delete','file_move','office_create','word_replace','image_generate','video_generate'}),'Chưa có kết quả công cụ xác nhận thao tác file đã hoàn tất.'),
-        (r'(?:tôi\s+)?đã\s+(?:tìm kiếm|tra cứu|tìm|tra)\s+(?:trên\s+)?(?:web|mạng|internet)\b',bool(state.get('web_results') or success & {'web_search','web_read','python_search'}),'Chưa có kết quả tra cứu mạng cho lượt này.'),
+        (r'(?:tôi\s+)?đã\s+(?:tìm kiếm|tra cứu|tìm|tra)\s+(?:trên\s+)?(?:web|mạng|internet)\b',bool(state.get('web_results') or success & {'web_search','web_read','python_search','browser_search','browser_run'}),'Chưa có kết quả tra cứu mạng cho lượt này.'),
         (r'(?:tôi\s+)?đã\s+đọc\s+(?:toàn bộ|toàn văn)\b',record['coverage']=='full_document','Tôi chỉ có phần nội dung được truy xuất, chưa xác nhận đã đọc toàn văn.'),
     ]
     def clean(part):

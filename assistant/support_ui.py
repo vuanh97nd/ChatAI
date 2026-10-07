@@ -173,6 +173,7 @@ class SupportMixin:
                 raise
             except StopIteration:raise RuntimeError('Server chưa trả về luồng AI.') from None
             state['account_username']=owner;state['model']=selected_model
+            state['online_automation']=False
             state['messages'].append({'role':'user','content':prompt})
             state['running']=True;state['pending']=None;state['queue']=[]
             self.store.save(cid,state)
