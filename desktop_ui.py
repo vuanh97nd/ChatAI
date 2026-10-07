@@ -243,7 +243,7 @@ def prepare_context(progress=print):
     progress('Đang nạp trạng thái module…')
     with measure('startup.module_state'):manager = ModuleManager(store, client, ROOT)
     cid = store.create(persist=False)
-    rows = store.list(limit=100)
+    rows = store.list(limit=30)
     return dict(cfg=cfg, store=store, client=client, manager=manager,
                 rows=rows, cid=cid, state=store.load(cid), jobs=manager.jobs())
 
@@ -263,6 +263,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     account_enrichment_finished = Signal(object,object)
     login_restore_finished = Signal(object)
     support_badge_finished = Signal(object)
+    session_verified = Signal(object)
     def __init__(self, context=None):
         super().__init__()
         context = context or prepare_context()
@@ -291,6 +292,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.model_probe_running=False
         self.model_probe_finished.connect(self.models_probed)
         self.account_enrichment_finished.connect(self.apply_account_enrichment)
+        self.session_verified.connect(self._on_session_verified)
         self.cid = context['cid']
         print('[4/5] Đang dựng cửa sổ chat…', flush=True)
         self.setWindowTitle('Chat AI · Desktop 2.6.5')
@@ -2021,11 +2023,68 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.account_status.setText('Không đọc được đăng nhập đã lưu. Vui lòng đăng nhập lại.');return
         session=value.get('session')
         if not session:return
-        if self.busy():
-            QTimer.singleShot(500,lambda:self.apply_restored_login(value));return
-        self.chat_login.setText('Đang tự đăng nhập…')
-        self.account_status.setText('Đang khôi phục tài khoản đã ghi nhớ…')
-        self.perform_login(session,remember=True,restore=True)
+        # Áp session đã cache ngay lập tức — không chờ mạng
+        self._apply_restored_session(session)
+        # Xác minh token ở nền, cập nhật nếu cần
+        self._verify_restored_session(session)
+
+    def _apply_restored_session(self,session):
+        from assistant.model_preferences import load_model
+        self.server_session=dict(session)
+        self.server_session.setdefault('fullname',session['username'])
+        self.server_session.setdefault('role','user')
+        self.personal_memories=[]
+        self.install_custom_ai(self.cfg.get('custom_ai',[]))
+        self.apply_account_model(load_model(self.store,session))
+        if hasattr(self,'api_key_group'):self.api_key_group.setVisible(admin_session(self.server_session))
+        self.settings_server.setText(session['endpoint'])
+        self.chat_login.setText('Tài khoản: '+session['username'])
+        self.account_status.setText('Đã đăng nhập: '+session['username'])
+        self.trial.adopt(session['username'])
+        current=self.store.load(self.cid)
+        if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
+        self.store.remember_conversation(session['username'],self.cid)
+        self.render()
+
+    def _verify_restored_session(self,session):
+        from threading import Thread
+        def verify():
+            try:
+                from assistant.accounts import request_account,save_login
+                result=request_account(session['endpoint'],'/api/login',
+                    {'username':session['username'],'key':session['key'],'device_id':self.device_id})
+                updated=dict(session)
+                if result.get('session_token'):updated['key']=result['session_token']
+                for k in ('fullname','email','phone','avatar'):updated[k]=result.get(k,session.get(k,''))
+                updated['fullname']=result.get('fullname') or session['username']
+                updated['role']=result.get('role','user')
+                try:save_login(updated)
+                except Exception:pass
+                self.session_verified.emit({'ok':True,'session':updated,'result':result})
+            except Exception as exc:
+                self.session_verified.emit({'ok':False,'error':str(exc),'username':session['username']})
+        Thread(target=verify,daemon=True,name='ChatAI-session-verify').start()
+
+    def _on_session_verified(self,payload):
+        if not payload.get('ok'):
+            error=payload.get('error','')
+            # Chỉ đăng xuất khi token thực sự hết hạn (401/403), không phải lỗi mạng
+            if any(code in error for code in ('HTTP 401','HTTP 403')):
+                self.server_session=None;self.personal_memories=[]
+                self.chat_login.setText('Đăng nhập')
+                self.account_status.setText('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.')
+                self.render()
+            # Lỗi mạng: giữ session, sẽ xác minh lần sau
+            return
+        updated=payload['session']
+        if not self.server_session or self.server_session.get('username')!=updated.get('username'):return
+        for k in ('key','fullname','email','phone','avatar','role'):
+            if k in updated:self.server_session[k]=updated[k]
+        result=payload['result']
+        result['_custom_ai']=self.cfg.get('custom_ai',[])
+        self.install_custom_ai(result.get('_custom_ai',[]))
+        self.refresh_account_ui()
+        self.load_account_enrichment(dict(self.server_session))
 
     def login_dialog(self):
         if self.busy():return
