@@ -54,6 +54,8 @@ def bounded_context(messages, max_chars=9000):
 
 class Agent:
     def __init__(self, client, excel, cfg, store, cid, capabilities=None, tools_enabled=True):
+        from .vi_guard import install
+        install()
         self.client, self.excel, self.cfg = client, excel, cfg
         self.store, self.cid = store, cid
         self.capabilities = capabilities

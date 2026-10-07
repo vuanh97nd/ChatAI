@@ -3,7 +3,7 @@
 Cách làm: bọc ollama.Client.chat. Nếu câu trả lời có chữ Hán/Nhật/Hàn trong khi
 người dùng không viết chữ đó, gọi lại model một lần với yêu cầu chỉ dùng tiếng Việt.
 Nếu vẫn còn, xóa phần chữ Hán. Không đụng tới lời gọi có tool call hoặc JSON (format).
-Được cài tự động khi import gói assistant.
+Được cài khi giao diện desktop khởi tạo runtime.
 """
 import re
 

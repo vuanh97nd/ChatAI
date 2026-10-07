@@ -78,16 +78,24 @@ class Store:
                            (cid, "Cuộc trò chuyện mới", now(), dumps(state)))
         return cid
 
-    def list(self, owner=None, include_empty=True):
+    def list(self, owner=None, include_empty=True, limit=None):
+        # Fetch titles/metadata rather than transferring entire chats and images to UI.
+        conditions=[];values=[]
+        if owner is not None:
+            conditions.append("json_extract(state,'$.account_username')=?");values.append(owner)
+        if not include_empty:
+            conditions.append("(json_array_length(state,'$.messages')>0 OR (json_type(state,'$.pending')='object' AND json_extract(state,'$.pending')!='{}') OR json_array_length(state,'$.queue')>0)")
+        query='SELECT id,title FROM conversations'
+        if conditions:query+=' WHERE '+' AND '.join(conditions)
+        query+=' ORDER BY updated DESC'
+        if limit is not None:
+            query+=' LIMIT ?';values.append(max(1,int(limit)))
+        with self.connection() as db:return db.execute(query,values).fetchall()
+
+    def conversation_title(self,cid,owner):
         with self.connection() as db:
-            rows=db.execute("SELECT id,title,state FROM conversations ORDER BY updated DESC").fetchall()
-        result=[]
-        for cid,title,raw in rows:
-            state=json.loads(raw)
-            if not include_empty and not state.get('messages') and not state.get('pending') and not state.get('queue'):
-                continue
-            if owner is None or state.get('account_username')==owner:result.append((cid,title))
-        return result
+            row=db.execute("SELECT title FROM conversations WHERE id=? AND json_extract(state,'$.account_username')=?",(cid,owner)).fetchone()
+        return row[0] if row else None
 
     def load(self, cid):
         with self.connection() as db:

@@ -19,6 +19,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QComboBox,
     QPlainTextEdit, QTextBrowser, QTabWidget, QSplitter, QMessageBox, QDialog,
     QDialogButtonBox, QProgressBar, QFileDialog, QStackedWidget, QScrollArea, QFrame, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QMenu, QGraphicsOpacityEffect, QInputDialog, QStyle)
+from assistant import initialize_runtime
+initialize_runtime()
+
 from assistant.config import ROOT, load_config
 from assistant.locking import execution_lock
 from assistant.modules import ModuleManager, MODULES, ALLOWED_MODELS, CHAT_MODELS, MEDIA_VARIANTS, media_model_dir
@@ -32,7 +35,7 @@ class WelcomeRobot(QWidget):
         self.setFixedSize(112,112)
         self.pixmap=QPixmap(str(ROOT/'logo_chat_ai.png'))
         self.started=time.monotonic()
-        self.timer=QTimer(self);self.timer.setInterval(33);self.timer.timeout.connect(self.update)
+        self.timer=QTimer(self);self.timer.setInterval(66);self.timer.timeout.connect(self.update)
     def showEvent(self,event):
         super().showEvent(event);self.timer.start()
     def hideEvent(self,event):
@@ -236,9 +239,8 @@ def prepare_context(progress=print):
     client = LocalOllamaClient(host=cfg['ollama_host'], timeout=180)
     progress('Đang nạp trạng thái module…')
     manager = ModuleManager(store, client, ROOT)
-    rows = store.list()
     cid = store.create(persist=False)
-    rows = store.list()
+    rows = store.list(limit=100)
     return dict(cfg=cfg, store=store, client=client, manager=manager,
                 rows=rows, cid=cid, state=store.load(cid), jobs=manager.jobs())
 
@@ -698,7 +700,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             return
         if event['type'] == 'token':
             self.stream += event['text']
-            if not self.paint_timer.isActive(): self.paint_timer.start(120)
+            if not self.paint_timer.isActive(): self.paint_timer.start(250)
         elif event['type'] == 'snapshot':
             if self.sent_prompt and any(m['role'] == 'user' and m['content'] == self.sent_prompt for m in event['messages'][-1:]):
                 if self.input.toPlainText().strip() == self.sent_prompt: self.input.clear()
@@ -706,7 +708,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 self.sent_prompt = None
             self.chat_messages = event['messages']; self.stream = ''
             if self.sent_prompt and self.chat_messages and self.chat_messages[-1]['role']=='user' and self.chat_messages[-1]['content']==self.sent_prompt:self.remove_attachment()
-            if not self.paint_timer.isActive(): self.paint_timer.start(120)
+            if not self.paint_timer.isActive(): self.paint_timer.start(250)
         elif event['type'] == 'status':
             if event['text'].startswith('Đang trả lời'): self.stream = ''
             self.status.setText(event['text'])
@@ -983,8 +985,15 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if not admin_session(self.server_session) and hasattr(self,'admin_table'):
             self.admin_table.setRowCount(0);self.admin_users=[]
             if self.tabs.currentWidget()==self.admin_scroll:self.tabs.setCurrentIndex(0)
-        self.history.clear()
-        for cid, title in self.store.list(self.server_session['username'] if self.server_session else GUEST_OWNER,include_empty=False):
+        history_rows=self.store.list(self.server_session['username'] if self.server_session else GUEST_OWNER,include_empty=False,limit=100)
+        if not any(cid==self.cid for cid,_ in history_rows):
+            title=self.store.conversation_title(self.cid,self.server_session['username'] if self.server_session else GUEST_OWNER)
+            if title:history_rows.append((self.cid,title))
+        history_key=(self.cid,self.preview_font_size,tuple(history_rows))
+        rebuild_history=getattr(self,'history_render_key',None)!=history_key
+        self.history_render_key=history_key
+        if rebuild_history:self.history.clear()
+        for cid, title in history_rows if rebuild_history else []:
             item = QListWidgetItem(title); item.setData(Qt.ItemDataRole.UserRole, cid); self.history.addItem(item)
             if cid == self.cid: self.history.setCurrentItem(item)
             row=QWidget();buttons=QHBoxLayout(row);buttons.setContentsMargins(4,2,4,2);buttons.setSpacing(2)
