@@ -40,8 +40,10 @@ def ensure_dependencies(cfg,policy_path=None,on_status=None,audit=None):
     if _STOP.is_set():raise PermissionError('Đã dừng AI; chưa cài thư viện.')
     if on_status:on_status('Đang tự cài thư viện vào '+str(python)+': '+', '.join(missing))
     # Model cannot supply a package, command, index or URL. Never elevate or disable TLS verification.
+    # CREATE_NO_WINDOW prevents a console flash from python.exe on Windows.
+    launch_options={'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0x08000000)} if os.name=='nt' else {}
     process=subprocess.Popen([str(python),'-m','pip','install','--disable-pip-version-check',
-                              *[PACKAGES[name] for name in missing]],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,shell=False)
+                              *[PACKAGES[name] for name in missing]],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,shell=False,**launch_options)
     started=time.monotonic();last=started
     try:
         while process.poll() is None:

@@ -65,6 +65,8 @@ class AutomationPermissionsTest(unittest.TestCase):
             command=launch.call_args.args[0]
             self.assertEqual(command[0],str(python));self.assertIn(PACKAGES['playwright'],command);self.assertIn('python-docx>=1.1,<2',command);self.assertNotIn('docx',command)
             self.assertNotIn('malicious',command);self.assertFalse(launch.call_args.kwargs['shell'])
+            self.assertEqual(launch.call_args.kwargs['creationflags'],0x08000000)
+            self.assertEqual(launch.call_args.kwargs['stdin'],__import__('subprocess').DEVNULL)
     def test_global_python_is_not_modified(self):
         with tempfile.TemporaryDirectory() as folder:
             python=Path(folder)/'python.exe';python.write_bytes(b'fixture')
