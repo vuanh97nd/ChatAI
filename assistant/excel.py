@@ -153,6 +153,106 @@ class ExcelTools:
                 "columns": columns, "note": "Hàng 1 là tiêu đề. Công thức dùng cache Excel; "
                 "cache có thể thiếu hoặc cũ. Không tính lại công thức."}
 
+    def prepare_from_template(self, template, output_name, fills):
+        """Validate inputs và trả plan; UI gọi commit_from_template sau khi người dùng duyệt."""
+        import json as _json
+        tmpl = self.path(template)
+        # output_name chỉ là tên file, không chứa path separator
+        if not isinstance(output_name, str) or not output_name:
+            raise ValueError("output_name không hợp lệ.")
+        clean_name = Path(output_name).name
+        if not clean_name or clean_name != output_name or clean_name.startswith('.'):
+            raise ValueError("output_name phải là tên file đơn, không chứa thư mục.")
+        if not clean_name.lower().endswith('.xlsx'):
+            clean_name = clean_name + '.xlsx'
+        output_path = tmpl.parent / clean_name
+        if output_path.exists():
+            raise FileExistsError(f"File đích đã tồn tại: {output_path}. Chọn tên khác.")
+        # Validate fills JSON
+        if not isinstance(fills, str) or len(fills) > 200_000:
+            raise ValueError("fills phải là chuỗi JSON tối đa 200000 ký tự.")
+        try:
+            rows = _json.loads(fills)
+        except Exception:
+            raise ValueError("fills không phải JSON hợp lệ.")
+        if not isinstance(rows, list) or not 1 <= len(rows) <= 500:
+            raise ValueError("fills cần 1–500 phần tử.")
+        validated = []
+        for item in rows:
+            if not isinstance(item, dict):
+                raise ValueError("Mỗi phần tử fills phải là đối tượng JSON.")
+            sheet_name = item.get('sheet')
+            cell_ref = item.get('cell')
+            value = item.get('value')
+            if not isinstance(sheet_name, str) or not sheet_name:
+                raise ValueError("Mỗi fill cần 'sheet' là chuỗi.")
+            if not isinstance(cell_ref, str) or not re.fullmatch(r"[A-Za-z]{1,3}[1-9][0-9]*", cell_ref):
+                raise ValueError(f"Ô phải có dạng B2, nhận được: {cell_ref!r}.")
+            cell_ref = cell_ref.upper()
+            row_idx, col_idx = coordinate_to_tuple(cell_ref)
+            if row_idx > 100_000 or col_idx > 16384:
+                raise ValueError(f"Ô {cell_ref} ngoài giới hạn.")
+            if type(value) not in (str, int, float, bool, type(None)):
+                raise ValueError("Giá trị phải là text, số, boolean hoặc null.")
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("Số không hữu hạn.")
+            if isinstance(value, str) and (len(value) > 32767 or re.search(
+                    r"[\x00-\x08\x0b\x0c\x0e-\x1f]", value)):
+                raise ValueError("Text quá dài hoặc chứa ký tự Excel không hợp lệ.")
+            validated.append({'sheet': sheet_name, 'cell': cell_ref, 'value': value})
+        return {'action': 'excel_create_from_template', 'template': str(tmpl),
+                'output': str(output_path), 'fills': validated,
+                'sha256': digest(tmpl), 'approval_id': uuid.uuid4().hex}
+
+    def commit_from_template(self, plan):
+        """Chỉ UI sau xác nhận mới được gọi."""
+        tmpl = self.path(plan['template'])
+        if digest(tmpl) != plan['sha256']:
+            raise RuntimeError("File template đã thay đổi sau khi xin duyệt. Hãy thử lại.")
+        output_path = Path(plan['output'])
+        if output_path.exists():
+            raise FileExistsError(f"File đích đã tồn tại: {output_path}.")
+        if not any(output_path.parent.resolve() == root for root in self.roots):
+            raise PermissionError("Thư mục đích nằm ngoài whitelist.")
+        self.audit('excel_from_template_started', {'template': str(tmpl), 'output': str(output_path),
+                                                    'fills': len(plan['fills'])})
+        temp_path = None
+        try:
+            fd, temp = tempfile.mkstemp(prefix='.tmpl_', suffix='.xlsx', dir=output_path.parent)
+            os.close(fd)
+            temp_path = Path(temp)
+            shutil.copy2(tmpl, temp_path)
+            wb = load_workbook(temp_path, keep_links=True)
+            try:
+                if sum((s.max_row or 0) * (s.max_column or 0) for s in wb) > MAX_CELLS:
+                    raise ValueError("Workbook template vượt 200000 ô.")
+                for item in plan['fills']:
+                    if item['sheet'] not in wb.sheetnames:
+                        raise ValueError(f"Sheet không tồn tại trong template: {item['sheet']!r}.")
+                    ws = wb[item['sheet']]
+                    target = ws[item['cell']]
+                    target.value = item['value']
+                    if isinstance(item['value'], str):
+                        target.data_type = 's'
+                wb.calculation.fullCalcOnLoad = True
+                saved = Path(temp_path.parent / (temp_path.name + '_v2.xlsx'))
+                wb.save(saved)
+            finally:
+                wb.close()
+            os.replace(saved, output_path)
+            temp_path.unlink(missing_ok=True)
+            temp_path = None
+        except Exception as exc:
+            self.audit('excel_from_template_failed', {'error': str(exc)})
+            raise
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+        result = {'ok': True, 'output': str(output_path), 'template': str(tmpl),
+                  'fills_applied': len(plan['fills'])}
+        self.audit('excel_from_template_success', result)
+        return result
+
     def prepare_edit(self, path, sheet, cell, value):
         p = self.path(path)
         if not isinstance(cell, str) or not re.fullmatch(r"[A-Za-z]{1,3}[1-9][0-9]*", cell):
