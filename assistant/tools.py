@@ -173,6 +173,45 @@ EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
     {'path': TEXT, 'mode': {'type': 'string', 'enum': ['summary', 'full']}},
     ['path'])))
 
+WRITES.add('soilfirm_create')
+EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_create',
+    'Tạo file dự án SoilFirm Pro từ dữ liệu địa chất AI đọc từ Excel hoặc nhập tay. '
+    'Dùng sau khi đọc Excel bằng excel_read/excel_summary và ánh xạ cột → chỉ tiêu đất. '
+    'project_name: tên công trình/dự án. '
+    'output_name: tên file kết quả (ví dụ KM32-BH1.json). '
+    'soils: chuỗi JSON mảng lớp đất, mỗi lớp gồm: '
+    'name (tên lớp), thickness (m), gamma (kN/m³), e0, cc, cs, pc (kPa), '
+    'cv_constant (cm²/s, tùy chọn), cohesion_c (kPa), friction_phi (°), '
+    'phi_cu_effective (°, tùy chọn), spt_n, category (Đất dính/Đất rời/Đất hữu cơ/Đá), '
+    'state (Quá cố kết/Cố kết thường/Chưa cố kết xong). '
+    'Ví dụ soils: [{"name":"Lớp 1 – Bùn sét","thickness":3.5,"gamma":15.2,'
+    '"e0":1.35,"cc":0.42,"cs":0.05,"pc":25,"cohesion_c":8.5,"friction_phi":6.2,'
+    '"category":"Đất dính","state":"Chưa cố kết xong"}]. '
+    'Các trường tùy chọn để null nếu không có số liệu; không tự bịa số.',
+    {'project_name': TEXT, 'output_name': TEXT, 'soils': TEXT,
+     'design_stage': TEXT, 'borehole_name': TEXT,
+     'h_design': {'type': 'number'}, 'gamma_fill': {'type': 'number'},
+     'water_depth': {'type': 'number'}, 'ground_elevation': {'type': 'number'}},
+    ['project_name', 'output_name', 'soils'])))
+
+WRITES.add('borehole_dxf')
+EXTRA_TOOLS.append(('borehole_dxf', schema('borehole_dxf',
+    'Vẽ trụ địa chất (borehole log) dạng DXF và mở AutoCAD. '
+    'Tạo bản vẽ chuẩn với cột hatch lớp đất, cột số liệu γ/e₀/Cc/c/φ/N-SPT, '
+    'đường mực nước ngầm. Font .VnArial Unicode. '
+    'app: đường dẫn acad.exe đã tìm bằng windows_list_apps. '
+    'borehole_name: mã lỗ khoan (VD: BH-1). '
+    'ground_elevation: cao độ mặt đất (m). '
+    'water_depth: chiều sâu mực nước ngầm từ mặt đất (m, 0 nếu không có). '
+    'soils: chuỗi JSON mảng lớp đất, mỗi lớp: '
+    '{"name":"Sét xám","thickness":3.5,"gamma":15.2,"e0":1.35,'
+    '"cc":0.42,"cohesion_c":8.5,"friction_phi":6.2,"spt_n":4,'
+    '"category":"Đất dính"}. '
+    'Dùng soilfirm_read hoặc excel_read để lấy số liệu trước.',
+    {'app': TEXT, 'borehole_name': TEXT, 'ground_elevation': {'type': 'number'},
+     'water_depth': {'type': 'number'}, 'soils': TEXT},
+    ['app', 'borehole_name', 'soils'])))
+
 WRITES.add('plaxis_generate_script')
 EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Tạo script Python cho Plaxis 2D/3D để phân tích địa kỹ thuật. '

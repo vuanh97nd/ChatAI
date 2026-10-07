@@ -51,15 +51,20 @@ class Capabilities:
         self.geoslope_app=GeoslopeApp(self.files,audit)
         from .soilfirm_app import SoilFirmApp
         self.soilfirm_app=SoilFirmApp(self.files,audit)
+        from .borehole_dxf import BoreholeDxfApp
+        self.borehole_dxf=BoreholeDxfApp(self.files,self.windows,audit)
         if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
         self.active.add('plaxis_app')
         self.active.add('geoslope_app')
         self.active.add('soilfirm_app')
+        if 'windows' in self.active:self.active.add('borehole_dxf')
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         from .online_automation import app_permissions
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        if name=='soilfirm_create':return self.soilfirm_app.prepare_create(name,args)
+        if name=='borehole_dxf':return self.borehole_dxf.prepare(name,args)
         if name=='geoslope_create':return self.geoslope_app.prepare(name,args)
         if name=='plaxis_generate_script':return self.plaxis_app.prepare(name,args)
         if name=='cad3d_create_open':return self.cad3d_app.prepare(name,args)
@@ -95,6 +100,8 @@ class Capabilities:
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action=='soilfirm_create':return self.soilfirm_app.commit_create(plan)
+        if action=='borehole_dxf':return self.borehole_dxf.commit(plan)
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
         if action=='cad_create_open':return self.cad_app.commit(plan)
