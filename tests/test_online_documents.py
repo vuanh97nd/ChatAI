@@ -61,12 +61,12 @@ class OnlineDocumentsTests(unittest.TestCase):
         cfg=json.loads((Path(__file__).resolve().parents[1]/'config.json').read_text())
         cfg['online_document_pages']=5;cfg.pop('online_document_revision',None)
         updated=validate_config(cfg)
-        self.assertEqual(updated['online_document_pages'],40)
+        self.assertEqual(updated['online_document_pages'],0)
         updated['online_document_pages']=5
         self.assertEqual(validate_config(updated)['online_document_pages'],5)
         updated['online_document_pages']=200
         self.assertEqual(validate_config(updated)['online_document_pages'],200)
-        updated['online_document_pages']=201
+        updated['online_document_pages']=-1
         with self.assertRaises(ValueError):validate_config(updated)
 
     def test_page_limit_does_not_hide_disabled_upload_permission(self):

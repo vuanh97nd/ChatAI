@@ -45,11 +45,11 @@ class PDFSource:
     def read(self,path,start=0):
         from .documents import read_document_range
         try:
-            result=read_document_range(self.files,str(path),start=start,limit=8000,pdf_ocr=self.pdf_ocr,foxit_ocr=True)
+            result=read_document_range(self.files,str(path),start=start,limit=8000,pdf_ocr=self.pdf_ocr,foxit_ocr=False)
             return dict(result,read_ok=True)
         except (ValueError, RuntimeError) as error:
             return {'ok':False,'read_ok':False,'path':str(path),'content':'','coverage':'none',
-                    'next_start':None,'issues':[str(error)],'note':'Chưa đọc được văn bản PDF: '+str(error)+'. OCR tự động không hoàn tất; không lặp lại thao tác lỗi trong lượt này.'}
+                    'next_start':None,'issues':[str(error)],'note':'Chưa đọc được văn bản PDF: '+str(error)+'. Đọc ảnh bằng DeepSeek chưa hoàn tất; không tự mở Foxit OCR hoặc dùng văn bản cũ thay thế.'}
 
     def commit(self,plan):
         if plan['action']=='pdf_read':

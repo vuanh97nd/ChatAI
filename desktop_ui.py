@@ -838,7 +838,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     from assistant.documents import read_local
                     from assistant.online_documents import online_pdf_reader
                     reader=online_pdf_reader(self.cfg,getattr(self,'server_session',None),on_status=progress) if ext=='.pdf' and getattr(self,'server_session',None) else None
-                    items.append(read_local(p,pdf_ocr=reader,foxit_ocr=True,progress=progress))
+                    items.append(read_local(p,pdf_ocr=reader,foxit_ocr=False,progress=progress))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')
@@ -2228,11 +2228,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.online_tools_check=QCheckBox('Cho phép dùng công cụ API trực tuyến');self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
         self.online_upload_check=QCheckBox('Cho phép gửi ảnh trang tài liệu tới dịch vụ AI');self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
         network_form.addRow(self.online_tools_check);network_form.addRow(self.online_upload_check)
-        field=QComboBox();field.addItems(['deepseek_flash','gemini','nvidia']);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
+        field=QComboBox();field.addItems(['deepseek_flash']);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
         self.settings_fields['online_document_provider']=field;network_form.addRow('API đọc trang PDF',field)
-        field=QSpinBox();field.setRange(1,200);field.setValue(self.cfg.get('online_document_pages',40))
+        field=QSpinBox();field.setRange(0,1000000);field.setSpecialValueText('Không giới hạn');field.setValue(self.cfg.get('online_document_pages',0))
         self.settings_fields['online_document_pages']=field;network_form.addRow('Số trang nhận dạng tối đa',field)
-        note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. DeepSeek Flash dùng chung key DeepSeek trên server; Gemini/NVIDIA dùng key riêng. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
+        note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Chỉ dùng DeepSeek Flash với key DeepSeek trên server; không chạy Foxit OCR. Đặt số trang bằng 0 để đọc lần lượt không giới hạn tổng số trang. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
         group_layout.addWidget(network_group)
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))

@@ -12,9 +12,7 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
         return None
     if not session:
         raise ValueError('Đăng nhập trước khi dùng công cụ đọc PDF trực tuyến.')
-    provider=cfg.get('online_document_provider','deepseek_flash')
-    if provider not in ('deepseek_flash','gemini','nvidia'):
-        raise ValueError('Chọn DeepSeek Flash, Gemini hoặc NVIDIA Vision để đọc trang PDF.')
+    provider='deepseek_flash'
     from .cloud import ServerApiClient
     client=(client_factory or ServerApiClient)(session,provider,cancel_event=cancel_event,on_status=on_status,retry_limit=0)
     class VisionAdapter:
@@ -32,7 +30,7 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
             return client.chat(model='document',messages=converted,options={'num_predict':4096,'temperature':0})
     read=pdf_vision_ocr(VisionAdapter(),provider)
     cache={};counts={}
-    limit=cfg.get('online_document_pages',40)
+    limit=cfg.get('online_document_pages',0)
     def page(raw,index):
         if cancel_event is not None and cancel_event.is_set():
             raise RuntimeError('Đã dừng đọc PDF trực tuyến.')
@@ -40,11 +38,11 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
         key=(raw,index)
         if key in cache:return cache[key]
         count=counts.get(raw,0)
-        if count>=limit:
+        if limit>0 and count>=limit:
             page.skip_reason=f'Đã chạm giới hạn đọc ảnh PDF {limit} trang của tệp; tăng Số trang nhận dạng tối đa trong Công cụ trực tuyến để đọc tiếp. Trang này chưa được gửi OCR.'
             return ''
         counts[raw]=count+1
-        if on_status:on_status(f'Đang đọc trang {index+1} qua {provider}; tối đa {limit} trang cần nhận dạng.')
+        if on_status:on_status(f'Đang đọc trang {index+1} qua {provider}; '+(f'tối đa {limit} trang.' if limit else 'không giới hạn số trang.'))
         cache[key]=read(raw,index)
         return cache[key]
     page.on_status=on_status

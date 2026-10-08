@@ -88,12 +88,14 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None,progress=None):
         if reader.is_encrypted:raise ValueError('PDF mã hóa; cần bản có thể đọc.')
         total=len(reader.pages);size=0
         ocr_limit_reported=False
-        for index,page in enumerate(reader.pages[:MAX_PAGES],1):
+        unlimited=pdf_ocr is not None and getattr(pdf_ocr,'max_pages',None)==0
+        pages=reader.pages if unlimited else reader.pages[:MAX_PAGES]
+        for index,page in enumerate(pages,1):
             if progress:progress(f'{name}: đang đọc trang {index}/{total}')
             text=page.extract_text() or ''
             if not text.strip() or _is_garbled(text):
                 text=''
-                if pdf_ocr and len(ocr_pages)<MAX_OCR_PAGES:
+                if pdf_ocr and (unlimited or len(ocr_pages)<MAX_OCR_PAGES):
                     text=pdf_ocr(raw,index-1) or ''
                     if text.strip():ocr_pages.append(index)
                     elif getattr(pdf_ocr,'skip_reason',''):
@@ -143,7 +145,7 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None,progress=None):
         if pdf_ocr:
             if getattr(pdf_ocr,'skip_reason',''):raise ValueError(pdf_ocr.skip_reason)
             raise ValueError('PDF không có lớp chữ và OCR không nhận diện được chữ. Hãy dùng bản scan rõ hơn hoặc kiểm tra dịch vụ AI đọc ảnh đã chọn.')
-        raise ValueError('PDF không có lớp chữ trích xuất; cần bật luồng OCR cục bộ trước khi tóm tắt.')
+        raise ValueError('PDF không có lớp chữ trích xuất; cần bật công cụ trực tuyến và quyền gửi ảnh trang cho DeepSeek. Không tự chạy Foxit OCR.')
     combined='\n\n'.join('['+x['location']+']\n'+x['text'] for x in units)
     coverage_parts=[]
     if ocr_pages:
