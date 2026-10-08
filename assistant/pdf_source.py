@@ -29,6 +29,11 @@ class PDFSource:
         app=self.windows.allowed_path(args['app'])
         if app.name.lower() not in {'foxitpdfreader.exe','foxitreader.exe','foxit reader.exe','foxitpdfeditor.exe','foxit pdf editor.exe'}:
             raise ValueError('Chọn EXE Foxit PDF Reader hoặc Foxit PDF Editor trong danh sách app được phép.')
+        if name=='pdf_local_open':
+            path=self.files.path(args['path'])
+            if path.suffix.lower()!='.pdf' or path.stat().st_size>20*1024**2:raise ValueError('Chỉ mở PDF tối đa 20 MiB.')
+            return {'action':name,'app':str(app),'sha256':fingerprint(app),'path':str(path),'file_sha256':fingerprint(path),
+                    'notice':'Mở PDF có sẵn bằng Foxit và đọc phần đầu vào hội thoại; không sửa bản gốc.'}
         url=public_url(args['url'])
         if not self.files.roots:raise PermissionError('Thêm thư mục được phép trong Cài đặt trước.')
         destination=self.files.path(str(self.files.roots[0]/('source-'+uuid.uuid4().hex+'.pdf')),exists=False)
@@ -52,6 +57,14 @@ class PDFSource:
             return self.read(path,plan['start'])
         app=self.windows.allowed_path(plan['app'])
         if fingerprint(app)!=plan['sha256']:raise PermissionError('Foxit đã đổi; duyệt lại.')
+        if plan['action']=='pdf_local_open':
+            path=self.files.path(plan['path'])
+            if fingerprint(path)!=plan['file_sha256']:raise PermissionError('PDF đã đổi; duyệt lại.')
+            self.windows.check()
+            process=subprocess.Popen([str(app),str(path)],cwd=str(app.parent),shell=False)
+            self.audit('pdf_local_open',{'path':str(path),'pid':process.pid})
+            return dict(self.read(path),foxit_launch_requested=True,
+                        note='Đã gửi lệnh mở Foxit; chưa xác minh cửa sổ. Text trích bằng thư viện PDF; dùng pdf_read với next_start để đọc tiếp.')
         path=self.files.path(plan['path'],exists=False)
         if path.exists() or not path.parent.is_dir():raise ValueError('Đích đã tồn tại hoặc thư mục không hợp lệ.')
         url=public_url(plan['url'])

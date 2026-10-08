@@ -24,6 +24,28 @@ class PDFSourceTest(unittest.TestCase):
         self.urlpatch=patch('assistant.pdf_source.public_url',side_effect=lambda url:url);self.urlpatch.start()
     def tearDown(self):self.urlpatch.stop();self.tmp.cleanup()
     def plan(self):return self.tools.prepare('pdf_source_open',{'url':'https://example.org/source.pdf','app':str(self.app)})
+    def test_local_pdf_opens_without_download_and_rechecks_file(self):
+        document=self.root/'attached.pdf'
+        writer=PdfWriter();writer.add_blank_page(width=100,height=100)
+        with document.open('wb') as stream:writer.write(stream)
+        original=document.read_bytes()
+        with patch('assistant.pdf_source.subprocess.Popen') as launch,patch('assistant.pdf_source.build_opener') as download:
+            launch.return_value.pid=12
+            plan=self.tools.prepare('pdf_local_open',{'path':str(document),'app':str(self.app)})
+            launch.assert_not_called()
+            result=self.tools.commit(plan)
+            self.assertTrue(result['foxit_launch_requested'])
+            self.assertEqual(launch.call_args.args[0],[str(self.app),str(document)])
+            self.assertEqual(document.read_bytes(),original)
+            download.assert_not_called()
+            document.write_bytes(original+b'changed')
+            with self.assertRaises(PermissionError):self.tools.commit(plan)
+            self.assertEqual(launch.call_count,1)
+        with tempfile.TemporaryDirectory() as outside:
+            other=Path(outside)/'other.pdf';other.write_bytes(original)
+            with self.assertRaises(PermissionError):
+                self.tools.prepare('pdf_local_open',{'path':str(other),'app':str(self.app)})
+
     def test_download_and_open_only_after_approval(self):
         writer=PdfWriter();writer.add_blank_page(width=100,height=100)
         stream=io.BytesIO();writer.write(stream);raw=stream.getvalue()

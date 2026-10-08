@@ -1793,8 +1793,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if model in REMOTE_MODELS:
             from assistant.online_automation import use_automation
             if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1):
-                if self.pending_documents or self.pending_image:
-                    QMessageBox.information(self,'Điều khiển ứng dụng','Gửi yêu cầu điều khiển app riêng; tài liệu/ảnh đính kèm vẫn đang được giữ.');return
+                if self.pending_image:
+                    QMessageBox.information(self,'Điều khiển ứng dụng','Ảnh đính kèm chưa hỗ trợ trong luồng điều khiển app; ảnh vẫn được giữ.');return
                 self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
@@ -1849,6 +1849,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if prompt is not None and len(prompt)>6000:
             QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
+        attachment_paths=list(self.pending_documents) if prompt is not None else []
         if state.get('account_username') not in (None,session['username']):
             self.cid=self.store.create(persist=False);cid=self.cid
         if prompt is not None:
@@ -1881,6 +1882,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
                     PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit))
                 if prompt is not None:
+                    attachments=[]
+                    for raw in attachment_paths:
+                        source=Path(raw)
+                        if not source.is_file() or source.stat().st_size>10*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+source.name)
+                        if not files.roots:raise PermissionError('Thêm thư mục được phép để xử lý tài liệu đính kèm.')
+                        import uuid
+                        destination=files.path(str(files.roots[0]/('attachment-'+uuid.uuid4().hex+source.suffix)),exists=False)
+                        with destination.open('xb') as output:output.write(source.read_bytes())
+                        attachments.append({'name':source.name,'path':str(destination)})
+                        audit('automation_attachment_staged',{'name':source.name,'path':str(destination)})
+                    state['automation_attachments']=attachments
                     agent.start(state,prompt,model,session['username'])
                     self.store.remember_conversation(session['username'],cid)
                     emit({'type':'sent','cid':cid,'prompt':prompt})
