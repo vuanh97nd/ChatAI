@@ -339,6 +339,20 @@ EXTRA_TOOLS.append(('cdm_layout', schema('cad_cdm_layout',
      'spacing_x': {'type': 'number'}, 'spacing_y': {'type': 'number'}, 'units': TEXT},
     ['app', 'b_road', 'l_treatment', 'd_pile', 'pile_depth', 'spacing_x', 'spacing_y'])))
 
+WRITES.add('cad_tracdoc_stations')
+EXTRA_TOOLS.append(('tracdoc_app', schema('cad_tracdoc_stations',
+    'Tạo bản vẽ DXF trắc dọc tuyến đường từ danh sách điểm (cọc/cột mốc) và mở AutoCAD. '
+    'Vẽ đường cao độ tự nhiên (xanh) + đường thiết kế (đỏ) + bảng số liệu 8 hàng tiêu chuẩn.\n'
+    'Thông tin mỗi điểm: station (lý trình m), ground_elev (cao độ tự nhiên m), '
+    'design_elev (cao độ thiết kế m), pile_name (tên cọc, tuỳ chọn), curve_note (ghi chú đoạn, tuỳ chọn).\n'
+    'Ví dụ: points=[{"station":0,"ground_elev":2.5,"design_elev":3.0,"pile_name":"A0"}, ...]\n'
+    'Cần ít nhất 2 điểm. Không hỏi thêm nếu đã đủ station/ground_elev/design_elev.',
+    {'app': TEXT,
+     'points': {'type': 'string', 'description': 'Chuỗi JSON mảng điểm, mỗi điểm gồm station, ground_elev, design_elev và tuỳ chọn pile_name, curve_note'},
+     'title': {'type': 'string', 'description': 'Tên bản vẽ, mặc định "TRẮC DỌC TUYẾN ĐƯỜNG"'},
+     'units': TEXT},
+    ['app', 'points'])))
+
 WRITES.add('cad_mcn_xldy')
 EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
     'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '

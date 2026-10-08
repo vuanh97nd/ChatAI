@@ -270,3 +270,47 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertIsNone(search_call('Cách mở chrome và tìm abc',self.cfg))
         call=search_call('Mở Chrome và tìm kiếm thông tin về tiêu chuẩn 41-2022',self.cfg)
         self.assertEqual(call['function']['arguments']['query'],'tiêu chuẩn 41-2022')
+
+    def test_cdm_layout_call_extracts_all_params(self):
+        from assistant.online_automation import cdm_layout_call
+        cfg={'windows_apps_enabled':True,'windows_apps_allowed':[r'C:\CAD\acad.exe']}
+        prompt='Vẽ bố trí cọc CDM B=12m L=100m D=0.8m H=12m lưới 2×2m trong AutoCAD'
+        call=cdm_layout_call(prompt,cfg)
+        self.assertIsNotNone(call)
+        self.assertEqual(call['function']['name'],'cad_cdm_layout')
+        args=call['function']['arguments']
+        self.assertEqual(args['b_road'],12.0)
+        self.assertEqual(args['l_treatment'],100.0)
+        self.assertEqual(args['d_pile'],0.8)
+        self.assertEqual(args['pile_depth'],12.0)
+        self.assertEqual(args['spacing_x'],2.0)
+        self.assertEqual(args['spacing_y'],2.0)
+
+    def test_cdm_layout_call_returns_none_without_cdm_keyword(self):
+        from assistant.online_automation import cdm_layout_call
+        cfg={'windows_apps_enabled':True,'windows_apps_allowed':[r'C:\CAD\acad.exe']}
+        self.assertIsNone(cdm_layout_call('Vẽ bố trí cọc B=12m L=100m D=0.8m H=12m lưới 2×2m',cfg))
+        self.assertIsNone(cdm_layout_call('Vẽ CDM B=12m',cfg))  # missing params
+
+    def test_cdm_layout_call_returns_none_when_windows_disabled(self):
+        from assistant.online_automation import cdm_layout_call
+        cfg={'windows_apps_enabled':False,'windows_apps_allowed':[r'C:\CAD\acad.exe']}
+        prompt='Vẽ bố trí cọc CDM B=12m L=100m D=0.8m H=12m lưới 2×2m'
+        self.assertIsNone(cdm_layout_call(prompt,cfg))
+
+    def test_cdm_layout_in_schemas_when_cdm_layout_passed(self):
+        from assistant.tools import EXTRA_TOOLS
+        from assistant.online_automation import OnlineAutomation
+        from types import SimpleNamespace
+        tools=SimpleNamespace(prepare=lambda n,a:{'action':n,**a},commit=lambda p:{'ok':True})
+        agent=OnlineAutomation(None,{},self.store,self.cid,tools,tools,cdm_layout=tools)
+        names=[s['function']['name'] for s in agent.schemas]
+        self.assertIn('cad_cdm_layout',names)
+
+    def test_cdm_layout_not_in_schemas_when_not_passed(self):
+        from assistant.online_automation import OnlineAutomation
+        from types import SimpleNamespace
+        tools=SimpleNamespace(prepare=lambda n,a:{'action':n,**a},commit=lambda p:{'ok':True})
+        agent=OnlineAutomation(None,{},self.store,self.cid,tools,tools)
+        names=[s['function']['name'] for s in agent.schemas]
+        self.assertNotIn('cad_cdm_layout',names)
