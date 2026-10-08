@@ -25,6 +25,12 @@ class WordApp:
         if path.suffix.lower()!='.docx':raise ValueError('Tên file Word phải có đuôi .docx.')
         mode=args.get('mode','new')
         if mode not in ('new','overwrite'):raise ValueError('mode phải là new hoặc overwrite.')
+        if mode=='new' and path.exists():
+            original=path
+            for number in range(2,1002):
+                candidate=self.files.path(str(original.with_name(f'{original.stem}-{number}{original.suffix}')),exists=False)
+                if not candidate.exists():path=candidate;break
+            else:path=self.files.path(str(original.with_name(original.stem+'-'+uuid.uuid4().hex+original.suffix)),exists=False)
         formatting={'font_name':args.get('font_name','Times New Roman'),'font_size':args.get('font_size','13'),'alignment':args.get('alignment','justify'),'line_spacing':args.get('line_spacing','1.15')}
         document = self.office.prepare('office_overwrite' if mode=='overwrite' else 'office_create', {'path':str(path), 'title':args.get('title',''), 'content':args['content'],**formatting})
         return {'action':'word_create_open', 'app':str(app), 'sha256':fingerprint(app), 'document':document}
