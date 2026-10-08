@@ -827,7 +827,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 ext=p.suffix.lower()
                 if ext in ('.pdf','.docx','.txt','.md'):
                     from assistant.documents import read_local
-                    items.append(read_local(p,foxit_ocr=True))
+                    from assistant.online_documents import online_pdf_reader
+                    reader=online_pdf_reader(self.cfg,getattr(self,'server_session',None),on_status=progress) if online and ext=='.pdf' else None
+                    items.append(read_local(p,pdf_ocr=reader,foxit_ocr=reader is None))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')
@@ -1860,6 +1862,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.online_automation import OnlineAutomation
             from assistant.files import FileTools
             from assistant.pdf_source import PDFSource
+            from assistant.online_documents import online_pdf_reader
+            from assistant.online_documents import online_pdf_reader
             from assistant.word_app import WordApp
             from assistant.cad_app import CadApp
             from assistant.cad3d_app import Cad3DApp
@@ -1876,7 +1880,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
-                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit))
+                    PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit))
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:
@@ -2193,6 +2197,16 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_fields['api_temperature']=field;online_form.addRow('Độ sáng tạo trực tuyến',field)
         online_form.addRow(QLabel('Ngữ cảnh API do dịch vụ và dữ liệu gửi quyết định; không dùng ô Ngữ cảnh Ollama.'))
         group_layout.addWidget(online_group)
+        network_group=QGroupBox('Công cụ trực tuyến');network_form=QFormLayout(network_group)
+        self.online_tools_check=QCheckBox('Cho phép dùng công cụ API trực tuyến');self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
+        self.online_upload_check=QCheckBox('Cho phép gửi ảnh trang tài liệu tới dịch vụ AI');self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
+        network_form.addRow(self.online_tools_check);network_form.addRow(self.online_upload_check)
+        field=QComboBox();field.addItems(['gemini','nvidia']);field.setCurrentText(self.cfg.get('online_document_provider','gemini'))
+        self.settings_fields['online_document_provider']=field;network_form.addRow('API đọc trang PDF',field)
+        field=QSpinBox();field.setRange(1,40);field.setValue(self.cfg.get('online_document_pages',5))
+        self.settings_fields['online_document_pages']=field;network_form.addRow('Số trang nhận dạng tối đa',field)
+        note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Cần key Gemini/NVIDIA trên server, có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
+        group_layout.addWidget(network_group)
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
         tools_form.addRow(self.auto_python_check)
@@ -2305,6 +2319,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_theme.currentIndexChanged.connect(self.account_settings_changed)
         self.settings_provider.currentIndexChanged.connect(self.account_settings_changed)
         self.auto_python_check.toggled.connect(self.account_settings_changed)
+        self.online_tools_check.toggled.connect(self.account_settings_changed)
+        self.online_upload_check.toggled.connect(self.account_settings_changed)
         self.settings_roots.textChanged.connect(self.account_settings_changed)
         self.windows_apps_check.toggled.connect(self.account_settings_changed)
         self.windows_compact_check.toggled.connect(self.account_settings_changed)
@@ -2908,6 +2924,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for provider,field in self.api_model_fields.items():proposed[provider+'_model']=field.text().strip()
         proposed['theme']=self.settings_theme.currentData()
         proposed['auto_python']=self.auto_python_check.isChecked()
+        if hasattr(self,'online_tools_check'):
+            proposed['online_tools_enabled']=self.online_tools_check.isChecked()
+            proposed['online_document_upload']=self.online_upload_check.isChecked()
         proposed['chat_provider']=REMOTE_MODELS.get(self.settings_provider.currentText(),'local')
         proposed['server_url']=self.settings_server.text().strip()
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
@@ -2932,6 +2951,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.settings_theme.setCurrentIndex(self.settings_theme.findData(self.cfg.get('theme','dark')))
         self.apply_theme(self.cfg.get('theme','dark'),self.cfg.get('font_size',13))
         self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
+        if hasattr(self,'online_tools_check'):
+            self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
+            self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
         self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'))
         self.settings_server.setText(self.cfg.get('server_url',''))
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))

@@ -27,6 +27,14 @@ def validate_config(cfg):
     cfg.setdefault("machine_auto_ai",True)
     cfg.setdefault("machine_profile_selected",False)
     cfg.setdefault("vision_model","gemma3:4b")
+    for key in ('online_tools_enabled','online_document_upload'):
+        cfg.setdefault(key,False)
+        if type(cfg[key]) is not bool:raise ValueError('Quyền công cụ trực tuyến phải là bật/tắt.')
+    cfg.setdefault('online_document_provider','gemini')
+    cfg.setdefault('online_document_pages',5)
+    if cfg['online_document_provider'] not in ('gemini','nvidia'):raise ValueError('API đọc PDF không hợp lệ.')
+    if type(cfg['online_document_pages']) is not int or not 1<=cfg['online_document_pages']<=40:raise ValueError('Số trang trực tuyến phải từ 1 đến 40.')
+
     if cfg['machine_profile'] not in ('weak','medium','high'):raise ValueError('Cấu hình máy không hợp lệ.')
     if type(cfg['machine_auto_ai']) is not bool:raise ValueError('Tự chọn AI phải là bật/tắt.')
     if not CHAT_MODELS.get(cfg['vision_model'],{}).get('vision'):raise ValueError('AI đọc ảnh không hỗ trợ ảnh.')
