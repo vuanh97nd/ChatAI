@@ -90,14 +90,18 @@ def app_permissions(cfg):
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, cad_trac_doc=None, plaxis_app=None, plaxis_remote=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
         self.cad3d_app=cad3d_app
         self.cad_app=cad_app
         self.word_app=word_app
         self.pdf_source=pdf_source
-        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set())
+        self.cdm_layout=cdm_layout
+        self.cad_trac_doc=cad_trac_doc
+        self.plaxis_app=plaxis_app
+        self.plaxis_remote=plaxis_remote
+        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set()) | ({'cdm_layout'} if cdm_layout else set()) | ({'tracdoc_app'} if cad_trac_doc else set()) | ({'plaxis_app'} if plaxis_app else set()) | ({'plaxis_remote'} if plaxis_remote else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
 
     def save(self,state):self.store.save(self.cid,state)
