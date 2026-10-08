@@ -1913,7 +1913,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         attachments.append({'name':source.name,'path':str(destination)})
                         audit('automation_attachment_staged',{'name':source.name,'path':str(destination)})
                     state['automation_attachments']=attachments
-                    agent.start(state,prompt,model,session['username'],image=attachment_image)
+                    from assistant.automation_start import start_automation
+                    start_automation(agent,state,prompt,model,session['username'],image=attachment_image)
                     state['messages'][-1]['documents']=attachments
                     agent.save(state)
                     self.store.remember_conversation(session['username'],cid)
