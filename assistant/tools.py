@@ -228,6 +228,20 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'auto_run': {'type': 'boolean'}},
     ['project_name', 'version', 'problem'])))
 
+WRITES.add('plaxis_run_problem')
+EXTRA_TOOLS.append(('plaxis_remote', schema('plaxis_run_problem',
+    'Kết nối trực tiếp Plaxis 2D/3D đang chạy qua Remote Scripting Server, thực thi phân tích địa kỹ thuật '
+    'và trả về kết quả số (lún, chuyển vị ngang, hệ số an toàn). '
+    'Yêu cầu: Plaxis đang mở + Remote Scripting Server đang bật (Expert > Configure remote scripting server) '
+    '+ pip install plxscripting. '
+    'version: "2d" hoặc "3d". '
+    'problem: chuỗi JSON giống plaxis_generate_script, ví dụ: '
+    '{"type":"excavation_pit","excavation_depth":6,"excavation_width":8,"wall_thickness":0.5,'
+    '"embedment_depth":2,"soil_layers":[{"name":"Cat","E":20000,"nu":0.3,"gamma":18.5,"c":5,"phi":28,"thickness":8}]}. '
+    'Trả về: lún lớn nhất (mm), chuyển vị ngang (mm), SF, kết quả từng giai đoạn.',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
+    ['project_name', 'version', 'problem'])))
+
 WRITES.add('road_analyze')
 EXTRA_TOOLS.append(('road_pipeline', schema('road_analyze',
     'Đọc DXF trắc dọc + mặt cắt ngang (tuỳ chọn) + danh sách lỗ khoan JSON → phân đoạn địa kỹ thuật → điền mẫu THSH. '
