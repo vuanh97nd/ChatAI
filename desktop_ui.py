@@ -1254,12 +1254,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def open_work_support(self):
         """Mở tab Hỗ trợ Công việc (tab động, tạo lại mỗi lần)."""
-        old = getattr(self, 'work_support_page_index', None)
-        if old is not None:
-            w = self.tabs.widget(old); self.tabs.removeTab(old); w.deleteLater()
-            for attr in ('memory_page_index', 'profile_page_index'):
-                if getattr(self, attr, -1) > old:
-                    setattr(self, attr, getattr(self, attr) - 1)
+        self.remove_dynamic_page('work_support_page_index')
         page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(16)
         self.button(layout, '← Quay lại chat', lambda: self.tabs.setCurrentIndex(0))
         title_lbl = QLabel('🗂️  Hỗ trợ Công việc')
@@ -2642,10 +2637,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 self.personal_memories=[x for x in self.personal_memories if x['id']!=ident]
                 if result.get('item'):self.personal_memories.insert(0,result['item'])
                 self.memory_dialog()
-            old_index=getattr(self,'memory_page_index',None)
-            if old_index is not None:
-                old=self.tabs.widget(old_index);self.tabs.removeTab(old_index);old.deleteLater()
-                if getattr(self,'profile_page_index',-1)>old_index:self.profile_page_index-=1
+            self.remove_dynamic_page('memory_page_index')
             self.add_scroll_page(dialog,'Bộ nhớ cá nhân')
             self.memory_page_index=self.tabs.count()-1
             self.tabs.setCurrentIndex(self.memory_page_index)
@@ -3016,13 +3008,29 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             for m in messages if m['role'] in ('user', 'assistant') and m.get('content')))
         layout.addWidget(view); dialog.exec()
 
+    def remove_dynamic_page(self,attribute):
+        old_index=getattr(self,attribute,None)
+        if old_index is None:return
+        page=self.tabs.widget(old_index)
+        if page is None:
+            setattr(self,attribute,None);return
+        # Update all cached indices before removeTab emits currentChanged.
+        for name in ('memory_page_index','profile_page_index','work_support_page_index','help_page_index','admin_page_index'):
+            value=getattr(self,name,None)
+            if value==old_index:setattr(self,name,None)
+            elif value is not None and value>old_index:setattr(self,name,value-1)
+        if getattr(self,'settings_last_tab',0)>old_index:self.settings_last_tab-=1
+        elif getattr(self,'settings_last_tab',0)==old_index:self.settings_last_tab=0
+        self.tabs.removeTab(old_index)
+        page.deleteLater()
+
     def balance_panels(self, index=None):
         if hasattr(self,'settings_button'):self.settings_button.setChecked(self.tabs.currentIndex()==3)
         # Keep navigation stable while the right-hand page changes.
         if hasattr(self, 'sidebar'):
             collapsed=getattr(self,'sidebar_collapsed',False)
             self.sidebar.setFixedWidth(92 if collapsed else 260)
-            _dynamic_pages={getattr(self,'memory_page_index',-1),getattr(self,'profile_page_index',-1),getattr(self,'work_support_page_index',-1)}-{-1}
+            _dynamic_pages={getattr(self,'memory_page_index',None),getattr(self,'profile_page_index',None)}-{None}
             self.sidebar_stack.setCurrentIndex(1 if self.tabs.currentIndex() in (1,3) or self.tabs.currentIndex() in _dynamic_pages else 0)
             self.main_splitter.setStretchFactor(0,0)
             self.main_splitter.setStretchFactor(1,1)
