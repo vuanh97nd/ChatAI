@@ -79,6 +79,20 @@ class DocumentMemory:
                     'coverage_note':note,'updated':datetime.now(timezone.utc).isoformat()}
             with self.store.connection() as db:
                 db.execute('INSERT OR REPLACE INTO document_memory VALUES (?,?,?,?)',(owner,identifier,json.dumps(record,ensure_ascii=False),record['updated']))
+            # When Foxit OCR saved a new file (<stem>_OCR.pdf), also update the original
+            # file's memory entry so context() lookups by the original attachment name
+            # return the fresh OCR'd text instead of the old garbled version.
+            if item.get('foxit_ocr'):
+                p=PureWindowsPath(file)
+                if p.stem.upper().endswith('_OCR'):
+                    orig_file=p.stem[:-4]+p.suffix
+                    orig_id=hashlib.sha256(orig_file.encode()).hexdigest()
+                    orig_note=(note+' · Văn bản từ bản OCR: '+file+'.').strip()
+                    orig_record={'id':orig_id,'file':orig_file,'text':text,'format':record['format'],
+                                 'coverage':record['coverage'],'coverage_note':orig_note,'updated':record['updated']}
+                    with self.store.connection() as db:
+                        db.execute('INSERT OR REPLACE INTO document_memory VALUES (?,?,?,?)',
+                                   (owner,orig_id,json.dumps(orig_record,ensure_ascii=False),orig_record['updated']))
 
     def seed(self,owner,state):
         self.import_records(owner,state.get('document_memory',[]))
