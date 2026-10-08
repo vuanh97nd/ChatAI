@@ -124,7 +124,7 @@ def app_permissions(cfg):
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
         self.cad3d_app=cad3d_app
@@ -132,7 +132,8 @@ class OnlineAutomation:
         self.word_app=word_app
         self.pdf_source=pdf_source
         self.cdm_layout=cdm_layout
-        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set()) | ({'cdm_layout'} if cdm_layout else set())
+        self.tracdoc_app=tracdoc_app
+        modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set()) | ({'cdm_layout'} if cdm_layout else set()) | ({'tracdoc_app'} if tracdoc_app else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
 
     def save(self,state):self.store.save(self.cid,state)
@@ -153,6 +154,7 @@ class OnlineAutomation:
         self.save(state)
 
     def component(self,name):
+        if name=='cad_tracdoc_stations':return self.tracdoc_app
         if name=='cad_cdm_layout':return self.cdm_layout
         if name=='cad3d_create_open':return self.cad3d_app
         if name=='cad_create_open':return self.cad_app
@@ -221,6 +223,7 @@ class OnlineAutomation:
                          'Khi cần vẽ bằng AutoCAD, dùng cad_create_open để tạo DXF và mở acad.exe. Nếu thiếu kích thước/đơn vị, hỏi rõ rồi tiếp tục dùng công cụ khi người dùng bổ sung. Không tự đoán kích thước. '
                          'Bố trí cọc CDM (Cement Deep Mixing) dùng cad_cdm_layout với đủ 6 thông số: b_road (chiều rộng), l_treatment (chiều dài), d_pile (đường kính), pile_depth (chiều sâu), spacing_x (khoảng cách ngang), spacing_y (khoảng cách dọc). Công cụ tự vẽ mặt cắt ngang và mặt bằng trong cùng một file DXF; không cần hỏi thêm khi đã có đủ 6 thông số. '
                          'Không dùng cad_create_open cho yêu cầu vẽ bố trí cọc CDM khi cad_cdm_layout có trong danh sách. '
+                         'Trắc dọc tuyến đường dùng cad_tracdoc_stations với points là mảng JSON các điểm, mỗi điểm gồm station (lý trình m), ground_elev (cao độ tự nhiên m), design_elev (cao độ thiết kế m), pile_name (tên cọc). Không dùng cad_create_open cho trắc dọc khi cad_tracdoc_stations có trong danh sách. '
                          'Khi cần mở Word và viết bài, tìm WINWORD.EXE rồi gọi word_create_open với toàn bộ bài viết; công cụ tạo DOCX có nội dung và mở Word, không cần gõ qua UIA. Áp dụng font_name/font_size/alignment/line_spacing theo yêu cầu ngay trong word_create_open; công cụ hỗ trợ Times New Roman cỡ 13 và căn chỉnh, không yêu cầu người dùng xác nhận lại định dạng. Khi người dùng đã yêu cầu tạo tài liệu mới, tên file là chi tiết triển khai: nếu chưa chỉ định tên thì bỏ path để công cụ tự tạo tên; không hỏi xác nhận tên mặc định. mode=new tự đổi tên nếu trùng. Lỗi tên file tồn tại không phải người dùng từ chối; chỉ kết luận bị từ chối khi kết quả công cụ có denied=true. Chỉ hỏi đường dẫn khi người dùng muốn ghi đè một file cụ thể nhưng chưa xác định được file đó. Soạn được nhiều loại đơn: xin việc, nghỉ phép, nghỉ việc, đề nghị, xác nhận, khiếu nại, v.v. Tiêu đề phải nêu đúng loại đơn. Viết nội dung phù hợp mục đích, người nhận và yêu cầu người dùng; không dùng nội dung nghỉ việc cho loại đơn khác. Mẫu để trống giữ các trường điền thông tin, không yêu cầu người dùng cung cấp thông tin cá nhân trước. Không bịa tên, ngày, sự kiện hoặc căn cứ pháp luật. Khi thiếu thông tin dùng chỗ trống; chỉ hỏi nếu chưa biết mục đích loại đơn. Không tuyên bố mẫu đáp ứng mọi thủ tục pháp lý; nếu người dùng có biểu mẫu bắt buộc, ưu tiên giữ bố cục của biểu mẫu. '
                          'Khi chưa biết đường dẫn hoặc được cấp mở mọi app đã cài, dùng windows_list_apps(query=tên app) để tìm EXE thật trước. Không tự chạy lệnh cài thư viện; ChatAI tự quản lý gói theo quyền Cài đặt. '
                          'browser_search mở Chrome tìm và đọc tự động; browser_run thực hiện toàn bộ quy trình sau khi duyệt một lần, phiên mới mỗi lần. '
