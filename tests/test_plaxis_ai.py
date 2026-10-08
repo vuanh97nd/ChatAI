@@ -375,5 +375,140 @@ class PlaxisAutoRunSkippedTest(unittest.TestCase):
         plx_mock.easy.new_server.assert_not_called()
 
 
+# ── Bài toán hố đào v2: thông số giả định chuẩn (2 lớp, MNN, gamma_sat) ─────
+
+EXCAVATION_V2_PROBLEM = json.dumps({
+    "type": "excavation_pit",
+    "excavation_depth": 6.0,
+    "excavation_width": 8.0,
+    "wall_thickness": 0.5,
+    "embedment_depth": 2.0,
+    "surcharge": 75.0,
+    "water_table_depth": 3.0,
+    "soil_layers": [
+        {
+            "name": "Cat",
+            "E": 50000,
+            "nu": 0.30,
+            "gamma": 18.0,
+            "gamma_sat": 20.0,
+            "c": 0,
+            "phi": 35,
+            "thickness": 4.0,
+        },
+        {
+            "name": "Set",
+            "E": 30000,
+            "nu": 0.30,
+            "gamma": 19.0,
+            "gamma_sat": 21.0,
+            "c": 15,
+            "phi": 28,
+            "thickness": 6.0,
+        },
+    ],
+})
+
+
+class PlaxisExcavationV2Test(unittest.TestCase):
+    """Bài toán hố đào v2: 2 lớp Cát + Sét, MNN -3 m, tải 75 kPa."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.result, self.script = _run(self._tmp.name, EXCAVATION_V2_PROBLEM,
+                                        project_name="HoDaoV2")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_result_ok(self):
+        self.assertTrue(self.result["ok"])
+
+    def test_problem_type(self):
+        self.assertEqual(self.result["problem_type"], "excavation_pit")
+
+    def test_file_saved(self):
+        self.assertTrue(Path(self.result["path"]).exists())
+
+    def test_script_has_plaxis_import(self):
+        self.assertIn("from plxscripting.easy import new_server", self.script)
+
+    def test_soil_layer_names(self):
+        self.assertIn("'Cat'", self.script)
+        self.assertIn("'Set'", self.script)
+
+    def test_gamma_sat_cat_layer(self):
+        """gammaSat của lớp Cát phải là 20.0."""
+        self.assertIn("20.0", self.script)
+
+    def test_gamma_sat_set_layer(self):
+        """gammaSat của lớp Sét phải là 21.0."""
+        self.assertIn("21.0", self.script)
+
+    def test_water_level_in_script(self):
+        """Script phải khai báo mực nước ngầm tại -3 m."""
+        self.assertIn("setwaterlevel", self.script)
+        self.assertIn("-3.00", self.script)
+
+    def test_surcharge_75kpa(self):
+        """Tải trọng 75 kPa phải xuất hiện trong script."""
+        self.assertIn("-75.00", self.script)
+
+    def test_wall_plate_defined(self):
+        self.assertIn("g.plate(", self.script)
+
+    def test_platemat_defined(self):
+        self.assertIn("g.platemat()", self.script)
+
+    def test_excavation_phase_present(self):
+        self.assertIn("Dao dat", self.script)
+
+    def test_phi_c_reduction_phase(self):
+        self.assertIn("PhiCReduction", self.script)
+
+    def test_calculate_called(self):
+        self.assertIn("g.calculate()", self.script)
+
+    def test_not_auto_run(self):
+        self.assertFalse(self.result["executed"])
+
+    def test_python_syntax_valid(self):
+        import ast
+        try:
+            ast.parse(self.script)
+        except SyntaxError as e:
+            self.fail(f"Script không hợp lệ cú pháp Python: {e}\n---\n{self.script[:500]}")
+
+    def test_e_values_in_script(self):
+        """Modulus E của 2 lớp đất phải có trong script."""
+        self.assertIn("50000", self.script)
+        self.assertIn("30000", self.script)
+
+    def test_phi_values_in_script(self):
+        """Góc ma sát phi = 35 và 28 phải có trong script."""
+        self.assertIn("35", self.script)
+        self.assertIn("28", self.script)
+
+    def test_project_name_in_script(self):
+        self.assertIn("HoDaoV2", self.script)
+
+
+class PlaxisExcavationV2PrintScript(unittest.TestCase):
+    """In script ra stdout để dùng làm ví dụ / tài liệu."""
+
+    def test_print_generated_script(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, script = _run(tmp, EXCAVATION_V2_PROBLEM, project_name="HoDaoV2_Example")
+        separator = "=" * 70
+        print(f"\n{separator}")
+        print("PLAXIS SCRIPT MẪU – Hố đào v2 (2 lớp, MNN -3 m, tải 75 kPa)")
+        print(separator)
+        print(script)
+        print(separator)
+        # Đây là test luôn pass – mục đích chỉ để in script ra stdout
+        self.assertIsInstance(script, str)
+        self.assertGreater(len(script), 100)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
