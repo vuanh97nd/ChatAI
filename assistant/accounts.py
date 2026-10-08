@@ -19,7 +19,7 @@ def request_account(endpoint,path,body,timeout=12):
     url=urlparse(endpoint)
     if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
         raise ValueError('URL server phải là URL gốc HTTPS.')
-    request=Request(endpoint.rstrip('/')+path,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
+    request=Request(endpoint.rstrip('/')+path,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)','Connection':'keep-alive'})
     try:
         started=time.monotonic()
         with urlopen(request,timeout=timeout) as response:

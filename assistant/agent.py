@@ -215,7 +215,7 @@ class Agent:
                 if configured:intent_model=configured
             state["routing"] = classify_question(self.client, state["messages"],
                                                    bool(state.get("attached_documents")), model=intent_model,
-                                                   keep_alive=0 if intent_model!=state["model"] else "10m",expert_mode=state.get("expert_mode",False))
+                                                   keep_alive="10m",expert_mode=state.get("expert_mode",False))
             self.save(state)
         if state['running'] and self.orchestrator:
             self.orchestrator.prepare(state,state['routing'])
@@ -478,6 +478,9 @@ class Agent:
                 if calculation_turn:
                     instruction += "\nCông cụ tính toán khả dụng: calculate (Python)."
                 schemas = self.schemas
+                # Trò chuyện thuần không cần tool; bỏ schemas để tiết kiệm ~800 token.
+                if state.get("routing", {}).get("category") == "conversation":
+                    schemas = []
                 if state.get('ui_mode') in (2, 3) and not plan.get('enabled'):
                     if state.get('media_done'):
                         instruction += '\nTrạng thái tác vụ media: đã xử lý hoặc bị từ chối; không còn tool tạo media trong bước này.'
