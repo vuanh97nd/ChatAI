@@ -230,16 +230,28 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
 
 WRITES.add('plaxis_run_problem')
 EXTRA_TOOLS.append(('plaxis_remote', schema('plaxis_run_problem',
-    'Kết nối trực tiếp Plaxis 2D/3D đang chạy qua Remote Scripting Server, thực thi phân tích địa kỹ thuật '
-    'và trả về kết quả số (lún, chuyển vị ngang, hệ số an toàn). '
-    'Yêu cầu: Plaxis đang mở + Remote Scripting Server đang bật (Expert > Configure remote scripting server) '
-    '+ pip install plxscripting. '
+    'Kết nối trực tiếp Plaxis 2D/3D qua Remote Scripting Server (ưu tiên), '
+    'tự động chuyển sang UI Control nếu server chưa bật. '
+    'Trả về kết quả số: lún lớn nhất (mm), chuyển vị ngang (mm), hệ số an toàn (SF), kết quả từng giai đoạn. '
+    'Remote Scripting cần: pip install plxscripting + Expert > Configure remote scripting server > Start. '
+    'UI Control fallback cần: Plaxis đang mở (Windows) + pywinauto đã cài; '
+    'cung cấp plaxis_exe để tự khởi động Plaxis nếu chưa mở. '
     'version: "2d" hoặc "3d". '
-    'problem: chuỗi JSON giống plaxis_generate_script, ví dụ: '
+    'problem: JSON mô tả bài toán: '
     '{"type":"excavation_pit","excavation_depth":6,"excavation_width":8,"wall_thickness":0.5,'
-    '"embedment_depth":2,"soil_layers":[{"name":"Cat","E":20000,"nu":0.3,"gamma":18.5,"c":5,"phi":28,"thickness":8}]}. '
-    'Trả về: lún lớn nhất (mm), chuyển vị ngang (mm), SF, kết quả từng giai đoạn.',
-    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
+    '"embedment_depth":2,"soil_layers":[{"name":"Cat","E":20000,"nu":0.3,"gamma":18.5,"c":5,"phi":28,"thickness":8}]}.',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'plaxis_exe': TEXT},
+    ['project_name', 'version', 'problem'])))
+
+WRITES.add('plaxis_ui_run')
+EXTRA_TOOLS.append(('plaxis_ui_control', schema('plaxis_ui_run',
+    'Điều khiển UI Plaxis 2D/3D trực tiếp (File > Run Script) để thực thi script phân tích địa kỹ thuật. '
+    'Dùng khi Remote Scripting Server không khả dụng. Chỉ hoạt động trên Windows với pywinauto đã cài. '
+    'Tự động chụp ảnh màn hình kết quả sau khi tính toán xong. '
+    'Cung cấp plaxis_exe nếu muốn tự khởi động Plaxis (ví dụ: C:\\\\Program Files\\\\Plaxis\\\\PLAXIS2D.exe). '
+    'version: "2d" hoặc "3d". '
+    'problem: chuỗi JSON mô tả bài toán (cùng định dạng plaxis_run_problem).',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'plaxis_exe': TEXT},
     ['project_name', 'version', 'problem'])))
 
 WRITES.add('road_analyze')
