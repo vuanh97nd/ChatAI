@@ -480,11 +480,23 @@ class OnlineAutomation:
             instruction+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'])
             messages=planning_messages(state,instruction)
             output=None;last_plan_error=''
+            plan_format={'type':'object','properties':{
+                'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'string'}},
+                'required':['answer','tool','arguments']}
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
-                response=self.client.chat(self.client.model,messages,format={'type':'object','properties':{
-                    'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'string'}},
-                    'required':['answer','tool','arguments']},options={'num_predict':planning_tokens,'temperature':.1})
+                try:
+                    response=self.client.chat(self.client.model,messages,format=plan_format,
+                        options={'num_predict':planning_tokens,'temperature':.1})
+                except RuntimeError as error:
+                    last_plan_error=str(error)[:300]
+                    self.store.audit(self.cid,'automation_plan_call_failed',{'error':last_plan_error,'attempt':attempt})
+                    if attempt==0:
+                        # Strict JSON mode leaves some providers with empty content; retry as free text.
+                        plan_format=None;planning_tokens=min(8192,planning_tokens*2)
+                        yield {'type':'status','text':'AI chưa trả nội dung; đang thử lại ở chế độ văn bản…'}
+                        continue
+                    break
                 try:
                     if response.get('truncated'):raise ValueError('JSON bị giới hạn token.')
                     output=parse_plan(response['message']['content'],self.schemas)
@@ -510,6 +522,12 @@ class OnlineAutomation:
                     state['messages'].append({'role':'assistant','content':text});state['running']=False
                     yield {'type':'token','text':text}
             except (ValueError,KeyError,TypeError):
+                bypass=state.pop('_bypass_fallback',None)
+                if bypass:
+                    state['messages'].append({'role':'assistant','content':'','tool_calls':[bypass]})
+                    state['queue']=[bypass];self.save(state)
+                    yield {'type':'status','text':'AI chưa trả kế hoạch; đang dùng thao tác suy ra từ yêu cầu…'}
+                    continue
                 state['running']=False
                 text='AI chưa trả kế hoạch hợp lệ; chưa thực hiện thao tác mới. Lỗi kiểm tra: '+(last_plan_error or 'Chưa có JSON kế hoạch.')
                 state['messages'].append({'role':'assistant','content':text});yield {'type':'token','text':text}
