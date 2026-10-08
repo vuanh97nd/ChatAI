@@ -9,3 +9,5 @@ Các endpoint POST `/api/conversations/sync/list`, `/get`, `/put` dùng xác th�
 Ngữ cảnh DeepSeek giữ tối đa 36 lượt gần đây với ngân sách 90.000 ký tự, kèm tối đa 8.000 ký tự thông tin người dùng ở các lượt trước. Lời nhắc yêu cầu dùng thông tin đã chốt, không hỏi lại và theo chủ đề mới khi người dùng đổi chủ đề. Lịch sử lưu đầy đủ không có nghĩa mọi cuộc hội thoại dài vô hạn đều nằm trong ngữ cảnh của model.
 
 Lập kế hoạch JSON dùng tối thiểu 2.048, mặc định 4.096 token; nếu JSON bị cắt, thử lại một lần với tối đa 8.192 token trước khi thực thi. DeepSeek dùng chế độ JSON và tắt thinking trong lượt kế hoạch để không dùng hết ngân sách trước khi trả JSON. Các lượt trò chuyện thông thường giữ cấu hình model của người dùng.
+
+Tự sửa lỗi: kế hoạch bị từ chối ở bước kiểm tra trước thực thi được sửa tối đa hai lần. Phản hồi API rỗng/thừa suy luận được khôi phục một lần, không chạy lại công cụ. Lỗi vật liệu Plaxis đã biết trong mô hình ChatAI tạo được thử lại một lần nếu tái sinh script từ cùng thông số tạo ra bản sửa khác; không lặp script lỗi hay tự thay đổi số liệu thiết kế.

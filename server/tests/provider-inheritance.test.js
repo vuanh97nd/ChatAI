@@ -19,6 +19,17 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
    assert.equal(payload.response_format.type,'json_object');
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
+ test(`${name}: empty AI response has a repair code and retry disables reasoning`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',DEEPSEEK_API_KEY:'test-only-key'};
+  const original=globalThis.fetch;let payload;
+  const call=repair=>worker.fetch(new Request('https://example.org/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'deepseek_pro',repair_response:repair,messages:[{role:'user',content:'Sửa lỗi'}]})}),env,{});
+  try{
+   globalThis.fetch=async(url,options)=>{payload=JSON.parse(options.body);return Response.json({choices:[{message:{content:''},finish_reason:'stop'}]});};
+   const empty=await call(false);assert.equal(empty.status,502);assert.equal((await empty.json()).code,'EMPTY_AI_RESPONSE');
+   globalThis.fetch=async(url,options)=>{payload=JSON.parse(options.body);return Response.json({choices:[{message:{content:'OK'},finish_reason:'stop'}]});};
+   const recovered=await call(true);assert.equal(recovered.status,200);assert.equal(payload.thinking.type,'disabled');
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
  for(const source of ['D1','secret'])test(`${name}: three custom DeepSeek entries inherit one ${source} key`,async()=>{
   const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length'};
   const shared='test-shared-deepseek-key';
