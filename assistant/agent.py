@@ -437,6 +437,14 @@ class Agent:
                 review_needed=bool(state.get('deep_analysis') or state['routing'].get('complex') or state['routing'].get('high_accuracy'))
                 internal_stage=bool((plan.get('enabled') and plan['stage'] in ('media','vision')) or state.get('ui_mode') in (2,3))
                 instruction = SYSTEM if self.schemas else FAST_SYSTEM
+                try:
+                    from .text_normalize import abbreviation_hint
+                    _last_user = next((m['content'] for m in reversed(state['messages']) if m['role']=='user' and isinstance(m.get('content'),str)), '')
+                    _hint = abbreviation_hint(_last_user)
+                    if _hint:
+                        instruction += '\n' + _hint
+                except Exception:
+                    pass
                 from .windows_apps import readiness
                 instruction += '\nTrạng thái điều khiển ứng dụng Windows: ' + readiness(self.cfg)
                 if any(t['function']['name']=='browser_search' for t in self.schemas):
