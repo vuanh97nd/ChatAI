@@ -32,3 +32,22 @@ class StratigraphyTests(unittest.TestCase):
                 if 'soil_layers' in problem:
                     for i,layer in enumerate(problem['soil_layers']):
                         self.assertIn(f'g.setmaterial(g.Soillayers[{i}].Soil, soil{i+1})',script)
+
+    def test_embankment_uses_polygon_command_and_assigns_returned_soil(self):
+        script=_generate_script(_validate_problem(json.dumps({'type':'embankment_stability'})),'2d',10000,'Test')
+        self.assertNotIn('g.soilpolygon(',script)
+        line=next(line for line in script.splitlines() if line.startswith('emb_polygon, emb ='))
+        soil=SimpleNamespace(material=None)
+        class Geometry:
+            def polygon(self,*points):
+                self.points=points
+                return object(),soil
+            def setmaterial(self,target,material):
+                self.assert_target=target
+                target.material=material
+        g=Geometry();material=object()
+        exec(line+'\ng.setmaterial(emb, mat_fill)',{'g':g,'mat_fill':material})
+        self.assertEqual(len(g.points),4)
+        self.assertIs(g.assert_target,soil)
+        self.assertIs(soil.material,material)
+        self.assertLess(script.index(line),script.index('g.gotomesh()'))

@@ -543,7 +543,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('')
     lines.append('# Khối bờ đắp (soil polygon)')
     lines.append(
-        f'emb_polygon, emb = g.soilpolygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
+        f'emb_polygon, emb = g.polygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
         f'({x_right_crest:.2f}, {H:.2f}), ({x_right_toe:.2f}, 0))'
     )
     lines.append('g.setmaterial(emb, mat_fill)')
