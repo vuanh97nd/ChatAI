@@ -42,6 +42,12 @@ def image_message_content(text, encoded):
             {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+encoded}}]
 
 
+def greeting_reply(prompt):
+    if re.fullmatch(r'\s*(?:hi|hello|hey|xin chào|chào(?: bạn)?|alo)\s*[!.?]*\s*',prompt,re.I):
+        return 'Chào bạn! Tôi có thể giúp gì cho bạn?'
+    return None
+
+
 def planning_messages(state,instruction):
     history=state['messages'][-20:]
     # Send the latest user image only: repeated agent rounds must not accumulate
@@ -55,7 +61,10 @@ def planning_messages(state,instruction):
     messages=[{'role':'system','content':instruction+CONTINUITY+recalled}]
     for i,message in enumerate(history):
         if message['role']=='tool':
-            messages.append({'role':'user','content':'KẾT QUẢ CÔNG CỤ '+message.get('tool_name','tool')+': '+message['content'][:16000]})
+            last_user=max((j for j,m in enumerate(history) if m.get('role')=='user'),default=-1)
+            historical=i<last_user
+            label='KẾT QUẢ CÔNG CỤ LỊCH SỬ (không phải thao tác vừa chạy trong lượt này)' if historical else 'KẾT QUẢ CÔNG CỤ LƯỢT HIỆN TẠI'
+            messages.append({'role':'assistant' if historical else 'user','content':label+' '+message.get('tool_name','tool')+': '+message['content'][:16000]})
         elif i==latest:
             messages.append({'role':'user','content':image_message_content(message.get('content',''),message['images'][0])})
         elif message.get('content'):
@@ -295,6 +304,10 @@ class OnlineAutomation:
         state['messages'].append(message)
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
                      online_automation=True,automation_rounds=0,preparation_repairs=0,plaxis_repairs=0)
+        state['greeting_reply']=greeting_reply(prompt) if image is None else None
+        if state['greeting_reply']:
+            self.save(state)
+            return
         from .plaxis_confirmation import confirmation_call
         confirmed=confirmation_call(prompt,state,bool(self.plaxis_remote),bool(self.plaxis_app)) if self.cfg.get('windows_apps_enabled') else None
         call=None if image is not None else (confirmed or search_call(prompt,self.cfg)
@@ -360,6 +373,12 @@ class OnlineAutomation:
         self.save(state)
 
     def run(self,state):
+        if state.get('running') and state.get('greeting_reply'):
+            answer=state.pop('greeting_reply')
+            state['messages'].append({'role':'assistant','content':answer})
+            state['running']=False;self.save(state)
+            yield {'type':'token','text':answer}
+            return
         while state['running']:
             if state.get('pending'):
                 if not state['pending'].get('decision_started') and self.cfg.get('windows_apps_auto_execute') and self.windows.check().get('windows_apps_auto_execute'):
@@ -427,7 +446,7 @@ class OnlineAutomation:
                 yield {'type':'token','text':text};return
             state['automation_rounds']+=1;self.save(state)
             yield {'type':'status','text':'AI trực tuyến đang đọc kết quả và chọn bước tiếp theo…'}
-            instruction=('Bạn là trợ lý điều khiển ứng dụng trên máy Windows của người dùng. Trả JSON: '
+            instruction=('Trả lời đúng yêu cầu người dùng mới nhất. Không nhắc kết quả cũ nếu câu hỏi không liên quan; kết quả công cụ lịch sử không chứng minh vừa thực hiện thao tác trong lượt này. Bạn là trợ lý điều khiển ứng dụng trên máy Windows của người dùng. Trả JSON: '
                          '{"answer":"...","tool":"","arguments":"{}"}. Nếu cần thực hiện, tool phải là tên trong danh sách và arguments là chuỗi JSON tham số. '
                          'Khi đã đủ kết quả hoặc bị từ chối, tool rỗng và answer trả lời tiếng Việt. Người dùng trả lời ok/đồng ý là chấp thuận đề xuất gần nhất trong hội thoại; dùng thông số đã chốt và gọi công cụ, không hỏi xác nhận lại. Khi người dùng báo sai bài toán, đọc lại bộ nhớ tài liệu và sửa đúng loại bài toán, không lặp mẫu cũ. '
                          'Không tuyên bố không có công cụ khi danh sách có công cụ phù hợp; gọi công cụ để xin duyệt. '
