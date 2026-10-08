@@ -100,8 +100,14 @@ class OfficeTools:
                 doc.save(tmp)
             elif p.suffix.lower() == '.docx':
                 from docx import Document
-                doc = Document(); doc.add_heading(plan.get('title', 'Tài liệu'), 0)
-                for line in plan['content'].splitlines(): doc.add_paragraph(line)
+                from .word_layout import resignation_paragraphs,format_resignation
+                letter=resignation_paragraphs(plan.get('title',''),plan['content'])
+                doc=Document()
+                if letter:
+                    for line in letter:doc.add_paragraph(line)
+                else:
+                    doc.add_heading(plan.get('title','Tài liệu'),0)
+                    for line in plan['content'].splitlines():doc.add_paragraph(line)
                 if 'font_name' in plan:
                     from docx.shared import Pt,Cm
                     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -118,6 +124,7 @@ class OfficeTools:
                             run.font.name=plan['font_name'];run.font.size=Pt(float(plan.get('font_size',13)))
                             run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),plan['font_name'])
                             if index==0:run.bold=True
+                if letter:format_resignation(doc,plan.get('font_name','Times New Roman'),float(plan.get('font_size',13)))
                 doc.save(tmp)
             else:
                 from pptx import Presentation
