@@ -172,11 +172,13 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False,progress=None):
             if not _foxit_available():
                 raise ValueError('OCR cục bộ không khả dụng: cần Windows và thư viện pywinauto (pip install pywinauto).')
             try:
-                if progress:progress('AI/trích xuất chưa đọc được '+p.name+'; chuyển sang OCR Foxit. Lý do: '+str(exc)[:300])
+                reason='AI đọc ảnh đã thử nhưng chưa đọc được' if pdf_ocr is not None else 'trích xuất text thất bại'
+                if progress:progress(reason+' — '+p.name+'; chuyển sang OCR Foxit. Lý do: '+str(exc)[:300])
                 ocr_path=_foxit_ocr(p,on_status=progress) if progress else _foxit_ocr(p)
             except Exception as foxit_err:
                 raise ValueError(f'Foxit OCR thất bại: {foxit_err}') from foxit_err
-            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=None,**({'progress':progress} if progress else {}))
+            # Pass pdf_ocr so AI vision can handle any pages Foxit's text layer still misses.
+            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=pdf_ocr,**({'progress':progress} if progress else {}))
             return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
         raise
 
