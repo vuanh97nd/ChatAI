@@ -25,3 +25,21 @@ class FoxitOpenPathTests(unittest.TestCase):
         dialog.child_window.side_effect=lambda **kw:combo if kw.get('control_type')=='ComboBox' else direct
         self.assertIs(_filename_edit(dialog),inner.wrapper_object.return_value)
         self.assertTrue(all(call.kwargs.get('auto_id') in ('1148','1001') for call in dialog.child_window.call_args_list))
+    def test_open_pdf_passes_full_path_as_one_argument_without_dialog(self):
+        import tempfile
+        from pathlib import Path
+        from assistant.foxit_ocr_automation import _open_file
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory)/'Đề bài PLAXIS.pdf';source.write_bytes(b'%PDF-test')
+            app=Mock();app.window.return_value.exists.return_value=False
+            window=Mock();window.window_text.return_value=source.name+' - Foxit PDF Editor'
+            with patch('subprocess.Popen') as launch,patch('assistant.foxit_ocr_automation._wait_for_main_window',return_value=window),patch('assistant.foxit_ocr_automation._fill_open_dialog') as fill:
+                _open_file(app,str(source),exe='/apps/Foxit Editor/FoxitPDFEditor.exe')
+            launch.assert_called_once_with(['/apps/Foxit Editor/FoxitPDFEditor.exe',str(source.resolve())],cwd='/apps/Foxit Editor',shell=False)
+            fill.assert_not_called()
+    def test_missing_source_is_not_opened_as_folder(self):
+        from assistant.foxit_ocr_automation import _open_file
+        with patch('subprocess.Popen') as launch:
+            with self.assertRaisesRegex(RuntimeError,'PDF tồn tại'):
+                _open_file(Mock(),'/missing/file.pdf',exe='/apps/Foxit.exe')
+            launch.assert_not_called()

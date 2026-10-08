@@ -97,7 +97,7 @@ def foxit_ocr(
     # ------------------------------------------------------------------
     # Open the PDF
     # ------------------------------------------------------------------
-    _open_file(app, str(src))
+    _open_file(app, str(src), exe=exe)
 
     # ------------------------------------------------------------------
     # Invoke OCR: Tools → OCR Text Recognition (or Home → OCR)
@@ -258,27 +258,29 @@ def _main_window(app):
     return max(wins, key=lambda w: w.rectangle().width())
 
 
-def _open_file(app, path: str):
-    """Use Ctrl+O to open a file in Foxit."""
-    from pywinauto.keyboard import send_keys
+def _open_file(app, path: str, *, exe: str):
+    """Open the explicit PDF through Foxit's command line, not Ctrl+O."""
+    import subprocess
 
-    win = _main_window(app)
-    win.set_focus()
-    time.sleep(0.3)
-    send_keys("^o")  # Ctrl+O
-    _fill_open_dialog(app, path)
-    # Wait for the document to load (title changes)
-    stem = Path(path).stem
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
+    source=Path(path).resolve()
+    if not source.is_file() or source.suffix.casefold()!='.pdf':
+        raise RuntimeError('Tệp nguồn OCR phải là PDF tồn tại: '+str(source))
+    # A dialog left behind by a previous failed attempt can block document loading.
+    try:
+        dialog=app.window(class_name="#32770")
+        if dialog.exists(timeout=.2) and dialog.window_text().strip().casefold() in ('open','mở'):
+            cancel=dialog.child_window(auto_id="2",control_type="Button")
+            if cancel.exists(timeout=.2):cancel.click_input()
+    except Exception:pass
+    subprocess.Popen([str(exe),str(source)],cwd=str(Path(exe).parent),shell=False)
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
         try:
-            win = _main_window(app)
-            if stem in win.window_text():
-                return
-        except Exception:
-            pass
-        time.sleep(0.5)
-    raise RuntimeError(f"Foxit không mở được file trong thời gian chờ: {path}")
+            window=_wait_for_main_window(app,timeout=2)
+            if source.name.casefold() in window.window_text().casefold():return
+        except Exception:pass
+        time.sleep(.5)
+    raise RuntimeError('Foxit chưa xác nhận mở PDF '+source.name+'; không chạy OCR trên tài liệu khác.')
 
 
 def _filename_edit(dlg):
