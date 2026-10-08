@@ -44,7 +44,7 @@ class PDFSource:
     def read(self,path,start=0):
         from .documents import read_document_range
         try:
-            result=read_document_range(self.files,str(path),start=start,limit=8000)
+            result=read_document_range(self.files,str(path),start=start,limit=8000,foxit_ocr=True)
             return dict(result,read_ok=True)
         except ValueError as error:
             return {'ok':False,'read_ok':False,'path':str(path),'content':'','coverage':'none',
