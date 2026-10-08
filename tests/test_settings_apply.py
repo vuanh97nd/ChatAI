@@ -86,6 +86,23 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(saved['api_temperature'],.1)
         self.assertNotEqual(saved['num_predict'],3072)
 
+    def test_creativity_save_does_not_send_blank_or_unchanged_provider_models(self):
+        u=self.ui;u.server_session['username']='admin';u.server_session['role']='system';u.server_session['key']='test-session'
+        u.api_model_fields={'deepseek':Text(u.cfg['deepseek_model']),'groq':Text('')}
+        u.settings_fields['api_temperature']=Spin(.5)
+        with patch('assistant.accounts.request_account') as request:
+            u.save_settings()
+        request.assert_not_called()
+        self.assertEqual(json.loads((self.root/'config.json').read_text())['api_temperature'],.5)
+        self.assertEqual(u.status.text(),'Đã lưu cài đặt.')
+
+    def test_provider_edit_sends_only_nonempty_changed_model(self):
+        u=self.ui;u.server_session['username']='admin';u.server_session['role']='system';u.server_session['key']='test-session'
+        u.api_model_fields={'deepseek':Text('deepseek-v4-pro'),'groq':Text('')}
+        with patch('assistant.accounts.request_account') as request:
+            u.save_settings()
+        self.assertEqual(request.call_args.args[2]['models'],{'deepseek':'deepseek-v4-pro'})
+
     def test_apply_persists_and_updates_without_changing_page(self):
         u=self.ui;self.assertFalse(u.settings_dirty())
         u.settings_fields['num_ctx'].setValue(2048);u.settings_provider.v='local'

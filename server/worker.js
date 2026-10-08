@@ -1619,7 +1619,7 @@ async function providerAPI(env,path,body){
  }
  if(path.endsWith('/save')){
   const keys=body.providers,models=body.models||{};if(!keys||typeof keys!=='object'||Array.isArray(keys)||typeof models!=='object'||Array.isArray(models))return fail('Cấu hình không hợp lệ.');
-  for(const [provider,model] of Object.entries(models))if(!allowed.includes(provider)||typeof model!=='string'||!/^[A-Za-z0-9._/-]{1,160}$/.test(model))return fail('Mã AI không hợp lệ.');
+  for(const [provider,model] of Object.entries(models))if(!allowed.includes(provider)||typeof model!=='string'||(model!==''&&!/^[A-Za-z0-9._/-]{1,160}$/.test(model)))return fail('Mã AI không hợp lệ.');
   for(const [provider,key] of Object.entries(keys)){
    if(!allowed.includes(provider)||typeof key!=='string'||key.length<10||key.length>4096)return fail('Key không hợp lệ.');
   }

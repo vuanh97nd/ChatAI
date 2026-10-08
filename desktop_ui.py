@@ -2951,7 +2951,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             QMessageBox.information(self,'Chat AI','Đợi tác vụ hiện tại kết thúc trước khi lưu.');return
         proposed=self.proposed_settings();proposed['machine_profile_selected']=True;old_endpoint=self.cfg.get('server_url')
         keys={k:f.text().strip() for k,f in self.api_key_fields.items() if f.text().strip()}
-        provider_models={k:f.text().strip() for k,f in self.api_model_fields.items()}
+        provider_models={k:f.text().strip() for k,f in self.api_model_fields.items() if f.text().strip() and f.text().strip()!=self.cfg.get(k+'_model','')}
         session_snapshot=dict(self.server_session) if self.server_session else None
         def task(emit):
             from assistant.config import save_config
@@ -2960,7 +2960,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if session and old_endpoint==cfg.get('server_url'):
                 from assistant.model_preferences import save_model
                 save_model(self.store,session,PROVIDER_NAMES.get(cfg['chat_provider'],cfg['default_model']))
-                if admin_session(session):
+                if admin_session(session) and (keys or provider_models):
                     from assistant.accounts import request_account
                     request_account(session['endpoint'],'/api/admin/providers/save',dict(username=session['username'],key=session['key'],providers=keys,models=provider_models))
             return cfg

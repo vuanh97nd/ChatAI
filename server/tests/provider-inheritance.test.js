@@ -52,3 +52,17 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
 }
+
+for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',server]]){
+ test(`${name}: blank model preserves existing provider configuration`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length'};
+  async function call(models){
+   const response=await worker.fetch(new Request('https://example.workers.dev/api/admin/providers/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,providers:{},models})}),env,{});
+   assert.equal(response.status,200,await response.text());
+  }
+  await call({deepseek:'deepseek-flash'});
+  await call({deepseek:'',gemini:''});
+  const response=await worker.fetch(new Request('https://example.workers.dev/api/admin/providers/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY})}),env,{});
+  const status=await response.json();assert.equal(status.providers.deepseek.model,'deepseek-flash');
+ });
+}
