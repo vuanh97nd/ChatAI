@@ -51,6 +51,8 @@ class Capabilities:
         self.plaxis_remote=PlaxisRemoteApp(self.plaxis_app)
         from .plaxis_ui_control import PlaxisUIControlApp
         self.plaxis_ui_control=PlaxisUIControlApp(self.plaxis_app,self.files,audit)
+        from .plaxis_ui_automation import PlaxisUIAutomationApp
+        self.plaxis_ui_automation=PlaxisUIAutomationApp(self.files,audit)
         from .geoslope_app import GeoslopeApp
         self.geoslope_app=GeoslopeApp(self.files,audit)
         from .soilfirm_app import SoilFirmApp
@@ -68,6 +70,7 @@ class Capabilities:
         self.active.add('plaxis_app')
         self.active.add('plaxis_remote')
         self.active.add('plaxis_ui_control')
+        self.active.add('plaxis_ui_automation')
         self.active.add('geoslope_app')
         self.active.add('soilfirm_app')
         self.active.add('road_pipeline')
@@ -89,6 +92,7 @@ class Capabilities:
         if name=='plaxis_generate_script':return self.plaxis_app.prepare(name,args)
         if name=='plaxis_run_problem':return self.plaxis_remote.prepare(name,args)
         if name=='plaxis_ui_run':return self.plaxis_ui_control.prepare(name,args)
+        if name=='plaxis_ui_automation':return self.plaxis_ui_automation.prepare(name,args)
         if name=='cad3d_create_open':return self.cad3d_app.prepare(name,args)
         if name=='cad_create_open':return self.cad_app.prepare(name,args)
         if name=='word_create_open':return self.word_app.prepare(name,args)
@@ -139,6 +143,7 @@ class Capabilities:
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
         if action=='plaxis_run_problem':return self.plaxis_remote.commit(plan)
         if action=='plaxis_ui_run':return self.plaxis_ui_control.commit(plan)
+        if action=='plaxis_ui_automation':return self.plaxis_ui_automation.commit(plan)
         if action=='geoslope_create':return self.geoslope_app.commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
         if action=='cad_create_open':return self.cad_app.commit(plan)

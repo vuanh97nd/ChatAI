@@ -243,6 +243,17 @@ EXTRA_TOOLS.append(('plaxis_remote', schema('plaxis_run_problem',
     {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'plaxis_exe': TEXT},
     ['project_name', 'version', 'problem'])))
 
+WRITES.add('plaxis_ui_automation')
+EXTRA_TOOLS.append(('plaxis_ui_automation', schema('plaxis_ui_automation',
+    'Điều khiển Plaxis 2D/3D từng bước qua UI: mở Plaxis → tạo project → nhập lớp đất → vẽ hình học '
+    '→ tạo lưới → thiết lập giai đoạn → tính toán → xem kết quả. '
+    'Chụp ảnh màn hình sau MỖI bước — người dùng thấy toàn bộ quá trình làm việc. '
+    'Windows-only; yêu cầu: pip install pywinauto psutil Pillow. '
+    'plaxis_exe: đường dẫn PLAXIS2D.exe (tuỳ chọn — tự khởi động nếu chưa mở). '
+    'Trả về danh sách bước + ảnh chụp từng bước.',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'plaxis_exe': TEXT},
+    ['project_name', 'version', 'problem'])))
+
 WRITES.add('plaxis_ui_run')
 EXTRA_TOOLS.append(('plaxis_ui_control', schema('plaxis_ui_run',
     'Điều khiển UI Plaxis 2D/3D trực tiếp (File > Run Script) để thực thi script phân tích địa kỹ thuật. '
