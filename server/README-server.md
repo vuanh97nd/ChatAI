@@ -205,3 +205,30 @@ Không hiển thị reasoning_content. Agent/JSON vẫn dùng phản hồi đầ
 Phân tích sâu vẫn có lượt kiểm tra bổ sung. Để chat nhanh chọn DeepSeek Flash,
 tắt Phân tích sâu và Tìm web khi không cần. Pro/Suy luận có thể mất lâu hơn
 trước token trả lời đầu tiên. Không đảm bảo thời gian 1–2 giây của API thật.
+
+## Tự động triển khai work.js từ GitHub
+
+Workflow `.github/workflows/deploy-worker.yml` chạy khi `main` thay đổi `work.js`,
+server, hoặc cấu hình triển khai; có thể chạy thủ công trong GitHub Actions.
+Nó kiểm thử trước, rồi tải **work.js ở thư mục gốc** lên Worker hiện có.
+Script đọc cấu hình Worker trước khi cập nhật, giữ các loại bindings (DB, KV, AI,
+biến và secrets), compatibility flags và cấu hình observability/limits nếu có.
+Không dùng database ID mẫu trong `server/wrangler.jsonc`, không tạo Worker/database
+mới và không thay cron. Key DeepSeek và ADMIN_KEY không cần đưa vào GitHub.
+
+Thiết lập một lần tại GitHub → Settings → Secrets and variables → Actions:
+
+- Repository secret `CF_API_TOKEN`: Cloudflare API token có quyền Account →
+  Workers Scripts → Edit, giới hạn vào tài khoản chứa Worker.
+- Repository secret `CF_ACCOUNT_ID`: Account ID của tài khoản Cloudflare đó.
+- Repository variable `CF_WORKER_NAME`: tên Worker hiện có, mặc định `chatai`
+  (Worker phục vụ `chatai.anhvn53.workers.dev`). Nếu dùng tên khác, đặt đúng tên.
+
+Tạo token tại Cloudflare → My Profile → API Tokens → Create Token → Custom token.
+Không dán token vào hội thoại hay commit vào mã nguồn. Khi đã lưu hai secrets,
+vào GitHub → Actions → Deploy Cloudflare Worker → Run workflow → main để triển
+khai bản hiện tại. Những cập nhật Worker tiếp theo trên main sẽ tự triển khai.
+Workflow báo lỗi rõ nếu thiếu secrets hoặc không truy cập được Worker; chỉ coi
+đã triển khai khi bước Deploy thành công. Thay đổi chỉ ở desktop không kích hoạt
+triển khai server. Nếu Worker đang được quản lý bằng Workers Builds, dùng một
+luồng triển khai để tránh hai hệ thống ghi đè nhau.
