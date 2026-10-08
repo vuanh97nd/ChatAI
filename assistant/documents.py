@@ -68,6 +68,14 @@ class MainHTML(HTMLParser):
         return re.sub(r'\n\s*\n+', '\n\n',re.sub(r'[ \t]+',' ',raw)).strip()
 
 
+def _is_garbled(text):
+    """Return True when text is mostly PDF font-encoding artifacts like '/0 /1 /2'."""
+    tokens=text.split()
+    if len(tokens)<4:return False
+    slash_codes=sum(1 for t in tokens if re.match(r'^/\w{1,6}$',t))
+    return slash_codes/len(tokens)>0.4
+
+
 def read_bytes(raw,kind='',name='document',pdf_ocr=None):
     if len(raw)>MAX_BYTES:raise ValueError('Tài liệu vượt giới hạn 20 MiB; không đọc một phần rồi nhận là toàn văn.')
     ext=Path(name).suffix.casefold();units=[];issues=[];title=''
@@ -80,7 +88,8 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         ocr_limit_reported=False
         for index,page in enumerate(reader.pages[:MAX_PAGES],1):
             text=page.extract_text() or ''
-            if not text.strip():
+            if not text.strip() or _is_garbled(text):
+                text=''
                 if pdf_ocr and len(ocr_pages)<MAX_OCR_PAGES:
                     text=pdf_ocr(raw,index-1) or ''
                     if text.strip():ocr_pages.append(index)
