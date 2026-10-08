@@ -20,6 +20,14 @@ class WordAppTest(unittest.TestCase):
                 result=tool.commit(plan)
                 self.assertTrue(result['document_created'])
                 self.assertIn('Mẹ luôn yêu thương tôi.', '\n'.join(p.text for p in Document(result['path']).paragraphs))
+                doc=Document(result['path'])
+                from docx.enum.text import WD_ALIGN_PARAGRAPH
+                for paragraph in doc.paragraphs:
+                    for run in paragraph.runs:
+                        self.assertEqual(run.font.name,'Times New Roman');self.assertEqual(run.font.size.pt,13)
+                self.assertEqual(doc.paragraphs[0].alignment,WD_ALIGN_PARAGRAPH.CENTER)
+                self.assertEqual(doc.paragraphs[1].alignment,WD_ALIGN_PARAGRAPH.JUSTIFY)
+                self.assertAlmostEqual(doc.sections[0].left_margin.cm,3,places=2)
                 launch.assert_called_once_with([str(exe),result['path']],shell=False)
                 with self.assertRaises(RuntimeError):tool.commit(plan)
             exe.write_bytes(b'changed')

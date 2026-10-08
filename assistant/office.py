@@ -56,6 +56,11 @@ class OfficeTools:
         elif name == 'office_create':
             if not args.get('content') or len(args['content']) > 30000 or len(args.get('title','')) > 500:
                 raise ValueError('Nội dung 1–30000 ký tự, tiêu đề tối đa 500.')
+            if p.suffix.lower()=='.docx' and 'font_name' in args:
+                if not isinstance(args['font_name'],str) or not 1<=len(args['font_name'])<=80:raise ValueError('Tên font không hợp lệ.')
+                if not 8<=float(args.get('font_size',13))<=72:raise ValueError('Cỡ chữ phải từ 8 đến 72.')
+                if not 1<=float(args.get('line_spacing',1.15))<=3:raise ValueError('Giãn dòng phải từ 1 đến 3.')
+                if args.get('alignment','justify') not in ('left','center','right','justify'):raise ValueError('Căn đoạn không hợp lệ.')
         else: raise ValueError('Thao tác Office không hợp lệ.')
         return {'action': name, **args, 'path': str(p), 'sha256': digest(p) if p.exists() else None,
                 'approval_id': uuid.uuid4().hex,
@@ -94,6 +99,22 @@ class OfficeTools:
                 from docx import Document
                 doc = Document(); doc.add_heading(plan.get('title', 'Tài liệu'), 0)
                 for line in plan['content'].splitlines(): doc.add_paragraph(line)
+                if 'font_name' in plan:
+                    from docx.shared import Pt,Cm
+                    from docx.enum.text import WD_ALIGN_PARAGRAPH
+                    from docx.oxml.ns import qn
+                    align={'left':WD_ALIGN_PARAGRAPH.LEFT,'center':WD_ALIGN_PARAGRAPH.CENTER,'right':WD_ALIGN_PARAGRAPH.RIGHT,'justify':WD_ALIGN_PARAGRAPH.JUSTIFY}
+                    section=doc.sections[0];section.page_width=Cm(21);section.page_height=Cm(29.7)
+                    section.top_margin=section.bottom_margin=Cm(2);section.left_margin=Cm(3);section.right_margin=Cm(2)
+                    normal=doc.styles['Normal'];normal.font.name=plan['font_name'];normal.font.size=Pt(float(plan.get('font_size',13)))
+                    for index,paragraph in enumerate(doc.paragraphs):
+                        paragraph.alignment=WD_ALIGN_PARAGRAPH.CENTER if index==0 else align[plan.get('alignment','justify')]
+                        paragraph.paragraph_format.line_spacing=float(plan.get('line_spacing',1.15))
+                        paragraph.paragraph_format.space_after=Pt(6)
+                        for run in paragraph.runs:
+                            run.font.name=plan['font_name'];run.font.size=Pt(float(plan.get('font_size',13)))
+                            run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),plan['font_name'])
+                            if index==0:run.bold=True
                 doc.save(tmp)
             else:
                 from pptx import Presentation

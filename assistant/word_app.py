@@ -18,7 +18,8 @@ class WordApp:
         if not self.files.roots:
             raise PermissionError('Thêm thư mục lưu tài liệu được phép trong Cài đặt.')
         path = self.files.roots[0] / ('ChatAI-' + uuid.uuid4().hex + '.docx')
-        document = self.office.prepare('office_create', {'path':str(path), 'title':args.get('title',''), 'content':args['content']})
+        formatting={'font_name':args.get('font_name','Times New Roman'),'font_size':args.get('font_size','13'),'alignment':args.get('alignment','justify'),'line_spacing':args.get('line_spacing','1.15')}
+        document = self.office.prepare('office_create', {'path':str(path), 'title':args.get('title',''), 'content':args['content'],**formatting})
         return {'action':'word_create_open', 'app':str(app), 'sha256':fingerprint(app), 'document':document}
 
     def commit(self, plan):
@@ -31,4 +32,4 @@ class WordApp:
         self.windows.allowed_path(str(app))
         subprocess.Popen([str(app),plan['document']['path']], shell=False)
         return {'ok':True, 'path':plan['document']['path'], 'document_created':True,
-                'word_launch_requested':True, 'note':'Đã tạo DOCX có nội dung và gửi lệnh mở Word; chưa xác minh cửa sổ hiển thị.', 'document':result}
+                'word_launch_requested':True, 'formatting':{key:plan['document'][key] for key in ('font_name','font_size','alignment','line_spacing')}, 'note':'Đã tạo DOCX có nội dung và gửi lệnh mở Word; chưa xác minh cửa sổ hiển thị.', 'document':result}
