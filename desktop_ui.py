@@ -789,8 +789,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for raw in paths[:5]:
             path=Path(raw)
             if not path.is_file():continue
-            if path.stat().st_size>10*1024*1024:
-                QMessageBox.warning(self,'Đính kèm','Tệp tối đa 10 MB: '+path.name);continue
+            max_mb=20 if path.suffix.lower()=='.dxf' else 10
+            if path.stat().st_size>max_mb*1024*1024:
+                QMessageBox.warning(self,'Đính kèm',f'Tệp tối đa {max_mb} MB: '+path.name);continue
             if path.suffix.lower() in ('.png','.jpg','.jpeg','.webp','.bmp'):
                 self.attach_image(QImage(str(path)))
                 if len(self.pending_media_paths)<8:
@@ -822,7 +823,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         items=[]
         for raw in paths:
             p=Path(raw)
-            if not p.is_file() or p.stat().st_size>10*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+p.name)
+            if not p.is_file() or p.stat().st_size>(20 if p.suffix.lower()=='.dxf' else 10)*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+p.name)
             try:
                 ext=p.suffix.lower()
                 if ext in ('.pdf','.docx','.txt','.md'):
@@ -1888,7 +1889,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     attachments=[]
                     for raw in attachment_paths:
                         source=Path(raw)
-                        if not source.is_file() or source.stat().st_size>10*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+source.name)
+                        if not source.is_file() or source.stat().st_size>(20 if source.suffix.lower()=='.dxf' else 10)*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+source.name)
                         if not files.roots:raise PermissionError('Thêm thư mục được phép để xử lý tài liệu đính kèm.')
                         import uuid
                         destination=files.path(str(files.roots[0]/('attachment-'+uuid.uuid4().hex+source.suffix)),exists=False)

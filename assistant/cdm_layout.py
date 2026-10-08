@@ -195,6 +195,8 @@ class CdmLayoutApp:
         self.audit   = audit
 
     def prepare(self, name, args):
+        if name in ('cad_cdm_regions','cad_cdm_fill_boundary'):
+            return self.prepare_boundary(name,args)
         self.windows.check()
         app = self.windows.allowed_path(args['app'])
         if app.name.lower() not in {'acad.exe', 'acadlt.exe'}:
@@ -234,6 +236,8 @@ class CdmLayoutApp:
         }
 
     def commit(self, plan):
+        if plan['action'] in ('cad_cdm_regions','cad_cdm_fill_boundary'):
+            return self.commit_boundary(plan)
         self.windows.check()
         app = self.windows.allowed_path(plan['app'])
         if fingerprint(app) != plan['sha256']:
@@ -285,3 +289,56 @@ class CdmLayoutApp:
                 "Gồm mặt cắt ngang và mặt bằng. Đã gửi lệnh mở AutoCAD."
             ),
         }
+
+
+    def prepare_boundary(self,name,args):
+        import ezdxf
+        from .cdm_boundary import list_regions,layout_in_boundary
+        self.windows.check()
+        source=self.files.path(args['path'])
+        if source.suffix.lower()!='.dxf' or source.stat().st_size>20*1024**2:
+            raise ValueError('Chọn DXF không quá 20 MiB trong thư mục được phép.')
+        digest=fingerprint(source)
+        doc=ezdxf.readfile(source)
+        if fingerprint(source)!=digest:raise PermissionError('DXF đã đổi trong lúc đọc; thử lại.')
+        plan={'action':name,'source':str(source),'source_sha256':digest}
+        if name=='cad_cdm_regions':
+            start=args.get('start',0)
+            if type(start) is not int or start<0:raise ValueError('start phải là số nguyên không âm.')
+            plan['start']=start
+            return plan
+        app=self.windows.allowed_path(args['app'])
+        if app.name.lower() not in ('acad.exe','acadlt.exe'):raise ValueError('Chọn EXE AutoCAD đã được phép.')
+        values={key:args[key] for key in ('handle','diameter_m','spacing_x_m','spacing_y_m','drawing_units')}
+        values.update(edge_clearance_m=args.get('edge_clearance_m',0),angle_deg=args.get('angle_deg',0))
+        result=layout_in_boundary(doc,**values)
+        destination=self.files.path(str(source.with_name(source.stem+'-CDM-'+uuid.uuid4().hex[:8]+'.dxf')),exists=False)
+        plan.update(app=str(app),sha256=fingerprint(app),path=str(destination),values=values,
+                    pile_count=len(result['centers']),notice='Thêm cọc vào vùng polyline '+str(args['handle'])+'; lưu bản sao mới, giữ file gốc và bố cục. Không tự sửa font của bản vẽ gốc.')
+        return plan
+
+    def commit_boundary(self,plan):
+        import ezdxf
+        from .cdm_boundary import list_regions,layout_in_boundary,add_piles
+        self.windows.check()
+        source=self.files.path(plan['source'])
+        if fingerprint(source)!=plan['source_sha256']:raise PermissionError('DXF nguồn đã đổi; cần đọc/duyệt lại vùng.')
+        doc=ezdxf.readfile(source)
+        if plan['action']=='cad_cdm_regions':return list_regions(doc,plan['start'])
+        app=self.windows.allowed_path(plan['app'])
+        if fingerprint(app)!=plan['sha256']:raise PermissionError('EXE AutoCAD đã đổi.')
+        result=layout_in_boundary(doc,**plan['values'])
+        layer=add_piles(doc,result)
+        path=self.files.path(plan['path'],exists=False)
+        with tempfile.TemporaryDirectory(prefix='.cdm-',dir=path.parent) as folder:
+            tmp=Path(folder)/'drawing.dxf';doc.saveas(tmp)
+            self.windows.check()
+            if fingerprint(source)!=plan['source_sha256']:raise PermissionError('DXF nguồn đã đổi; chưa lưu bản sao.')
+            self.files.path(str(path),exists=False)
+            with path.open('xb') as out,tmp.open('rb') as inp:shutil.copyfileobj(inp,out)
+        self.audit('cad_cdm_boundary_created',{'source':str(source),'path':str(path),'handle':result['boundary_handle'],'piles':len(result['centers']),'layer':layer})
+        self.windows.check()
+        if fingerprint(app)!=plan['sha256']:raise PermissionError('Đã lưu DXF nhưng AutoCAD đã đổi; chưa mở.')
+        subprocess.Popen([str(app),str(path)],shell=False)
+        return {'ok':True,'path':str(path),'total_piles':len(result['centers']),'layer':layer,'boundary_handle':result['boundary_handle'],
+                'document_created':True,'cad_launch_requested':True,'note':'Đã thêm cọc nằm trọn trong vùng đã chọn và lưu bản sao DXF. Không thay đổi nội dung nguồn. Đã gửi lệnh mở AutoCAD; chưa xác minh cửa sổ.'}
