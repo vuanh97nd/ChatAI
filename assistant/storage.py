@@ -53,6 +53,7 @@ class Store:
                     updated TEXT NOT NULL, state TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS document_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
+                CREATE TABLE IF NOT EXISTS procedure_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
                 CREATE TABLE IF NOT EXISTS history_deletions (id TEXT PRIMARY KEY, owner TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS history_sync (server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(server,owner,id));
                 CREATE TABLE IF NOT EXISTS audit (
@@ -111,6 +112,11 @@ class Store:
                     "running": False, "rounds": 0, "model": None}
         state=json.loads(row[0])
         owner=state.get('account_username')
+        if owner and state.get('procedure_memory_version')!=1:
+            from .procedure_memory import ProcedureMemory
+            procedures=ProcedureMemory(self);procedures.seed(owner,state)
+            state['procedure_memory']=procedures.export(owner);state['procedure_memory_version']=1
+            with self.connection() as db:db.execute('UPDATE conversations SET state=? WHERE id=?',(dumps(state),cid))
         if owner and state.get('document_memory_version')!=1:
             from .document_memory import DocumentMemory
             memory=DocumentMemory(self);memory.seed(owner,state)
@@ -121,6 +127,10 @@ class Store:
     def save(self, cid, state):
         owner=state.get('account_username')
         if owner:
+            from .procedure_memory import ProcedureMemory
+            procedures=ProcedureMemory(self)
+            procedures.seed(owner,state)
+            state['procedure_memory']=procedures.export(owner);state['procedure_memory_version']=1
             from .document_memory import DocumentMemory
             memory=DocumentMemory(self);memory.seed(owner,state)
             state['document_memory']=memory.export(owner);state['document_memory_version']=1

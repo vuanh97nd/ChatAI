@@ -4,6 +4,7 @@ import json
 import uuid
 from .storage import dumps, now
 from .document_memory import clean_records
+from .procedure_memory import clean_records as clean_procedures
 from .plaxis_confirmation import active_problem
 
 
@@ -14,6 +15,7 @@ def dialogue(state):
             'custom_title':str(state.get('custom_title') or '')[:120], 'model':state.get('model')[:150] if isinstance(state.get('model'),str) else None,
             'online_automation':state.get('online_automation') is True,
             'document_memory':clean_records(state.get('document_memory',[])),
+            'procedure_memory':clean_procedures(state.get('procedure_memory',[])),
             'plaxis_active_problem':active_problem(state)}
 
 
@@ -57,6 +59,9 @@ class HistorySync:
             state=remote['state']
             from .document_memory import DocumentMemory
             DocumentMemory(self.store).import_records(self.owner,state.get('document_memory',[]),db=db)
+            from .procedure_memory import ProcedureMemory
+            ProcedureMemory(self.store).import_records(self.owner,state.get('procedure_memory',[]),db=db)
+            state['procedure_memory_version']=1
             state['document_memory_version']=1
             if remote['deleted']:
                 if current:

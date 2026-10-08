@@ -205,6 +205,8 @@ class SupportMixin:
 
             from .document_memory import DocumentMemory
             memory_context=DocumentMemory(self.store).context(owner,prompt,messages=state['messages'])
+            from .procedure_memory import ProcedureMemory
+            memory_context+=ProcedureMemory(self.store).context(owner,prompt)
             if memory_context and not attached_paths:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
             if names:
                 body['document_context']=(body.get('document_context','')+'\nNGUỒN ĐANG ĐƯỢC YÊU CẦU: '+', '.join(sorted(names))+'. Chỉ tóm tắt nguồn này; không dùng tài liệu khác trong lịch sử thay thế. Nếu chưa đọc được, nói rõ chưa đọc được tệp này.')[:140000]

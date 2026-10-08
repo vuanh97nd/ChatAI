@@ -14,6 +14,19 @@ class DB {
  async batch(items){return Promise.all(items.map(item=>item.run()));}
 }
 for(const [name,api] of [['root',root],['server',server]]){
+ test(`${name}: procedure memory is account-scoped data and validates parameter JSON`,async()=>{
+  const db=new DB(),id='b'.repeat(32),record={id:'c'.repeat(64),tool:'word_create_open',task:'Viết đơn Word',
+   arguments:'{"font_size":"13"}',outcome:'success',evidence:'Công cụ trả ok=true',updated:'2026-10-09T00:00:00Z',queue:['execute']};
+  const call=(action,body,owner='alice')=>api('/api/conversations/sync/'+action,body,{username:owner},db);
+  const state={messages:[{role:'user',content:'Viết đơn'}],procedure_memory:[record]};
+  assert.equal((await call('put',{conversation_id:id,revision:0,state})).status,200);
+  const stored=await(await call('get',{conversation_id:id})).json();
+  assert.equal(stored.state.procedure_memory[0].arguments,record.arguments);
+  assert.equal(stored.state.procedure_memory[0].queue,undefined);
+  assert.equal((await call('get',{conversation_id:id},'bob')).status,404);
+  state.procedure_memory[0].arguments='not JSON';
+  assert.equal((await call('put',{conversation_id:id,revision:1,state})).status,400);
+ });
  test(`${name}: authenticated owner isolation, revision conflicts and data-only snapshots`,async()=>{
   const db=new DB(),id='a'.repeat(32),state={messages:[{role:'user',content:'Dùng mét'},{role:'tool',content:'xong',tool_name:'cad_cdm_fill_boundary'}],model:'DeepSeek Flash',api_key:'secret',queue:[{tool:'run'}]};
   const call=(action,body,owner='alice')=>api('/api/conversations/sync/'+action,body,{username:owner},db);

@@ -985,6 +985,11 @@ export async function conversationAPI(path,body,actor,db) {
    if(memory.length>8||memory.some(d=>!d||!/^[a-f0-9]{64}$/.test(d.id)||typeof d.text!=='string'||typeof d.file!=='string'||d.text.length>240000))return fail('Bộ nhớ tài liệu không hợp lệ.');
    if(memory.reduce((n,d)=>n+new TextEncoder().encode(d.text).length,0)>300000)return fail('Bộ nhớ tài liệu quá lớn.',413);
    clean.document_memory=memory.map(d=>({id:d.id,file:d.file.slice(0,240),text:d.text,format:String(d.format||'').slice(0,40),coverage:String(d.coverage||'partial').slice(0,40),coverage_note:String(d.coverage_note||'').slice(0,2048),updated:String(d.updated||'').slice(0,50)}));
+   const procedures=Array.isArray(state.procedure_memory)?state.procedure_memory:[];
+   if(procedures.length>20||procedures.some(p=>!p||!/^[a-f0-9]{64}$/.test(p.id)||!['success','failed'].includes(p.outcome)||['tool','task','arguments','evidence','updated'].some(k=>typeof p[k]!=='string')||p.arguments.length>12000))return fail('Bộ nhớ cách làm không hợp lệ.');
+   for(const p of procedures){try{const args=JSON.parse(p.arguments);if(!args||Array.isArray(args)||typeof args!=='object')return fail('Tham số trong bộ nhớ cách làm không hợp lệ.');}catch{return fail('Tham số trong bộ nhớ cách làm không hợp lệ.');}}
+   clean.procedure_memory=procedures.map(p=>({id:p.id,tool:p.tool.slice(0,100),task:p.task.slice(0,1500),arguments:p.arguments,evidence:p.evidence.slice(0,1200),updated:p.updated.slice(0,50),outcome:p.outcome}));
+   if(new TextEncoder().encode(JSON.stringify(clean.procedure_memory)).length>180000)return fail('Bộ nhớ cách làm quá lớn.',413);
    const task=state.plaxis_active_problem;
    clean.plaxis_active_problem=task&&['2d','3d'].includes(task.version)&&typeof task.problem==='string'&&new TextEncoder().encode(task.problem).length<=50000&&typeof task.project_name==='string'&&task.project_name.length>=1&&task.project_name.length<=100?{version:task.version,problem:task.problem,project_name:task.project_name}:null;
    const raw=JSON.stringify(clean);

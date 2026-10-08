@@ -253,6 +253,25 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertTrue(any('sửa định dạng' in event.get('text','') for event in events))
         self.assertEqual(events[-1]['type'],'pending');self.assertEqual(self.committed,[])
         self.assertEqual(len(self.requests),2)
+
+    def test_two_plain_plans_recover_in_separate_request_before_execution(self):
+        self.responses=['Tôi sẽ mở Word.','Tôi sẽ tiếp tục mở Word.',
+                        json.dumps({'tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}})]
+        self.agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        events=list(self.agent.run(self.state))
+        self.assertEqual(events[-1]['type'],'pending')
+        self.assertEqual(self.committed,[])
+        self.assertEqual(len(self.requests),3)
+        self.assertEqual(len(self.requests[2]),2)
+        self.assertTrue(any('JSON riêng' in e.get('text','') for e in events))
+
+    def test_yes_keeps_recent_proposal_in_planning_context(self):
+        self.state['messages']=[{'role':'assistant','content':'Tôi sẽ tìm hướng dẫn Seequent bằng Chrome. Bạn đồng ý không?'}]
+        self.responses=[json.dumps({'answer':'Cần kiểm tra Chrome.','tool':'','arguments':{}})]
+        self.agent.start(self.state,'có','DeepSeek Flash','admin')
+        list(self.agent.run(self.state))
+        self.assertIn('Seequent',self.requests[0][0]['content'])
+        self.assertIn('vừa chấp thuận',self.requests[0][0]['content'])
     def test_truncated_plan_retries_with_larger_budget_before_execution(self):
         budgets=[]
         def chat(model,messages,**kwargs):

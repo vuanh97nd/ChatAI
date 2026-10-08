@@ -108,6 +108,8 @@ class Agent:
         return to_english_prompt(self.client,latest,model='qwen2.5:7b',num_ctx=self.cfg.get('num_ctx',4096))
 
     def tool_result(self, state, call, result):
+        from .procedure_memory import ProcedureMemory
+        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result)
         if call['function']['name'] in {'image_generate', 'video_generate','image_resize','video_from_images'} and (result.get('ok') or result.get('denied')):
             state['media_done'] = True
         plan=state.get('collaboration')
@@ -478,6 +480,9 @@ class Agent:
                 record=evidence_record(state,self.web_allowed(state))
                 evidence["evidence_status"]=record
                 workflow=task_record(state)
+                from .procedure_memory import ProcedureMemory
+                procedure_query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
+                instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query)
                 state["task_progress"]=workflow
                 # Không đưa thẻ hướng dẫn/ví dụ mẫu vào lượt trả lời.
                 state["experience_cards"]=[]
