@@ -158,8 +158,11 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False):
         if foxit_ocr and 'OCR' in str(exc) and p.suffix.lower()=='.pdf':
             from assistant.foxit_ocr_automation import foxit_ocr as _foxit_ocr,available as _foxit_available
             if not _foxit_available():
-                raise
-            ocr_path=_foxit_ocr(p)
+                raise ValueError('OCR cục bộ không khả dụng: cần Windows và thư viện pywinauto (pip install pywinauto).')
+            try:
+                ocr_path=_foxit_ocr(p)
+            except Exception as foxit_err:
+                raise ValueError(f'Foxit OCR thất bại: {foxit_err}') from foxit_err
             result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=pdf_ocr)
             return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
         raise

@@ -46,7 +46,7 @@ class PDFSource:
         try:
             result=read_document_range(self.files,str(path),start=start,limit=8000,foxit_ocr=True)
             return dict(result,read_ok=True)
-        except ValueError as error:
+        except (ValueError, RuntimeError) as error:
             return {'ok':False,'read_ok':False,'path':str(path),'content':'','coverage':'none',
                     'next_start':None,'issues':[str(error)],'note':'Chưa đọc được văn bản PDF: '+str(error)}
 
