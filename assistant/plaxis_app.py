@@ -9,7 +9,7 @@ import json
 import uuid
 from pathlib import Path
 
-_SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit'}
+_SUPPORTED_TYPES = {'slope_stability', 'embankment_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit'}
 
 _PORT = {'2d': 10000, '3d': 10001}
 
@@ -57,6 +57,30 @@ def _validate_slope_stability(problem):
     layers = [_validate_soil_layer(l, i + 1) for i, l in enumerate(raw_layers)]
     return {'type': 'slope_stability', 'slope_angle': slope_angle,
             'slope_height': slope_height, 'analysis': analysis, 'soil_layers': layers}
+
+
+def _validate_embankment_stability(problem):
+    """Validate embankment_stability: uses polygon vertices, not slope_angle."""
+    raw_vertices = problem.get('vertices')
+    if not isinstance(raw_vertices, list) or len(raw_vertices) < 3:
+        raise ValueError('embankment_stability cần ít nhất 3 đỉnh trong vertices (mảng [x, y]).')
+    vertices = []
+    for i, v in enumerate(raw_vertices):
+        if not isinstance(v, (list, tuple)) or len(v) != 2:
+            raise ValueError(f'Đỉnh {i} phải là mảng [x, y].')
+        x = _num(v[0], f'vertices[{i}].x', -1e6, 1e6)
+        y = _num(v[1], f'vertices[{i}].y', -1e6, 1e6)
+        vertices.append((x, y))
+    embankment_height = _num(problem.get('embankment_height', -1), 'embankment_height', 0.1, 1000.0)
+    analysis = problem.get('analysis', 'Bishop')
+    if analysis not in ('Bishop', 'Fellenius'):
+        raise ValueError("analysis phải là 'Bishop' hoặc 'Fellenius'.")
+    raw_layers = problem.get('soil_layers', [])
+    if not isinstance(raw_layers, list) or not raw_layers:
+        raise ValueError('embankment_stability cần ít nhất một lớp đất trong soil_layers.')
+    layers = [_validate_soil_layer(l, i + 1) for i, l in enumerate(raw_layers)]
+    return {'type': 'embankment_stability', 'vertices': vertices,
+            'embankment_height': embankment_height, 'analysis': analysis, 'soil_layers': layers}
 
 
 def _validate_foundation_settlement(problem):
@@ -125,6 +149,8 @@ def _validate_problem(raw):
         raise ValueError(f"problem.type phải là một trong: {', '.join(sorted(_SUPPORTED_TYPES))}.")
     if ptype == 'slope_stability':
         return _validate_slope_stability(problem)
+    if ptype == 'embankment_stability':
+        return _validate_embankment_stability(problem)
     if ptype == 'foundation_settlement':
         return _validate_foundation_settlement(problem)
     if ptype == 'retaining_wall':
@@ -208,6 +234,61 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('g.calculate()')
     lines.append('g.view(phase1)')
     lines.append(f'print("Hoan thanh phan tich on dinh mai doc bang {analysis}.")')
+    return '\n'.join(lines)
+
+
+def _generate_embankment_stability(problem, version, port, project_name):
+    vertices = problem['vertices']
+    height = problem['embankment_height']
+    analysis = problem['analysis']
+    layers = problem['soil_layers']
+
+    # Determine model extents from vertices
+    xs = [v[0] for v in vertices]
+    min_x = min(xs) - height * 2
+    max_x = max(xs) + height * 2
+
+    lines = [_script_header(version, port)]
+    lines.append(f'# Bài toán: Ổn định nền đắp - {project_name}')
+    lines.append(f'# Phương pháp phân tích: {analysis}')
+    lines.append(f'# Chiều cao nền đắp: {height} m')
+    lines.append(f'# Đỉnh polygon: {vertices}')
+    lines.append('')
+    lines.append('g.gotostructures()')
+    lines.append('')
+    lines.append('# Vật liệu đất')
+    lines.append(_soil_lines(layers, version))
+
+    # Geometry: embankment polygon
+    lines.append('# Hình học nền đắp (polygon)')
+    lines.append(f'g.borehole(0)')
+    for i, layer in enumerate(layers):
+        lines.append(f'g.soillayer({i})')
+
+    lines.append('')
+    vertex_str = ', '.join(f'({v[0]:.2f}, {v[1]:.2f})' for v in vertices)
+    lines.append(f'embankment = g.polygon({vertex_str})')
+    lines.append('')
+    lines.append('# Lưới phần tử')
+    lines.append('g.gotomesh()')
+    lines.append('g.mesh(0.06)')
+    lines.append('')
+    lines.append('# Tính toán')
+    lines.append('g.gotostages()')
+    lines.append('phase1 = g.phase(g.InitialPhase)')
+    lines.append(f'phase1.Identification = "Phan tich on dinh nen dap - {analysis}"')
+    lines.append('phase1.ShouldCalculate = True')
+    lines.append('')
+    lines.append('# Giai đoạn 2: Phi-c reduction để tìm hệ số an toàn')
+    lines.append('phase2 = g.phase(phase1)')
+    lines.append('phase2.Identification = "Kiem tra on dinh SF"')
+    lines.append('phase2.ShouldCalculate = True')
+    lines.append('phase2.DeformCalcType = phase2.DeformCalcType.enumeration.PhiCReduction')
+    lines.append('')
+    lines.append('g.calculate()')
+    lines.append('g.view(phase1)')
+    lines.append(f'print("Hoan thanh phan tich on dinh nen dap bang {analysis}.")')
+    lines.append(f'print(f"SF = {{phase2.ReachedValue.SumMsf:.3f}}")')
     return '\n'.join(lines)
 
 
@@ -397,6 +478,8 @@ def _generate_script(problem, version, port, project_name):
     ptype = problem['type']
     if ptype == 'slope_stability':
         return _generate_slope_stability(problem, version, port, project_name)
+    if ptype == 'embankment_stability':
+        return _generate_embankment_stability(problem, version, port, project_name)
     if ptype == 'foundation_settlement':
         return _generate_foundation_settlement(problem, version, port, project_name)
     if ptype == 'retaining_wall':
