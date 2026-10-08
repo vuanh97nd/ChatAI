@@ -78,6 +78,24 @@ def greeting_reply(prompt):
     return None
 
 
+def known_error_reply(prompt,messages):
+    if not re.fullmatch(r'\s*(?:bạn|ai|nó|ứng dụng)?\s*(?:đang\s+)?(?:bị\s+)?lỗi\s+gì(?:\s+(?:thế|vậy|đây))?\s*[?.!]*\s*',prompt,re.I):
+        return None
+    for message in reversed(messages):
+        if message.get('role') not in ('assistant','tool'):continue
+        text=str(message.get('content',''))
+        if 'auto_run phải là chuỗi' in text:
+            return ('Lỗi kiểm tra tham số trong ChatAI: auto_run được khai báo là true/false, '
+                    'nhưng bộ kiểm tra lại yêu cầu chuỗi. Không phải lỗi quyền hay PLAXIS. '
+                    'Lượt bị lỗi chưa thực hiện thao tác mới; cần cập nhật bản sửa bộ kiểm tra tham số.')
+        if 'Expecting value:' in text or 'AI chưa trả kế hoạch hợp lệ' in text:
+            return ('ChatAI chưa đọc được kế hoạch thao tác hợp lệ từ phản hồi AI. '
+                    'Phản hồi hoặc tham số JSON có thể rỗng hay sai định dạng; chỉ dòng lỗi này '
+                    'chưa cho biết phần nào sai. Lượt bị lỗi chưa thực hiện thao tác mới. '
+                    'Đây chưa phải bằng chứng thiếu quyền hoặc lỗi PLAXIS.')
+    return None
+
+
 def planning_messages(state,instruction):
     history=state['messages'][-20:]
     # Send the latest user image only: repeated agent rounds must not accumulate
@@ -328,6 +346,12 @@ class OnlineAutomation:
 
     def save(self,state):self.store.save(self.cid,state)
 
+    def auto_execute_allowed(self):
+        from .autonomy import task_tools_authorized
+        if not (self.cfg.get('windows_apps_auto_execute') or task_tools_authorized(self.cfg)):return False
+        current=self.windows.check()
+        return bool(current.get('windows_apps_auto_execute') or task_tools_authorized(current))
+
     def start(self,state,prompt,model,owner,image=None):
         if state.get('running') or state.get('pending'):raise RuntimeError('Lượt trước chưa xong.')
         if image is not None:image_message_content(prompt,image)
@@ -336,7 +360,7 @@ class OnlineAutomation:
         state['messages'].append(message)
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
                      online_automation=True,automation_rounds=0,preparation_repairs=0,plaxis_repairs=0)
-        state['greeting_reply']=greeting_reply(prompt) if image is None else None
+        state['greeting_reply']=(known_error_reply(prompt,state['messages'][:-1]) or greeting_reply(prompt)) if image is None else None
         if state['greeting_reply']:
             self.save(state)
             return
@@ -413,7 +437,7 @@ class OnlineAutomation:
             return
         while state['running']:
             if state.get('pending'):
-                if not state['pending'].get('decision_started') and self.cfg.get('windows_apps_auto_execute') and self.windows.check().get('windows_apps_auto_execute'):
+                if not state['pending'].get('decision_started') and self.auto_execute_allowed():
                     yield {'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']}
                     self.approve(state,True,state['pending'])
                     continue
@@ -441,7 +465,7 @@ class OnlineAutomation:
                     state.update(running=False,queue=[]);self.save(state)
                     yield {'type':'token','text':text};return
                 state['pending']={'plan':plan,'decision_started':False};self.save(state)
-                if self.cfg.get('windows_apps_auto_execute') and self.windows.check().get('windows_apps_auto_execute'):
+                if self.auto_execute_allowed():
                     self.approve(state,True,state['pending'])
                     yield {'type':'status','text':'Đang thực hiện theo quyền điều khiển ứng dụng đã cấp…'}
                     continue
@@ -513,11 +537,23 @@ class OnlineAutomation:
                               'arguments nên là đối tượng JSON, tránh mã hóa JSON thành chuỗi lồng nhau.')
             messages[0]['content']+='\n'+instruction_note
             output=None;last_plan_error='';last_raw=''
+            plan_format={'type':'object','properties':{
+                'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'object'}},
+                'required':['answer','tool','arguments']}
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
-                response=self.client.chat(self.client.model,messages,format={'type':'object','properties':{
-                    'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'object'}},
-                    'required':['answer','tool','arguments']},options={'num_predict':planning_tokens,'temperature':.1})
+                try:
+                    response=self.client.chat(self.client.model,messages,format=plan_format,
+                        options={'num_predict':planning_tokens,'temperature':.1})
+                except RuntimeError as error:
+                    last_plan_error=str(error)[:300]
+                    self.store.audit(self.cid,'automation_plan_call_failed',{'error':last_plan_error,'attempt':attempt})
+                    if attempt==0:
+                        # Strict JSON mode leaves some providers with empty content; retry as free text.
+                        plan_format=None;planning_tokens=min(8192,planning_tokens*2)
+                        yield {'type':'status','text':'AI chưa trả nội dung; đang thử lại ở chế độ văn bản…'}
+                        continue
+                    break
                 try:
                     last_raw=response.get('message',{}).get('content','')
                     if response.get('truncated'):raise ValueError('JSON bị giới hạn token.')
@@ -548,6 +584,12 @@ class OnlineAutomation:
                     state['messages'].append({'role':'assistant','content':text});state['running']=False
                     yield {'type':'token','text':text}
             except (ValueError,KeyError,TypeError):
+                bypass=state.pop('_bypass_fallback',None)
+                if bypass:
+                    state['messages'].append({'role':'assistant','content':'','tool_calls':[bypass]})
+                    state['queue']=[bypass];self.save(state)
+                    yield {'type':'status','text':'AI chưa trả kế hoạch; đang dùng thao tác suy ra từ yêu cầu…'}
+                    continue
                 state['running']=False
                 text='AI chưa trả kế hoạch hợp lệ; chưa thực hiện thao tác mới. Lỗi kiểm tra: '+(last_plan_error or 'Chưa có JSON kế hoạch.')
                 state['messages'].append({'role':'assistant','content':text});yield {'type':'token','text':text}

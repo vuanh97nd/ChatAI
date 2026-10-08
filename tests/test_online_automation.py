@@ -97,6 +97,17 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed[0]['action'],'windows_list_apps')
         self.assertIsNone(self.state['pending'])
 
+    def test_explicit_task_grant_executes_model_proposal_without_confirmation(self):
+        self.cfg['ai_tools_auto_execute']=True
+        self.agent.windows.check=lambda:dict(self.cfg)
+        self.responses=[json.dumps({'tool':'windows_open','arguments':{'path':r'C:\Apps\word.exe'}}),
+                        json.dumps({'answer':'Đã kiểm tra kết quả.','tool':'','arguments':{}})]
+        self.agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        events=list(self.agent.run(self.state))
+        self.assertFalse(any(e['type']=='pending' for e in events))
+        self.assertEqual(self.committed[0]['action'],'windows_open')
+        self.assertFalse(self.state['running'])
+
     def test_previously_pending_step_uses_permission_granted_later(self):
         self.cfg.update(windows_apps_enabled=True)
         self.agent.windows.check=lambda:dict(self.cfg)
@@ -412,3 +423,40 @@ class AutomationImageTests(unittest.TestCase):
             list(agent.run(state))
             self.assertTrue(any(isinstance(m['content'],list) for m in calls[0]))
             self.assertEqual(state['messages'][-1]['content'],'Tôi đã xem ảnh bạn gửi.')
+
+
+class EmptyPlanResponseTests(unittest.TestCase):
+    """An empty provider response must not surface the raw server error to the user."""
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.store=Store(Path(self.tmp.name)/'history.db')
+        self.cid=self.store.create();self.state=self.store.load(self.cid)
+        tools=SimpleNamespace(prepare=lambda name,args:{'action':name,**args},commit=lambda plan:{'ok':True})
+        self.tools=tools
+    def tearDown(self):self.tmp.cleanup()
+
+    def agent_for(self,chat):
+        return OnlineAutomation(SimpleNamespace(model='deepseek',chat=chat),{},self.store,self.cid,self.tools,self.tools)
+
+    def test_empty_response_retries_without_json_mode(self):
+        from assistant.cloud import CloudError
+        formats=[]
+        def chat(model,messages,**kwargs):
+            formats.append(kwargs.get('format'))
+            if len(formats)==1:raise CloudError('API đã nhận yêu cầu nhưng trả văn bản rỗng.')
+            return {'message':{'content':json.dumps({'answer':'Bạn cần PLAXIS 2D hay 3D?','tool':'','arguments':'{}'})}}
+        agent=self.agent_for(chat)
+        agent.start(self.state,'chạy plaxis','DeepSeek API','admin')
+        events=list(agent.run(self.state))
+        self.assertEqual(len(formats),2)
+        self.assertIsNone(formats[1])
+        self.assertEqual(self.state['messages'][-1]['content'],'Bạn cần PLAXIS 2D hay 3D?')
+        self.assertTrue(any('PLAXIS' in e.get('text','') for e in events if e['type']=='token'))
+
+    def test_persistent_empty_response_ends_with_a_message(self):
+        from assistant.cloud import CloudError
+        def chat(model,messages,**kwargs):raise CloudError('API đã nhận yêu cầu nhưng trả văn bản rỗng.')
+        agent=self.agent_for(chat)
+        agent.start(self.state,'chào bạn','DeepSeek API','admin')
+        events=list(agent.run(self.state))
+        self.assertFalse(self.state['running'])
+        self.assertTrue([e for e in events if e['type']=='token'])

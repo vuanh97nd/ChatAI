@@ -21,3 +21,15 @@ class PlaxisPlanFormatTests(unittest.TestCase):
         for problem in ([],42,None):
             raw=json.dumps({'tool':'plaxis_run_problem','arguments':{'version':'2d','project_name':'BoDap','problem':problem}})
             with self.assertRaises((ValueError,TypeError)):parse_plan(raw,[spec for _,spec in EXTRA_TOOLS])
+
+    def test_auto_run_boolean_matches_declared_tool_schema(self):
+        for value in (True,False):
+            raw=json.dumps({'tool':'plaxis_generate_script','arguments':{
+                'version':'3d','project_name':'BoDap','problem':{'type':'embankment_stability'},'auto_run':value}})
+            plan=parse_plan(raw,[spec for _,spec in EXTRA_TOOLS])
+            self.assertIs(plan['arguments']['auto_run'],value)
+        for value in ('false','true',0,1,None):
+            raw=json.dumps({'tool':'plaxis_generate_script','arguments':{
+                'version':'3d','project_name':'BoDap','problem':{'type':'embankment_stability'},'auto_run':value}})
+            with self.assertRaisesRegex(ValueError,'true hoặc false'):
+                parse_plan(raw,[spec for _,spec in EXTRA_TOOLS])
