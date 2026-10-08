@@ -1848,6 +1848,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare chưa hỗ trợ lập kế hoạch điều khiển app.');return
         if prompt is not None and len(prompt)>6000:
             QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
+        if prompt is not None:self.begin_app_request()
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
         attachment_paths=list(self.pending_documents) if prompt is not None else []
         if state.get('account_username') not in (None,session['username']):
@@ -2872,6 +2873,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if path not in paths:paths.append(path)
             self.windows_apps_paths.setPlainText('\n'.join(paths))
 
+    def begin_app_request(self):
+        # A new explicit request resumes a stopped, completed task, not a live one.
+        if self.busy() or not self.cfg.get('windows_apps_enabled'):return
+        from assistant.windows_apps import resume_automation
+        resume_automation()
+
     def stop_windows_apps(self):
         from assistant.windows_apps import stop_automation
         stop_automation()
@@ -2881,6 +2888,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.status.setText('Đang dừng lượt hiện tại. Thao tác Windows đang thực hiện có thể cần hoàn tất.')
 
     def resume_windows_apps(self):
+        if self.busy():
+            self.status.setText('Đợi lượt đang dừng kết thúc rồi gửi yêu cầu mới.');return
         from assistant.windows_apps import resume_automation
         if not self.cfg.get('windows_apps_enabled'):
             QMessageBox.information(self,'Điều khiển app','Bật quyền và Lưu cài đặt trước.');return
