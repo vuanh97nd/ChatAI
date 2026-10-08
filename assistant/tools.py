@@ -317,6 +317,28 @@ EXTRA_TOOLS.append(('geoslope_xldy', schema('geoslope_write',
      'soil_params_json': TEXT, 'project_name': TEXT, 'method': TEXT},
     ['output_gsz', 'segments_json'])))
 
+WRITES.add('cad_cdm_layout')
+EXTRA_TOOLS.append(('cdm_layout', schema('cad_cdm_layout',
+    'Tạo bản vẽ DXF bố trí cọc CDM (Cement Deep Mixing) và mở AutoCAD. '
+    'Tự động vẽ HAI bản vẽ trong cùng một file DXF:\n'
+    '  1. Mặt cắt ngang (cross-section): thể hiện chiều rộng nền đường B, '
+    'cọc CDM D, chiều sâu H, khoảng cách ngang.\n'
+    '  2. Mặt bằng (plan view): thể hiện toàn bộ lưới cọc CDM B×L.\n'
+    'Dùng khi đã có đủ thông số sau (không hỏi thêm nếu đã có):\n'
+    '  app: đường dẫn acad.exe (tìm bằng windows_list_apps).\n'
+    '  b_road: chiều rộng xử lý/nền đường (m).\n'
+    '  l_treatment: chiều dài đoạn xử lý (m).\n'
+    '  d_pile: đường kính cọc CDM (m, thường 0.6 hoặc 0.8).\n'
+    '  pile_depth: chiều sâu cọc CDM (m).\n'
+    '  spacing_x: khoảng cách cọc theo phương ngang/ngang đường (m).\n'
+    '  spacing_y: khoảng cách cọc theo phương dọc/dọc đường (m).\n'
+    '  units: đơn vị bản vẽ (mm/cm/m/inch, mặc định m).\n'
+    'Cần duyệt một lần. Không sửa bản vẽ đang mở.',
+    {'app': TEXT, 'b_road': {'type': 'number'}, 'l_treatment': {'type': 'number'},
+     'd_pile': {'type': 'number'}, 'pile_depth': {'type': 'number'},
+     'spacing_x': {'type': 'number'}, 'spacing_y': {'type': 'number'}, 'units': TEXT},
+    ['app', 'b_road', 'l_treatment', 'd_pile', 'pile_depth', 'spacing_x', 'spacing_y'])))
+
 WRITES.add('cad_mcn_xldy')
 EXTRA_TOOLS.append(('cad_drawing', schema('cad_mcn_xldy',
     'Vẽ bản vẽ mặt cắt ngang điển hình xử lý đất yếu (MCN XLDY) dạng DXF. '
