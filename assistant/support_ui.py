@@ -208,7 +208,12 @@ class SupportMixin:
             if memory_context and not attached_paths:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
             if names:
                 body['document_context']=(body.get('document_context','')+'\nNGUỒN ĐANG ĐƯỢC YÊU CẦU: '+', '.join(sorted(names))+'. Chỉ tóm tắt nguồn này; không dùng tài liệu khác trong lịch sử thay thế. Nếu chưa đọc được, nói rõ chưa đọc được tệp này.')[:140000]
-            body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
+            from .routing import fallback_route
+            _route=fallback_route(prompt,has_documents=bool(attached_paths or document_request))
+            _base_temp=cfg.get('api_temperature',0.7)
+            # Hạ nhiệt độ cho câu hỏi kỹ thuật cần chính xác; giữ cao cho chat/viết.
+            _online_temp=_base_temp if _route.category in ('conversation','writing_translation') else min(_base_temp,0.2)
+            body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':_online_temp}
             body['max_tokens']=cfg.get('api_num_predict',4096)
             preparation_finished=time.monotonic()
             events=api_answer_events(api_client,body) if api_client else cloud_events(endpoint,body)
