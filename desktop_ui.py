@@ -1874,9 +1874,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=self.worker.stop_requested)
                 windows=WindowsApps(cfg,audit,owner=session['username'],policy_path=ROOT/'config.json')
                 files=FileTools(cfg['roots'],ROOT/'data/backups',audit)
+                from assistant.cdm_layout import CdmLayoutApp
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
-                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit))
+                    PDFSource(windows,files,audit),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
+                    CdmLayoutApp(windows,files,audit))
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:
