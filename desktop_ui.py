@@ -1697,10 +1697,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.capabilities import Capabilities
             from assistant.collaboration import collect_artifacts
             from assistant.excel import ExcelTools
+            import time as _time
             with execution_lock(ROOT/'data/agent.lock'):
                 if session:
-                    try:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
-                    except Exception:raise RuntimeError('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử tạo nội dung.') from None
+                    _cache = getattr(self, '_auth_check_cache', {})
+                    _key = (session['endpoint'], session['username'], session['key'])
+                    if _time.monotonic() - _cache.get(_key, 0) > 60:
+                        try:
+                            request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                            _cache[_key] = _time.monotonic()
+                            self._auth_check_cache = _cache
+                        except Exception:raise RuntimeError('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử tạo nội dung.') from None
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,owner):
                     raise RuntimeError('Hội thoại thuộc tài khoản khác. Hãy tạo cuộc trò chuyện mới.')
@@ -1922,10 +1929,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def task(emit):
             from assistant.agent import Agent
             from assistant.accounts import request_account
+            import time as _time
             if session:
-                try:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
-                except Exception:
-                    emit({'type':'auth_failed'});raise RuntimeError('Không xác thực được tài khoản với server. Đăng nhập lại hoặc kiểm tra mạng.') from None
+                _cache = getattr(self, '_auth_check_cache', {})
+                _key = (session['endpoint'], session['username'], session['key'])
+                if _time.monotonic() - _cache.get(_key, 0) > 60:
+                    try:
+                        request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                        _cache[_key] = _time.monotonic()
+                        self._auth_check_cache = _cache
+                    except Exception:
+                        _cache.pop(_key, None)
+                        emit({'type':'auth_failed'});raise RuntimeError('Không xác thực được tài khoản với server. Đăng nhập lại hoặc kiểm tra mạng.') from None
             with execution_lock(ROOT / 'data/agent.lock'):
                 state = self.store.load(cid)
                 owner=session['username'] if session else GUEST_OWNER
