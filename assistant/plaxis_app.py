@@ -27,6 +27,12 @@ def _validate_soil_layer(layer, idx):
     E = _num(layer.get('E', -1), f'{prefix} E', 1.0, 1e9)
     nu = _num(layer.get('nu', -1), f'{prefix} nu', 0.0, 0.499)
     gamma = _num(layer.get('gamma', -1), f'{prefix} gamma', 1.0, 30.0)
+    # gamma_sat tuỳ chọn; nếu không có thì dùng gamma + 2
+    gamma_sat_raw = layer.get('gamma_sat')
+    if gamma_sat_raw is not None:
+        gamma_sat = _num(gamma_sat_raw, f'{prefix} gamma_sat', 1.0, 35.0)
+    else:
+        gamma_sat = gamma + 2.0
     c = _num(layer.get('c', -1), f'{prefix} c', 0.0, 1e6)
     phi = _num(layer.get('phi', -1), f'{prefix} phi', 0.0, 89.0)
     name = layer.get('name', f'Layer{idx}')
@@ -35,7 +41,8 @@ def _validate_soil_layer(layer, idx):
     if any(c in name for c in ('\n', '\r', '\0')):
         raise ValueError(f'{prefix} name chứa ký tự xuống dòng không hợp lệ.')
     thickness = _num(layer.get('thickness', -1), f'{prefix} thickness', 0.01, 1000.0)
-    return {'name': name, 'E': E, 'nu': nu, 'gamma': gamma, 'c': c, 'phi': phi, 'thickness': thickness}
+    return {'name': name, 'E': E, 'nu': nu, 'gamma': gamma, 'gamma_sat': gamma_sat,
+            'c': c, 'phi': phi, 'thickness': thickness}
 
 
 def _validate_slope_stability(problem):
@@ -82,6 +89,12 @@ def _validate_excavation_pit(problem):
     wall_thickness = _num(problem.get('wall_thickness', -1), 'wall_thickness', 0.1, 5.0)
     embedment_depth = _num(problem.get('embedment_depth', 0), 'embedment_depth', 0.0, 50.0)
     surcharge = _num(problem.get('surcharge', 0), 'surcharge', 0.0, 1e6)
+    # water_table_depth: độ sâu mực nước dưới mặt đất (dương = bên dưới), 0 = mặt đất
+    water_table_raw = problem.get('water_table_depth')
+    if water_table_raw is not None:
+        water_table_depth = _num(water_table_raw, 'water_table_depth', 0.0, 200.0)
+    else:
+        water_table_depth = None
     raw_layers = problem.get('soil_layers', [])
     if not isinstance(raw_layers, list) or not raw_layers:
         raise ValueError('excavation_pit cần ít nhất một lớp đất trong soil_layers.')
@@ -93,6 +106,7 @@ def _validate_excavation_pit(problem):
         'wall_thickness': wall_thickness,
         'embedment_depth': embedment_depth,
         'surcharge': surcharge,
+        'water_table_depth': water_table_depth,
         'soil_layers': layers,
     }
 
@@ -140,7 +154,7 @@ def _soil_lines(layers, version):
         lines.append(f'{vname}.setproperties("Eref", {layer["E"]})')
         lines.append(f'{vname}.setproperties("nu", {layer["nu"]})')
         lines.append(f'{vname}.setproperties("gammaUnsat", {layer["gamma"]})')
-        lines.append(f'{vname}.setproperties("gammaSat", {layer["gamma"] + 2.0})')
+        lines.append(f'{vname}.setproperties("gammaSat", {layer["gamma_sat"]})')
         lines.append(f'{vname}.setproperties("cref", {layer["c"]})')
         lines.append(f'{vname}.setproperties("phi", {layer["phi"]})')
         lines.append('')
@@ -290,6 +304,7 @@ def _generate_excavation_pit(problem, version, port, project_name):
     d = problem['embedment_depth']
     q = problem['surcharge']
     layers = problem['soil_layers']
+    wt = problem.get('water_table_depth')  # None hoặc độ sâu (m, dương = xuống)
 
     total_wall_height = H + d
     model_width = W / 2 + max(H * 3, 20.0)
@@ -299,6 +314,8 @@ def _generate_excavation_pit(problem, version, port, project_name):
     lines.append(f'# Bài toán: Hố đào - {project_name}')
     lines.append(f'# Độ sâu hố đào H={H} m, Chiều rộng W={W} m')
     lines.append(f'# Tường vây: bê tông dày t={t} m, chiều sâu chôn d={d} m')
+    if wt is not None:
+        lines.append(f'# Mực nước ngầm: -{wt} m so với mặt đất')
     if q > 0:
         lines.append(f'# Tải trọng mặt đất: q={q} kPa')
     lines.append('')
@@ -323,6 +340,11 @@ def _generate_excavation_pit(problem, version, port, project_name):
     for i, layer in enumerate(layers):
         lines.append(f'g.soillayer({i})  # {layer["name"]}, dày {layer["thickness"]} m')
     lines.append('')
+
+    if wt is not None:
+        lines.append(f'# Mực nước ngầm (groundwater level) tại y = -{wt:.2f} m')
+        lines.append(f'g.setwaterlevel(0, -{wt:.2f}, {model_width:.2f}, -{wt:.2f})')
+        lines.append('')
 
     lines.append('# Tường vây bên phải (x = W/2)')
     half_W = W / 2
