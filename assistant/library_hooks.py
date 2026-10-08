@@ -67,8 +67,8 @@ def background(win, sync=True):
 def _wrap_read_attachments(win):
     original = win.read_attachments
 
-    def read_attachments(paths, progress=None):
-        items = original(paths, progress)
+    def read_attachments(paths, progress=None, *args, **kwargs):
+        items = original(paths, progress, *args, **kwargs)
         try:
             lib = library_for(win)
             remembered = 0
