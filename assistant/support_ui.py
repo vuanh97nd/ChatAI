@@ -179,6 +179,9 @@ class SupportMixin:
                     emit({'type':'status','text':'Đang tìm kiếm web trên Worker…'})
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
+            from .document_memory import DocumentMemory
+            memory_context=DocumentMemory(self.store).context(owner,prompt)
+            if memory_context:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
             body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
             body['max_tokens']=cfg.get('api_num_predict',4096)
             preparation_finished=time.monotonic()

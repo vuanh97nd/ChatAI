@@ -908,6 +908,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 content='Đã nhận tệp '+p.name+', nhưng chưa đọc nội dung vì thiếu thư viện Office/RAG tương ứng. Không suy đoán nội dung.'
             limit=12000 if ext in CODE_SUFFIXES else 16000
             items.append({'file':p.name,'text':content[:limit],'truncated':len(content)>limit})
+        from assistant.document_memory import DocumentMemory
+        owner=self.server_session['username'] if self.server_session else GUEST_OWNER
+        DocumentMemory(self.store).remember(owner,items)
         return items
 
     def attach_image(self,image):

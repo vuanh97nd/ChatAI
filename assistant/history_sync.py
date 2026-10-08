@@ -3,6 +3,8 @@ import hashlib
 import json
 import uuid
 from .storage import dumps, now
+from .document_memory import clean_records
+from .plaxis_confirmation import active_problem
 
 
 def dialogue(state):
@@ -10,7 +12,9 @@ def dialogue(state):
                         for m in state.get('messages',[]) if m.get('role') in ('user','assistant','tool')
                         and isinstance(m.get('content',''),str)],
             'custom_title':str(state.get('custom_title') or '')[:120], 'model':state.get('model')[:150] if isinstance(state.get('model'),str) else None,
-            'online_automation':state.get('online_automation') is True}
+            'online_automation':state.get('online_automation') is True,
+            'document_memory':clean_records(state.get('document_memory',[])),
+            'plaxis_active_problem':active_problem(state)}
 
 
 def fingerprint(state):
@@ -51,6 +55,9 @@ class HistorySync:
             if current and (current.get('running') or current.get('pending') or current.get('queue')):return False
             if (fingerprint(current) if current else None)!=expected:return False
             state=remote['state']
+            from .document_memory import DocumentMemory
+            DocumentMemory(self.store).import_records(self.owner,state.get('document_memory',[]),db=db)
+            state['document_memory_version']=1
             if remote['deleted']:
                 if current:
                     db.execute('INSERT INTO audit(at,conversation_id,action,details) VALUES (?,?,?,?)',

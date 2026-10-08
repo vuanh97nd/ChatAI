@@ -11,3 +11,12 @@ Ngữ cảnh DeepSeek giữ tối đa 36 lượt gần đây với ngân sách 9
 Lập kế hoạch JSON dùng tối thiểu 2.048, mặc định 4.096 token; nếu JSON bị cắt, thử lại một lần với tối đa 8.192 token trước khi thực thi. DeepSeek dùng chế độ JSON và tắt thinking trong lượt kế hoạch để không dùng hết ngân sách trước khi trả JSON. Các lượt trò chuyện thông thường giữ cấu hình model của người dùng.
 
 Tự sửa lỗi: kế hoạch bị từ chối ở bước kiểm tra trước thực thi được sửa tối đa hai lần. Phản hồi API rỗng/thừa suy luận được khôi phục một lần, không chạy lại công cụ. Lỗi vật liệu Plaxis đã biết trong mô hình ChatAI tạo được thử lại một lần nếu tái sinh script từ cùng thông số tạo ra bản sửa khác; không lặp script lỗi hay tự thay đổi số liệu thiết kế.
+
+
+Document memory
+---------------
+Actual text read from attachments and PDF tools is cached by account, with the source filename and reported coverage. Subsequent online chat and automation receive relevant excerpts without reopening the original file. Old PDF tool results are migrated when a conversation is loaded. Failed reads are not saved as document content.
+
+History snapshots now include document excerpts and the accepted PLAXIS problem parameters. Local excerpts are limited to 240,000 characters per source; synchronized snapshots carry up to eight sources and 300,000 UTF-8 bytes. Truncated snapshots are marked partial and cannot replace a longer local excerpt with the same revision. Original PDFs and images are not uploaded by this feature.
+
+A short approval of the chapter-2 embankment proposal dispatches that verified tutorial task directly, rather than selecting an older slope calculation. A bare “ok” after a different topic or a completed task does not restart it. PLAXIS phase failures and missing numerical results are reported as unverified results, rather than successful completion.

@@ -981,6 +981,12 @@ export async function conversationAPI(path,body,actor,db) {
    if(!state||!Array.isArray(state.messages)||state.messages.length>10000||state.messages.some(m=>!m||!['user','assistant','tool'].includes(m.role)||typeof m.content!=='string'))return fail('Nội dung hội thoại không hợp lệ.');
    // Store dialogue only; never credentials, executable queues or file contents.
    const clean={messages:state.messages.map(m=>({role:m.role,content:m.content,...(m.role==='tool'?{tool_name:String(m.tool_name||'tool').slice(0,100)}:{})})),custom_title:String(state.custom_title||'').slice(0,120),model:typeof state.model==='string'?state.model.slice(0,150):null,online_automation:state.online_automation===true};
+   const memory=Array.isArray(state.document_memory)?state.document_memory:[];
+   if(memory.length>8||memory.some(d=>!d||!/^[a-f0-9]{64}$/.test(d.id)||typeof d.text!=='string'||typeof d.file!=='string'||d.text.length>240000))return fail('Bộ nhớ tài liệu không hợp lệ.');
+   if(memory.reduce((n,d)=>n+new TextEncoder().encode(d.text).length,0)>300000)return fail('Bộ nhớ tài liệu quá lớn.',413);
+   clean.document_memory=memory.map(d=>({id:d.id,file:d.file.slice(0,240),text:d.text,format:String(d.format||'').slice(0,40),coverage:String(d.coverage||'partial').slice(0,40),coverage_note:String(d.coverage_note||'').slice(0,2048),updated:String(d.updated||'').slice(0,50)}));
+   const task=state.plaxis_active_problem;
+   clean.plaxis_active_problem=task&&['2d','3d'].includes(task.version)&&typeof task.problem==='string'&&new TextEncoder().encode(task.problem).length<=50000&&typeof task.project_name==='string'&&task.project_name.length>=1&&task.project_name.length<=100?{version:task.version,problem:task.problem,project_name:task.project_name}:null;
    const raw=JSON.stringify(clean);
    if(new TextEncoder().encode(raw).length>1500000)return fail('Hội thoại quá lớn để đồng bộ một lần.',413);
    const result=revision===0

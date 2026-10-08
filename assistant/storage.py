@@ -52,6 +52,7 @@ class Store:
                     id TEXT PRIMARY KEY, title TEXT NOT NULL,
                     updated TEXT NOT NULL, state TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS document_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
                 CREATE TABLE IF NOT EXISTS history_deletions (id TEXT PRIMARY KEY, owner TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS history_sync (server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(server,owner,id));
                 CREATE TABLE IF NOT EXISTS audit (
@@ -108,9 +109,21 @@ class Store:
             # Mã hội thoại mới chỉ được ghi xuống SQLite sau khi có tin nhắn.
             return {"messages": [], "queue": [], "pending": None,
                     "running": False, "rounds": 0, "model": None}
-        return json.loads(row[0])
+        state=json.loads(row[0])
+        owner=state.get('account_username')
+        if owner and state.get('document_memory_version')!=1:
+            from .document_memory import DocumentMemory
+            memory=DocumentMemory(self);memory.seed(owner,state)
+            state['document_memory']=memory.export(owner);state['document_memory_version']=1
+            with self.connection() as db:db.execute('UPDATE conversations SET state=? WHERE id=?',(dumps(state),cid))
+        return state
 
     def save(self, cid, state):
+        owner=state.get('account_username')
+        if owner:
+            from .document_memory import DocumentMemory
+            memory=DocumentMemory(self);memory.seed(owner,state)
+            state['document_memory']=memory.export(owner);state['document_memory_version']=1
         title = next((m["content"][:60] for m in state["messages"] if m["role"] == "user"),
                      "Cuộc trò chuyện mới")
         title=state.get('custom_title') or title

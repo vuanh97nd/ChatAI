@@ -77,12 +77,12 @@ def _extract_results(g_out, phases, problem_type):
         # Settlement (Uy – vertical displacement, negative = downward)
         try:
             uy_vals = _safe_list(
-                g_out.getresults(phase, g_out.ResultTypes.Soil.Deformations.Uy, 'node')
+                g_out.getresults(phase, g_out.ResultTypes.Soil.Uy, 'node')
             )
             if uy_vals:
                 max_set = abs(min(uy_vals))  # most negative = largest settlement
                 phase_entry['max_settlement_mm'] = round(max_set * 1000, 2)
-                if results['max_settlement_mm'] is None or max_set > results['max_settlement_mm']:
+                if results['max_settlement_mm'] is None or max_set * 1000 > results['max_settlement_mm']:
                     results['max_settlement_mm'] = round(max_set * 1000, 2)
         except Exception:
             pass
@@ -90,13 +90,13 @@ def _extract_results(g_out, phases, problem_type):
         # Horizontal displacement (Ux)
         try:
             ux_vals = _safe_list(
-                g_out.getresults(phase, g_out.ResultTypes.Soil.Deformations.Ux, 'node')
+                g_out.getresults(phase, g_out.ResultTypes.Soil.Ux, 'node')
             )
             if ux_vals:
                 max_horiz = max(abs(v) for v in ux_vals)
                 phase_entry['max_horizontal_displacement_mm'] = round(max_horiz * 1000, 2)
                 if (results['max_horizontal_displacement_mm'] is None
-                        or max_horiz > results['max_horizontal_displacement_mm']):
+                        or max_horiz * 1000 > results['max_horizontal_displacement_mm']):
                     results['max_horizontal_displacement_mm'] = round(max_horiz * 1000, 2)
         except Exception:
             pass
@@ -106,8 +106,8 @@ def _extract_results(g_out, phases, problem_type):
             stress_vals = _safe_list(
                 g_out.getresults(
                     phase,
-                    g_out.ResultTypes.Soil.Stresses.EffectiveMeanStress,
-                    'node'
+                    g_out.ResultTypes.Soil.MeanEffStress,
+                    'stress point'
                 )
             )
             if stress_vals:
@@ -182,6 +182,24 @@ def _exec_script_on_server(script_text, s_in, g_in):
 
 # ── Core public API ───────────────────────────────────────────────────────────
 
+def phase_diagnostics(globals_object):
+    """Read actual Input calculation status; a returned calculate command is not success."""
+    try:phases=list(globals_object.Phases)
+    except Exception:return []
+    rows=[]
+    for phase in phases[:20]:
+        try:
+            raw=phase.CalculationResult
+            status=int(getattr(raw,'value',raw))
+        except Exception:continue
+        try:
+            value=phase.LogInfo
+            log=str(getattr(value,'value',value))[:2000]
+        except Exception:log=''
+        rows.append({'name':_phase_name(phase),'status':status,'log':log})
+    return rows
+
+
 def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit'):
     """Connect to Plaxis, run script_text, read results from Output server.
 
@@ -214,14 +232,21 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
     except Exception as exc:
         return {
             'executed': False, 'output': '', 'results': {},
-            'error': f'Lỗi khi chạy script trên {label}: {exc}'
+            'error': f'Lỗi khi chạy script trên {label}: {exc}',
+            'phase_diagnostics': phase_diagnostics(g_in)
         }
+
+    diagnostics=phase_diagnostics(g_in)
+    failed=[row for row in diagnostics if row['status'] in (2,3)]
+    if failed:
+        return {'executed':False,'output':stdout,'results':{},'phase_diagnostics':diagnostics,
+                'error':'Phase tính toán chưa thành công: '+ '; '.join(row['name']+': '+(row['log'] or 'CalculationResult='+str(row['status'])) for row in failed)}
 
     # Extract results from Output server
     structured = {}
     try:
         s_out, g_out = _connect(out_port, f'{label} Output')
-        phases = list(s_out.Phases)
+        phases = list(g_out.Phases)
         if phases:
             structured = _extract_results(g_out, phases, problem_type)
         else:
@@ -235,6 +260,7 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
         'output': stdout,
         'results': structured,
         'error': '',
+        'phase_diagnostics':diagnostics,
     }
 
 
@@ -285,9 +311,14 @@ class PlaxisRemoteApp:
                 'ok': False,
                 'error': result['error'],
                 'note': result['error'],
+                'phase_diagnostics':result.get('phase_diagnostics',[]),
             }
 
         res = result.get('results', {})
+        if not any(res.get(k) is not None for k in ('max_settlement_mm','max_horizontal_displacement_mm','safety_factor')):
+            return {'ok':False,'executed':True,'results_unavailable':True,
+                    'error':res.get('raw_summary') or 'Chưa đọc được kết quả số từ Output.',
+                    'note':'Đã gửi lệnh chạy nhưng chưa xác nhận kết quả tính toán. '+str(res.get('raw_summary',''))}
         lines = [
             f"Phân tích {plan['problem_type']} ({plan['version'].upper()}) hoàn tất.",
         ]

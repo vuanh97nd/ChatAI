@@ -135,12 +135,12 @@ def _validate_hs_soil(layer, idx):
 
 
 _FILL_DEFAULTS = {
-    'name': 'Bo dap (Cat)', 'gamma': 16.0, 'gamma_sat': 18.0,
+    'name': 'Bo dap (Cat)', 'gamma': 16.0, 'gamma_sat': 16.0,
     'E50ref': 15000.0, 'Eoedref': 15000.0, 'Eurref': 45000.0,
     'm': 0.5, 'c_ref': 3.0, 'phi': 30.0, 'OCR': 1.0,
 }
 _CLAY_DEFAULTS = {
-    'name': 'Set (Drained)', 'gamma': 13.0, 'gamma_sat': 15.0,
+    'name': 'Set (Drained)', 'gamma': 13.0, 'gamma_sat': 13.0,
     'E50ref': 5600.0, 'Eoedref': 5000.0, 'Eurref': 20000.0,
     'm': 1.0, 'c_ref': 10.0, 'phi': 25.0, 'OCR': 1.2,
 }
@@ -266,12 +266,14 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('# Tính toán')
     lines.append('g.gotostages()')
     lines.append('phase1 = g.phase(g.InitialPhase)')
-    lines.append(f'phase1.Identification = "Phan tich on dinh mai doc - {analysis}"')
+    lines.append('phase1.Identification = "On dinh mai doc - Safety (c-phi reduction)"')
+    lines.append('# PLAXIS tính bằng FEM/Safety; Bishop/Fellenius là phương pháp cân bằng giới hạn khác.')
+    lines.append('phase1.DeformCalcType = phase1.DeformCalcType.enumeration.PhiCReduction')
     lines.append('phase1.ShouldCalculate = True')
     lines.append('')
     lines.append('g.calculate()')
     lines.append('g.view(phase1)')
-    lines.append(f'print("Hoan thanh phan tich on dinh mai doc bang {analysis}.")')
+    lines.append('print("Da gui lenh phan tich on dinh mai doc bang PLAXIS Safety (c-phi reduction).")')
     return '\n'.join(lines)
 
 
@@ -490,7 +492,8 @@ def _generate_embankment_stability(problem, version, port, project_name):
     left_slope_h = sl * H
     right_slope_h = sr * H
     total_emb_width = left_slope_h + W + right_slope_h
-    x_left_toe = (50.0 - total_emb_width) / 2.0
+    domain_width=max(50.0,total_emb_width+20.0)
+    x_left_toe = (domain_width - total_emb_width) / 2.0
     x_left_crest = x_left_toe + left_slope_h
     x_right_crest = x_left_crest + W
     x_right_toe = x_right_crest + right_slope_h
@@ -529,6 +532,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('# === Hình học ===')
     lines.append('# Địa tầng: lớp sét từ y=0 đến y={:.1f} m'.format(-clay_t))
     lines.append('g.gotosoil()')
+    if version=='2d':lines.append(f'g.SoilContour.initializerectangular(0, {-clay_t!r}, {domain_width!r}, {H!r})')
     lines.append('bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)')
     lines.append(f'bh.Head = 0  # Mực nước ngầm tại mặt đất')
     lines.append(f'g.soillayer({clay_t!r})  # Lớp sét')
@@ -539,7 +543,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('')
     lines.append('# Khối bờ đắp (soil polygon)')
     lines.append(
-        f'emb = g.soilpolygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
+        f'emb_polygon, emb = g.soilpolygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
         f'({x_right_crest:.2f}, {H:.2f}), ({x_right_toe:.2f}, 0))'
     )
     lines.append('g.setmaterial(emb, mat_fill)')
@@ -556,6 +560,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('# Giai đoạn ban đầu: ứng suất K0 (mặc định)')
     lines.append('phase0 = g.InitialPhase')
     lines.append('phase0.Identification = "Ung suat ban dau K0"')
+    lines.append('g.deactivate(emb, phase0)  # Bờ đắp chưa thi công trong Initial phase')
     lines.append('')
     lines.append('# Giai đoạn 1: Thi công bờ đắp, nền DRAINED (ổn định dài hạn)')
     lines.append('phase1 = g.phase(phase0)')
@@ -572,7 +577,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('phase2.LoadingType = phase2.LoadingType.enumeration.StagedConstruction')
     lines.append('phase2.ShouldCalculate = True')
     lines.append('g.activate(emb, phase2)')
-    lines.append('g.setmaterial(g.Soils[0], mat_clay_ud, phase2)')
+    lines.append('g.setmaterial(g.Soillayers[0].Soil, phase2, mat_clay_ud)')
     lines.append('')
     lines.append('# Giai đoạn 3: Tính hệ số an toàn (Phi-c reduction) từ pha Drained')
     lines.append('phase3 = g.phase(phase1)')
