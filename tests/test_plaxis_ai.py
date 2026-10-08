@@ -224,7 +224,7 @@ class PlaxisExcavationPitTest(unittest.TestCase):
         self.assertIn("Dao dat", self.script)
 
     def test_script_has_stability_phase(self):
-        self.assertIn("PhiCReduction", self.script)
+        self.assertIn('DeformCalcType = "Safety"', self.script)
 
     def test_script_has_surcharge(self):
         self.assertIn("uniformload", self.script)
@@ -464,7 +464,7 @@ class PlaxisExcavationV2Test(unittest.TestCase):
         self.assertIn("Dao dat", self.script)
 
     def test_phi_c_reduction_phase(self):
-        self.assertIn("PhiCReduction", self.script)
+        self.assertIn('DeformCalcType = "Safety"', self.script)
 
     def test_calculate_called(self):
         self.assertIn("g.calculate()", self.script)

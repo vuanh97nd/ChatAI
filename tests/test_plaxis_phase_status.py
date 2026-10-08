@@ -20,6 +20,18 @@ class PhaseStatusTests(unittest.TestCase):
         self.assertIn('step 30',result['error'])
     def test_slope_phase_uses_safety_not_bishop_claim(self):
         script=_generate_script(_validate_problem(SLOPE_PROBLEM),'2d',10000,'Test')
-        self.assertIn('DeformCalcType.enumeration.PhiCReduction',script)
+        self.assertIn('DeformCalcType = "Safety"',script)
         self.assertNotIn('Hoan thanh phan tich on dinh mai doc bang Bishop',script)
         self.assertIn('Safety (c-phi reduction)',script)
+
+    def test_phase_configuration_uses_values_without_enumeration_lookup(self):
+        script=_generate_script(_validate_problem(json.dumps({'type':'embankment_stability'})),'2d',10000,'Test')
+        self.assertNotIn('.enumeration',script)
+        phases={name:SimpleNamespace() for name in ('phase1','phase2','phase3','phase4')}
+        lines=[line for line in script.splitlines() if '.DeformCalcType =' in line or '.LoadingType =' in line]
+        exec('\n'.join(lines),phases)
+        for name in ('phase1','phase2'):
+            self.assertEqual(phases[name].DeformCalcType,'Plastic')
+            self.assertEqual(phases[name].LoadingType,'Staged construction')
+        for name in ('phase3','phase4'):
+            self.assertEqual(phases[name].DeformCalcType,'Safety')
