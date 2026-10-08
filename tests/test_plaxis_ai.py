@@ -52,6 +52,20 @@ SLOPE_PROBLEM = json.dumps({
     ],
 })
 
+EXCAVATION_PROBLEM = json.dumps({
+    "type": "excavation_pit",
+    "excavation_depth": 6.0,
+    "excavation_width": 8.0,
+    "wall_thickness": 0.5,
+    "embedment_depth": 2.0,
+    "surcharge": 20.0,
+    "soil_layers": [
+        {"name": "Cat pha", "E": 20000, "nu": 0.30, "gamma": 18.5, "c": 5,  "phi": 28, "thickness": 4.0},
+        {"name": "Set",     "E": 8000,  "nu": 0.35, "gamma": 17.0, "c": 25, "phi": 18, "thickness": 6.0},
+        {"name": "Cat min", "E": 15000, "nu": 0.28, "gamma": 18.0, "c": 2,  "phi": 25, "thickness": 8.0},
+    ],
+})
+
 RETAINING_PROBLEM = json.dumps({
     "type": "retaining_wall",
     "wall_height": 5.0,
@@ -174,6 +188,59 @@ class PlaxisRetainingWallTest(unittest.TestCase):
         self.assertIn("Cat", self.script)
 
 
+class PlaxisExcavationPitTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.result, self.script = _run(self._tmp.name, EXCAVATION_PROBLEM)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_result_ok(self):
+        self.assertTrue(self.result["ok"])
+
+    def test_problem_type(self):
+        self.assertEqual(self.result["problem_type"], "excavation_pit")
+
+    def test_file_saved(self):
+        self.assertTrue(Path(self.result["path"]).exists())
+
+    def test_script_has_plaxis_import(self):
+        self.assertIn("from plxscripting.easy import new_server", self.script)
+
+    def test_script_has_wall_plate(self):
+        self.assertIn("g.plate(", self.script)
+
+    def test_script_has_platemat(self):
+        self.assertIn("g.platemat()", self.script)
+
+    def test_script_has_mesh(self):
+        self.assertIn("g.mesh(", self.script)
+
+    def test_script_has_calculate(self):
+        self.assertIn("g.calculate()", self.script)
+
+    def test_script_has_excavation_phase(self):
+        self.assertIn("Dao dat", self.script)
+
+    def test_script_has_stability_phase(self):
+        self.assertIn("PhiCReduction", self.script)
+
+    def test_script_has_surcharge(self):
+        self.assertIn("uniformload", self.script)
+
+    def test_soil_names_in_script(self):
+        self.assertIn("Cat pha", self.script)
+        self.assertIn("Set", self.script)
+        self.assertIn("Cat min", self.script)
+
+    def test_not_auto_run(self):
+        self.assertFalse(self.result["executed"])
+
+    def test_note_present(self):
+        self.assertIn("note", self.result)
+
+
 class PlaxisScriptSyntaxTest(unittest.TestCase):
     """Xác minh script sinh ra là Python hợp lệ về mặt cú pháp."""
 
@@ -194,6 +261,9 @@ class PlaxisScriptSyntaxTest(unittest.TestCase):
 
     def test_retaining_syntax(self):
         self._check_syntax(RETAINING_PROBLEM)
+
+    def test_excavation_syntax(self):
+        self._check_syntax(EXCAVATION_PROBLEM)
 
 
 class PlaxisValidationTest(unittest.TestCase):
@@ -249,6 +319,24 @@ class PlaxisValidationTest(unittest.TestCase):
                     "project_name": "Test",
                     "version": "2d",
                     "problem": bad,
+                })
+
+    def test_invalid_excavation_depth_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app = self._app(tmp)
+            with self.assertRaises(ValueError):
+                app.prepare("plaxis_generate_script", {
+                    "project_name": "Test",
+                    "version": "2d",
+                    "problem": json.dumps({
+                        "type": "excavation_pit",
+                        "excavation_depth": -1,
+                        "excavation_width": 8.0,
+                        "wall_thickness": 0.5,
+                        "soil_layers": [
+                            {"name": "Cat", "E": 20000, "nu": 0.3, "gamma": 18, "c": 5, "phi": 28, "thickness": 4},
+                        ],
+                    }),
                 })
 
     def test_missing_soil_layers_raises(self):

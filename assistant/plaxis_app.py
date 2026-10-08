@@ -9,7 +9,7 @@ import json
 import uuid
 from pathlib import Path
 
-_SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall'}
+_SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit'}
 
 _PORT = {'2d': 10000, '3d': 10001}
 
@@ -76,6 +76,27 @@ def _validate_retaining_wall(problem):
             'wall_thickness': wall_thickness, 'surcharge': surcharge, 'soil_layers': layers}
 
 
+def _validate_excavation_pit(problem):
+    excavation_depth = _num(problem.get('excavation_depth', -1), 'excavation_depth', 0.5, 100.0)
+    excavation_width = _num(problem.get('excavation_width', -1), 'excavation_width', 0.5, 500.0)
+    wall_thickness = _num(problem.get('wall_thickness', -1), 'wall_thickness', 0.1, 5.0)
+    embedment_depth = _num(problem.get('embedment_depth', 0), 'embedment_depth', 0.0, 50.0)
+    surcharge = _num(problem.get('surcharge', 0), 'surcharge', 0.0, 1e6)
+    raw_layers = problem.get('soil_layers', [])
+    if not isinstance(raw_layers, list) or not raw_layers:
+        raise ValueError('excavation_pit cần ít nhất một lớp đất trong soil_layers.')
+    layers = [_validate_soil_layer(l, i + 1) for i, l in enumerate(raw_layers)]
+    return {
+        'type': 'excavation_pit',
+        'excavation_depth': excavation_depth,
+        'excavation_width': excavation_width,
+        'wall_thickness': wall_thickness,
+        'embedment_depth': embedment_depth,
+        'surcharge': surcharge,
+        'soil_layers': layers,
+    }
+
+
 def _validate_problem(raw):
     if not isinstance(raw, str) or len(raw.encode()) > 50 * 1024:
         raise ValueError('problem phải là chuỗi JSON, tối đa 50KB.')
@@ -92,7 +113,9 @@ def _validate_problem(raw):
         return _validate_slope_stability(problem)
     if ptype == 'foundation_settlement':
         return _validate_foundation_settlement(problem)
-    return _validate_retaining_wall(problem)
+    if ptype == 'retaining_wall':
+        return _validate_retaining_wall(problem)
+    return _validate_excavation_pit(problem)
 
 
 def _script_header(version, port):
@@ -260,13 +283,103 @@ def _generate_retaining_wall(problem, version, port, project_name):
     return '\n'.join(lines)
 
 
+def _generate_excavation_pit(problem, version, port, project_name):
+    H = problem['excavation_depth']
+    W = problem['excavation_width']
+    t = problem['wall_thickness']
+    d = problem['embedment_depth']
+    q = problem['surcharge']
+    layers = problem['soil_layers']
+
+    total_wall_height = H + d
+    model_width = W / 2 + max(H * 3, 20.0)
+    model_depth = total_wall_height + max(H * 2, 10.0)
+
+    lines = [_script_header(version, port)]
+    lines.append(f'# Bài toán: Hố đào - {project_name}')
+    lines.append(f'# Độ sâu hố đào H={H} m, Chiều rộng W={W} m')
+    lines.append(f'# Tường vây: bê tông dày t={t} m, chiều sâu chôn d={d} m')
+    if q > 0:
+        lines.append(f'# Tải trọng mặt đất: q={q} kPa')
+    lines.append('')
+    lines.append('g.gotostructures()')
+    lines.append('')
+    lines.append('# Vật liệu đất')
+    lines.append(_soil_lines(layers, version))
+
+    lines.append('# Vật liệu tường vây (bê tông cốt thép)')
+    lines.append('wall_mat = g.platemat()')
+    lines.append('wall_mat.setproperties("MaterialName", "Tuong vay BTCT")')
+    EA = 3.0e7 * t
+    EI = 3.0e7 * (t ** 3) / 12.0
+    lines.append(f'wall_mat.setproperties("EA", {EA:.3e})')
+    lines.append(f'wall_mat.setproperties("EI", {EI:.3e})')
+    lines.append(f'wall_mat.setproperties("w", {25.0 * t:.2f})')
+    lines.append('wall_mat.setproperties("nu", 0.15)')
+    lines.append('')
+
+    lines.append('# Hình học: mô hình nửa đối xứng (trục đối xứng tại x=0)')
+    lines.append(f'g.borehole(0)')
+    for i, layer in enumerate(layers):
+        lines.append(f'g.soillayer({i})  # {layer["name"]}, dày {layer["thickness"]} m')
+    lines.append('')
+
+    lines.append('# Tường vây bên phải (x = W/2)')
+    half_W = W / 2
+    lines.append(f'wall = g.plate(({half_W:.3f}, 0), ({half_W:.3f}, -{total_wall_height:.3f}))')
+    lines.append('wall.setmaterial(wall_mat)')
+    lines.append('')
+
+    if q > 0:
+        lines.append('# Tải trọng mặt đất sau tường')
+        lines.append(f'g.uniformload({half_W + t:.3f}, 0, {model_width:.3f}, 0)')
+        lines.append(f'g.uniformload_1.qy_start = -{q:.2f}')
+        lines.append('')
+
+    lines.append('# Lưới phần tử')
+    lines.append('g.gotomesh()')
+    lines.append('g.mesh(0.06)')
+    lines.append('')
+    lines.append('g.gotostages()')
+    lines.append('')
+    lines.append('# Giai đoạn 1: Ứng suất ban đầu')
+    lines.append('phase0 = g.InitialPhase')
+    lines.append('')
+    lines.append('# Giai đoạn 2: Thi công tường vây')
+    lines.append('phase1 = g.phase(phase0)')
+    lines.append('phase1.Identification = "Thi cong tuong vay"')
+    lines.append('phase1.ShouldCalculate = True')
+    lines.append('g.activate(wall, phase1)')
+    lines.append('')
+    lines.append(f'# Giai đoạn 3: Đào đất đến độ sâu {H} m')
+    lines.append('phase2 = g.phase(phase1)')
+    lines.append('phase2.Identification = "Dao dat"')
+    lines.append('phase2.ShouldCalculate = True')
+    lines.append(f'excavation_poly = g.polygon((-{half_W:.3f}, 0), ({half_W:.3f}, 0), ({half_W:.3f}, -{H:.3f}), (-{half_W:.3f}, -{H:.3f}))')
+    lines.append('g.deactivate(excavation_poly.SoilElements, phase2)')
+    lines.append('')
+    lines.append('# Giai đoạn 4: Kiểm tra ổn định (Phi-c reduction)')
+    lines.append('phase3 = g.phase(phase2)')
+    lines.append('phase3.Identification = "Kiem tra on dinh SF"')
+    lines.append('phase3.ShouldCalculate = True')
+    lines.append('phase3.DeformCalcType = phase3.DeformCalcType.enumeration.PhiCReduction')
+    lines.append('')
+    lines.append('g.calculate()')
+    lines.append('g.view(phase2)')
+    lines.append('print("Hoan thanh phan tich ho dao.")')
+    lines.append(f'print(f"SF = {{phase3.ReachedValue.SumMsf:.3f}}")')
+    return '\n'.join(lines)
+
+
 def _generate_script(problem, version, port, project_name):
     ptype = problem['type']
     if ptype == 'slope_stability':
         return _generate_slope_stability(problem, version, port, project_name)
     if ptype == 'foundation_settlement':
         return _generate_foundation_settlement(problem, version, port, project_name)
-    return _generate_retaining_wall(problem, version, port, project_name)
+    if ptype == 'retaining_wall':
+        return _generate_retaining_wall(problem, version, port, project_name)
+    return _generate_excavation_pit(problem, version, port, project_name)
 
 
 class PlaxisApp:
