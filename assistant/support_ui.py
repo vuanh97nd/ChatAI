@@ -152,6 +152,8 @@ class SupportMixin:
                 from .document_pipeline import prepare_events, matching_recent_documents
                 document_client=api_client
                 emit({'type':'status','text':'Đang phân tích ý định tài liệu…'})
+                if any(Path(path).suffix.lower()=='.pdf' for path in attached_paths):
+                    emit({'type':'app_activity','text':'Đang đọc PDF; AI đọc ảnh trước, OCR dự phòng'})
                 attachments=self.read_attachments(attached_paths,online=True) if attached_paths else []
                 conversation=history+[{'role':'user','content':prompt}]
                 intent=analyze_intent(document_client,conversation,'document-small',bool(attachments),'document-small')
@@ -185,6 +187,8 @@ class SupportMixin:
                 evidence=[]
                 if attached_paths:
                     emit({'type':'status','text':'Đang đọc PDF/tài liệu bằng Python…'})
+                    if any(Path(path).suffix.lower()=='.pdf' for path in attached_paths):
+                        emit({'type':'app_activity','text':'Đang đọc PDF; AI đọc ảnh trước, OCR dự phòng'})
                     attachments=self.read_attachments(attached_paths,online=True)
                     state['recent_documents']=attachments
                     evidence.append(_reader_context(attachments))

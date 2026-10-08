@@ -74,3 +74,20 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(panel.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
         self.assertTrue(panel.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
         panel.deleteLater()
+
+    def test_controls_remain_available_when_compact_mode_disabled(self):
+        from desktop_ui import Window
+        class Host(QMainWindow):
+            compact_app_activity=Window.compact_app_activity
+            pause_app_activity=Window.pause_app_activity
+            reveal_app_chat=Window.reveal_app_chat
+            finish_app_activity=Window.finish_app_activity
+            end_app_activity=Window.end_app_activity
+        host=Host();host.cfg={'windows_apps_compact':False};host.show()
+        host.compact_app_activity('Đang đọc PDF')
+        self.assertFalse(host.isMinimized())
+        self.assertTrue(host.automation_panel.isVisible())
+        for text in ('Tạm dừng','Mở chat','Kết thúc'):
+            from PySide6.QtWidgets import QPushButton
+            self.assertTrue(any(button.text()==text for button in host.automation_panel.findChildren(QPushButton)))
+        host.finish_app_activity();host.automation_panel.deleteLater();host.deleteLater()

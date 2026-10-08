@@ -43,3 +43,16 @@ class FoxitOpenPathTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError,'PDF tồn tại'):
                 _open_file(Mock(),'/missing/file.pdf',exe='/apps/Foxit.exe')
             launch.assert_not_called()
+
+    def test_document_verification_accepts_hidden_extension_and_selected_tab(self):
+        from pathlib import Path
+        from assistant.foxit_ocr_automation import _pdf_window_matches
+        source=Path('3D-1-Tutorial.pdf')
+        window=Mock();window.window_text.return_value='3D-1-Tutorial - Foxit PDF Editor'
+        self.assertTrue(_pdf_window_matches(window,source))
+        window.window_text.return_value='Start - Foxit PDF Editor'
+        tab=Mock();tab.window_text.return_value='3D-1-Tutorial.pdf';tab.is_selected.return_value=True
+        window.descendants.return_value=[tab]
+        self.assertTrue(_pdf_window_matches(window,source))
+        tab.is_selected.return_value=False
+        self.assertFalse(_pdf_window_matches(window,source))

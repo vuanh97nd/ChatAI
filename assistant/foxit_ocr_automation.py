@@ -97,7 +97,7 @@ def foxit_ocr(
     # ------------------------------------------------------------------
     # Open the PDF
     # ------------------------------------------------------------------
-    _open_file(app, str(src), exe=exe)
+    app = _open_file(app, str(src), exe=exe)
 
     # ------------------------------------------------------------------
     # Invoke OCR: Tools → OCR Text Recognition (or Home → OCR)
@@ -277,10 +277,30 @@ def _open_file(app, path: str, *, exe: str):
     while time.monotonic()<deadline:
         try:
             window=_wait_for_main_window(app,timeout=2)
-            if source.name.casefold() in window.window_text().casefold():return
+            if _pdf_window_matches(window,source):return app
+            # Single-instance Foxit can hand the PDF to another process/window.
+            from pywinauto import Application,findwindows
+            import re
+            handles=findwindows.find_windows(title_re=r'.*'+re.escape(source.stem)+r'.*Foxit.*',visible_only=True)
+            for handle in handles:
+                candidate=Application(backend='uia').connect(handle=handle)
+                if _pdf_window_matches(candidate.window(handle=handle),source):return candidate
         except Exception:pass
         time.sleep(.5)
     raise RuntimeError('Foxit chưa xác nhận mở PDF '+source.name+'; không chạy OCR trên tài liệu khác.')
+
+
+def _pdf_window_matches(window,source):
+    """Match a document title or selected document tab, never the Recent-file list."""
+    import re
+    title=window.window_text().casefold()
+    if re.search(r'(?<![\w.-])'+re.escape(source.stem.casefold())+r'(?:\.pdf)?(?=\s|$|[\-*])',title):return True
+    try:
+        for tab in window.descendants(control_type='TabItem'):
+            name=tab.window_text().strip().rstrip('*').strip().casefold()
+            if name in (source.name.casefold(),source.stem.casefold()) and tab.is_selected():return True
+    except Exception:pass
+    return False
 
 
 def _filename_edit(dlg):

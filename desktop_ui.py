@@ -628,7 +628,6 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         button = QPushButton(text); button.clicked.connect(callback); layout.addWidget(button); return button
 
     def compact_app_activity(self,text):
-        if not self.cfg.get('windows_apps_compact',True):return
         labels={'windows_list_apps':'Đang tìm ứng dụng','windows_open':'Đang mở ứng dụng','windows_inspect':'Đang đọc giao diện','windows_action':'Đang thao tác ứng dụng','browser_search':'Đang tìm trên Chrome','browser_run':'Đang thao tác Chrome','cad3d_create_open':'Đang tạo mô hình 3D và mở AutoCAD','cad_create_open':'Đang tạo bản vẽ và mở AutoCAD','word_create_open':'Đang tạo tài liệu và mở Word','pdf_source_open':'Đang tải và mở PDF','pdf_read':'Đang đọc PDF'}
         text=labels.get(text.split(': ')[-1],text)
         if not hasattr(self,'automation_panel'):
@@ -641,9 +640,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.app_compact_active=True
             self.app_was_maximized=self.isMaximized()
             self.automation_panel.begin(text)
-            self.showMinimized()
+            if self.cfg.get('windows_apps_compact',True):self.showMinimized()
+            self.automation_panel.show()
         else:
             self.automation_panel.message=text;self.automation_panel.update_label()
+            self.automation_panel.show()
 
     def pause_app_activity(self,paused):
         from assistant.windows_apps import pause_automation
@@ -2025,6 +2026,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     state['web_results']=web_results
                     state.pop('attached_documents',None)
                     if attached_paths:
+                        if any(Path(path).suffix.lower()=='.pdf' for path in attached_paths):
+                            emit({'type':'app_activity','text':'Đang đọc PDF; AI đọc ảnh trước, OCR dự phòng'})
                         emit({'type':'status','text':'Đang đọc tài liệu đính kèm…'})
                         state['attached_documents']=self.read_attachments(attached_paths,
                             progress=lambda message:emit({'type':'status','text':message}))
