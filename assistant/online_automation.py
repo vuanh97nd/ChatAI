@@ -30,7 +30,7 @@ def parse_plan(raw, schemas):
 
 def requested_automation(prompt):
     general_open=re.search(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?!rộng\b|lòng\b|bài\b|đầu\b).+',prompt,re.I)
-    plaxis_kw=re.search(r'\bplaxis\b|mô\s*phỏng|tính\s*toán\s*plaxis|chạy\s*plaxis|phân\s*tích\s*plaxis',prompt,re.I)
+    plaxis_kw=re.search(r'\bplaxis\b|mô\s*phỏng|tính\s*toán\s*plaxis|chạy\s*plaxis|phân\s*tích\s*plaxis|bờ\s*đắp|nền\s*đắp|đắp\s*nền|ổn\s*định\s*(?:bờ|đắp|mái|nền)',prompt,re.I)
     return bool(general_open or plaxis_kw or re.search(r'(?:vẽ|tạo).*\b3[dD]\b',prompt,re.I) or (re.search(r'(mở|vẽ|tạo|đọc|tải|điều khiển|thao tác|bấm|nhập|tìm.*(?:chrome|chorme))',prompt,re.I)
                 and re.search(r'(ứng dụng|phần mềm|\bapp\b|chrome|chorme|foxit|autocad|\bcad\b|\bword\b|\bexcel\b|trình duyệt)',prompt,re.I)))
 
@@ -99,14 +99,38 @@ def cdm_layout_call(prompt, cfg):
     }}}
 
 
-def plaxis_call(prompt, cfg):
-    """Inject windows_list_apps to discover Plaxis when user wants to run a simulation."""
+def plaxis_call(prompt, cfg, has_remote=False):
+    """Bypass AI planning for Plaxis requests.
+
+    For embankment analysis (bờ đắp / nền đắp) with Remote Scripting available,
+    inject plaxis_run_problem directly with auto-detected or tutorial-default parameters —
+    this skips windows_list_apps and the AI planning loop entirely.
+    For all other Plaxis requests, discover the app with windows_list_apps first.
+    """
     if not cfg.get('windows_apps_enabled'): return None
-    if not re.search(r'\bplaxis\b', prompt, re.I): return None
+    has_plaxis = re.search(r'\bplaxis\b', prompt, re.I)
+    has_emb = re.search(
+        r'bờ\s*đắp|nền\s*đắp|đắp\s*nền|ổn\s*định\s*(?:bờ|đắp|mái|nền)|embankment|đắp\s*(?:bờ|đất)',
+        prompt, re.I)
+    if not (has_plaxis or has_emb): return None
     if re.search(r'không|đừng|cách|có thể|được không|được k', prompt, re.I): return None
-    if re.search(r'chạy|mô\s*phỏng|tính\s*toán|phân\s*tích|mở|khởi\s*động|lấy|hãy', prompt, re.I):
-        return {'function': {'name': 'windows_list_apps', 'arguments': {'query': 'PLAXIS 2D'}}}
-    return None
+    has_action = re.search(
+        r'chạy|mô\s*phỏng|tính\s*toán|phân\s*tích|mở|khởi\s*động|lấy|hãy|tính',
+        prompt, re.I)
+    if not has_action: return None
+    if has_emb and has_remote:
+        # Extract dimensions from prompt if given, else use tutorial defaults (H=4m, top=2m)
+        h_m = re.search(r'(?:chiều\s*cao|cao)\s*(?:đắp|bờ|nền)?\s*[=:]\s*(\d+(?:[.,]\d+)?)\s*m', prompt, re.I)
+        height = float(h_m.group(1).replace(',', '.')) if h_m else 4.0
+        w_m = re.search(r'(?:rộng|chiều\s*rộng)\s*[=:]\s*(\d+(?:[.,]\d+)?)\s*m', prompt, re.I)
+        top_w = float(w_m.group(1).replace(',', '.')) if w_m else 2.0
+        problem = json.dumps({'type': 'embankment_stability',
+                               'embankment_height': height,
+                               'embankment_top_width': top_w}, ensure_ascii=False)
+        return {'function': {'name': 'plaxis_run_problem', 'arguments': {
+            'version': '2d', 'project_name': 'EmbankmentAnalysis', 'problem': problem,
+        }}}
+    return {'function': {'name': 'windows_list_apps', 'arguments': {'query': 'PLAXIS 2D'}}}
 
 
 def direct_drawing_answer(state,name,result):
@@ -159,7 +183,7 @@ class OnlineAutomation:
                      online_automation=True,automation_rounds=0)
         call=(search_call(prompt,self.cfg)
               or (cdm_layout_call(prompt,self.cfg) if self.cdm_layout and not any(str(a.get('path','')).lower().endswith('.dxf') for a in state.get('automation_attachments',[])) else None)
-              or ((plaxis_call(prompt,self.cfg)) if (self.plaxis_remote or self.plaxis_app) else None)
+              or (plaxis_call(prompt,self.cfg,bool(self.plaxis_remote)) if (self.plaxis_remote or self.plaxis_app) else None)
               or (drawing_call(prompt,self.cfg) if self.cad_app else None)
               or application_call(prompt,self.cfg))
         state['direct_drawing']=bool(call and call['function']['name']=='cad_create_open')
