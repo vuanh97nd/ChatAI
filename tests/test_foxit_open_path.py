@@ -56,3 +56,16 @@ class FoxitOpenPathTests(unittest.TestCase):
         self.assertTrue(_pdf_window_matches(window,source))
         tab.is_selected.return_value=False
         self.assertFalse(_pdf_window_matches(window,source))
+    def test_native_dialog_uses_filename_combo_not_address_bar(self):
+        from assistant.foxit_ocr_automation import _submit_native_dialog
+        dialog=Mock();combo=Mock();edit=Mock();button=Mock()
+        dialog.child_window.side_effect=lambda **kw:combo if kw['control_id']==1148 else button
+        combo.child_window.return_value.wrapper_object.return_value=edit
+        path='G:\\My Drive\\3D-1-Tutorial.pdf';edit.window_text.return_value=path
+        _submit_native_dialog(dialog,path)
+        combo.child_window.assert_called_once_with(class_name='Edit')
+        edit.set_edit_text.assert_called_once_with(path);button.click.assert_called_once()
+        edit.window_text.return_value=''
+        button.reset_mock()
+        with self.assertRaisesRegex(RuntimeError,'chưa bấm Open'):_submit_native_dialog(dialog,path)
+        button.click.assert_not_called()

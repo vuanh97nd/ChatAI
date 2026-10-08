@@ -838,7 +838,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     from assistant.documents import read_local
                     from assistant.online_documents import online_pdf_reader
                     reader=online_pdf_reader(self.cfg,getattr(self,'server_session',None),on_status=progress) if ext=='.pdf' and getattr(self,'server_session',None) else None
-                    items.append(read_local(p,pdf_ocr=reader,foxit_ocr=True))
+                    items.append(read_local(p,pdf_ocr=reader,foxit_ocr=True,progress=progress))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')

@@ -154,7 +154,7 @@ class SupportMixin:
                 emit({'type':'status','text':'Đang phân tích ý định tài liệu…'})
                 if any(Path(path).suffix.lower()=='.pdf' for path in attached_paths):
                     emit({'type':'app_activity','text':'Đang đọc PDF; AI đọc ảnh trước, OCR dự phòng'})
-                attachments=self.read_attachments(attached_paths,online=True) if attached_paths else []
+                attachments=self.read_attachments(attached_paths,online=True,progress=lambda text:emit({'type':'status','text':text})) if attached_paths else []
                 conversation=history+[{'role':'user','content':prompt}]
                 intent=analyze_intent(document_client,conversation,'document-small',bool(attachments),'document-small')
                 if attachments:state['recent_documents']=attachments
@@ -189,7 +189,7 @@ class SupportMixin:
                     emit({'type':'status','text':'Đang đọc PDF/tài liệu bằng Python…'})
                     if any(Path(path).suffix.lower()=='.pdf' for path in attached_paths):
                         emit({'type':'app_activity','text':'Đang đọc PDF; AI đọc ảnh trước, OCR dự phòng'})
-                    attachments=self.read_attachments(attached_paths,online=True)
+                    attachments=self.read_attachments(attached_paths,online=True,progress=lambda text:emit({'type':'status','text':text}))
                     state['recent_documents']=attachments
                     evidence.append(_reader_context(attachments))
                 if use_web:

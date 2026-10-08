@@ -50,6 +50,7 @@ def foxit_ocr(
     foxit_exe: str | None = None,
     language: str = "English",
     timeout: int = OCR_TIMEOUT,
+    on_status=None,
 ) -> Path:
     """OCR *path* with Foxit PDF Editor and return the path to the OCR'd file.
 
@@ -92,26 +93,31 @@ def foxit_ocr(
     # ------------------------------------------------------------------
     # Launch Foxit (or attach to a running instance)
     # ------------------------------------------------------------------
+    if on_status:on_status('OCR 1/5: kết nối Foxit để đọc '+src.name)
     app = _launch_or_attach(exe)
 
     # ------------------------------------------------------------------
     # Open the PDF
     # ------------------------------------------------------------------
+    if on_status:on_status('OCR 2/5: mở và xác nhận đúng PDF '+src.name)
     app = _open_file(app, str(src), exe=exe)
 
     # ------------------------------------------------------------------
     # Invoke OCR: Tools → OCR Text Recognition (or Home → OCR)
     # ------------------------------------------------------------------
+    if on_status:on_status('OCR 3/5: mở chức năng nhận dạng chữ')
     _run_ocr_dialog(app, language=language)
 
     # ------------------------------------------------------------------
     # Wait for OCR to finish
     # ------------------------------------------------------------------
+    if on_status:on_status('OCR 4/5: Foxit đang nhận dạng chữ; chờ hoàn tất')
     _wait_for_ocr(app, timeout=timeout)
 
     # ------------------------------------------------------------------
     # Save As → output path
     # ------------------------------------------------------------------
+    if on_status:on_status('OCR 5/5: lưu và kiểm tra lớp chữ của '+out.name)
     _save_as(app, str(out))
 
     # ------------------------------------------------------------------
@@ -287,7 +293,39 @@ def _open_file(app, path: str, *, exe: str):
                 if _pdf_window_matches(candidate.window(handle=handle),source):return candidate
         except Exception:pass
         time.sleep(.5)
+    # Older Foxit builds can ignore command-line file handoff. Use native
+    # Win32 controls for one bounded fallback; UIA does not expose this edit reliably.
+    try:
+        _open_native_filename(app,str(source))
+        deadline=time.monotonic()+15
+        while time.monotonic()<deadline:
+            if _pdf_window_matches(_main_window(app),source):return app
+            time.sleep(.5)
+    except Exception as exc:
+        raise RuntimeError('Foxit chưa mở '+source.name+'; mở bằng đường dẫn và hộp thoại Win32 đều thất bại: '+str(exc)) from exc
     raise RuntimeError('Foxit chưa xác nhận mở PDF '+source.name+'; không chạy OCR trên tài liệu khác.')
+
+
+def _submit_native_dialog(dialog,path):
+    # Common-dialog File name ComboBox (1148), with its native Edit child.
+    combo=dialog.child_window(control_id=1148)
+    edit=combo.child_window(class_name="Edit").wrapper_object()
+    edit.set_edit_text(path)
+    if edit.window_text().strip().strip('"')!=path:
+        raise RuntimeError('Win32 không điền được ô File name; chưa bấm Open.')
+    dialog.child_window(control_id=1).click()
+
+
+def _open_native_filename(app,path):
+    from pywinauto import Application
+    from pywinauto.keyboard import send_keys
+    window=_main_window(app)
+    native=Application(backend='win32').connect(handle=window.handle)
+    dialog=native.window(class_name='#32770')
+    if not dialog.exists(timeout=.3):
+        window.set_focus();send_keys('^o')
+    dialog.wait('visible',timeout=8)
+    _submit_native_dialog(dialog,path)
 
 
 def _pdf_window_matches(window,source):

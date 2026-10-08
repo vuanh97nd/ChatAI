@@ -42,6 +42,7 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
         if on_status:on_status(f'Đang đọc trang {index+1} qua {provider}; tối đa {limit} trang cần nhận dạng.')
         cache[key]=read(raw,index)
         return cache[key]
+    page.on_status=on_status
     page.max_pages=limit
     page.skip_reason=''
     page.source='API trực tuyến '+provider

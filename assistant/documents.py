@@ -78,7 +78,7 @@ def _is_garbled(text):
     return slash_codes/len(tokens)>0.4
 
 
-def read_bytes(raw,kind='',name='document',pdf_ocr=None):
+def read_bytes(raw,kind='',name='document',pdf_ocr=None,progress=None):
     if len(raw)>MAX_BYTES:raise ValueError('Tài liệu vượt giới hạn 20 MiB; không đọc một phần rồi nhận là toàn văn.')
     ext=Path(name).suffix.casefold();units=[];issues=[];title=''
     ocr_pages=[]
@@ -89,6 +89,7 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         total=len(reader.pages);size=0
         ocr_limit_reported=False
         for index,page in enumerate(reader.pages[:MAX_PAGES],1):
+            if progress:progress(f'{name}: đang đọc trang {index}/{total}')
             text=page.extract_text() or ''
             if not text.strip() or _is_garbled(text):
                 text=''
@@ -155,11 +156,13 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         'coverage_note':coverage_note}
 
 
-def read_local(path,pdf_ocr=None,foxit_ocr=False):
+def read_local(path,pdf_ocr=None,foxit_ocr=False,progress=None):
+    progress=progress or getattr(pdf_ocr,'on_status',None)
     p=Path(path)
+    if progress:progress('Đang mở và kiểm tra tài liệu: '+p.name)
     if not p.is_file() or p.stat().st_size>MAX_BYTES:raise ValueError('Tệp không hợp lệ hoặc vượt 20 MiB.')
     try:
-        result=read_bytes(p.read_bytes(),name=p.name,pdf_ocr=pdf_ocr)
+        result=read_bytes(p.read_bytes(),name=p.name,pdf_ocr=pdf_ocr,**({'progress':progress} if progress else {}))
         return {**result,'file':p.name,'source':str(p)}
     except (ValueError,RuntimeError) as exc:
         # Never turn a cancellation or an intentional page limit into UI OCR.
@@ -169,10 +172,11 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False):
             if not _foxit_available():
                 raise ValueError('OCR cục bộ không khả dụng: cần Windows và thư viện pywinauto (pip install pywinauto).')
             try:
-                ocr_path=_foxit_ocr(p)
+                if progress:progress('AI/trích xuất chưa đọc được '+p.name+'; chuyển sang OCR Foxit. Lý do: '+str(exc)[:300])
+                ocr_path=_foxit_ocr(p,on_status=progress) if progress else _foxit_ocr(p)
             except Exception as foxit_err:
                 raise ValueError(f'Foxit OCR thất bại: {foxit_err}') from foxit_err
-            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=None)
+            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=None,**({'progress':progress} if progress else {}))
             return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
         raise
 
