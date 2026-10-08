@@ -834,8 +834,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         def read_scan_page(pdf_bytes,page_index):
                             if progress:progress(f'PDF scan: đang đọc trang {page_index+1} bằng AI đọc ảnh trên máy…')
                             return pdf_reader(pdf_bytes,page_index)
-                        items.append(read_local(p,pdf_ocr=read_scan_page))
-                    else:items.append(read_local(p))
+                        items.append(read_local(p,pdf_ocr=read_scan_page,foxit_ocr=True))
+                    else:items.append(read_local(p,foxit_ocr=True))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')
