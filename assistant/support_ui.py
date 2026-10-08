@@ -106,6 +106,7 @@ class SupportMixin:
         self.answer_actions.hide();self.reply_active=True;self.reply_dots.show();self.reply_timer.start()
         self.status.setText('Đang phân tích sâu; lượt này có thể lâu hơn…' if use_deep else ('Đang tìm kiếm mạng…' if use_web else 'Đang kết nối AI trên server…'))
         def run_chat(emit):
+            nonlocal attached_paths
             import time
             turn_started=time.monotonic();first_text_at=None
             state=self.store.load(cid)
@@ -135,6 +136,16 @@ class SupportMixin:
             document_request=bool(attached_paths or use_web or
                                   (document_hint and (state.get('recent_documents') or self.manager.ready('rag'))))
             if document_hint and not document_request:body['document_sources_unavailable']=True
+            from .message_attachments import latest_documents,source_names
+            active_sources=latest_documents(state['messages']) if document_hint or attached_paths else []
+            names=source_names(active_sources);names.discard('')
+            if names:
+                # Selection is independent of reading success: never fall back to an old PDF.
+                state['recent_documents']=[d for d in state.get('recent_documents',[]) if str(d.get('file','')).casefold() in names]
+                if not attached_paths and not state['recent_documents']:
+                    attached_paths=[d.get('path') or d.get('source') for d in active_sources if d.get('path') or d.get('source')]
+                self.store.save(cid,state)
+                document_request=True
             if api_client and document_request:
                 from .cloud import CloudDocumentClient
                 from .document_intent import analyze_intent
@@ -147,7 +158,7 @@ class SupportMixin:
                 if attachments:state['recent_documents']=attachments
                 elif intent['target_type']=='document':attachments=matching_recent_documents(state.get('recent_documents',[]),intent)
                 rag=None
-                if self.manager.ready('rag'):
+                if self.manager.ready('rag') and not active_sources:
                     from .rag import RagTools
                     from .files import FileTools
                     rag=RagTools(FileTools(self.cfg['roots'],Path(self.store.path).parent/'backups',lambda *a:None),
@@ -185,7 +196,9 @@ class SupportMixin:
 
             from .document_memory import DocumentMemory
             memory_context=DocumentMemory(self.store).context(owner,prompt,messages=state['messages'])
-            if memory_context:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
+            if memory_context and not attached_paths:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
+            if names:
+                body['document_context']=(body.get('document_context','')+'\nNGUỒN ĐANG ĐƯỢC YÊU CẦU: '+', '.join(sorted(names))+'. Chỉ tóm tắt nguồn này; không dùng tài liệu khác trong lịch sử thay thế. Nếu chưa đọc được, nói rõ chưa đọc được tệp này.')[:140000]
             body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
             body['max_tokens']=cfg.get('api_num_predict',4096)
             preparation_finished=time.monotonic()

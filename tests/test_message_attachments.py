@@ -23,3 +23,15 @@ class MessageAttachmentTests(unittest.TestCase):
             messages=[{'role':'user','content':'Đọc Plaxis.pdf'}, {'role':'user','content':'hi'}, {'role':'user','content':'thử lại'}]
             self.assertEqual(memory.context('alice','thử lại',messages=messages),'')
             self.assertIn('Bờ đắp',memory.context('alice','thử lại',messages=[{'role':'user','content':'Đọc Plaxis.pdf'},{'role':'user','content':'thử lại'}]))
+    def test_latest_unread_file_never_recalls_older_pdf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory=DocumentMemory(Store(Path(directory)/'state.db'))
+            memory.remember('alice',[{'file':'2D-Tutorial.pdf','text':'Excavation and dewatering'}])
+            messages=[{'role':'user','content':'đọc','documents':[{'name':'2D-Tutorial.pdf'}]},
+                      {'role':'user','content':'đọc và tóm tắt','documents':[{'name':'3D-1-Tutorial.pdf'}]},
+                      {'role':'user','content':'tóm tắt file'}]
+            self.assertEqual(memory.context('alice','tóm tắt file',messages=messages),'')
+            memory.remember('alice',[{'file':'3D-1-Tutorial.pdf','text':'3D model geometry'}])
+            context=memory.context('alice','tóm tắt file',messages=messages)
+            self.assertIn('3D model geometry',context)
+            self.assertNotIn('Excavation and dewatering',context)

@@ -101,6 +101,13 @@ class DocumentMemory:
         words=set(re.findall(r'\w{3,}',query.casefold()))-{'tài','liệu','đọc','hãy','của','trong','theo','được','nhớ','lại'}
         referential=bool(re.search(r'tài liệu|file|pdf|văn bản|đề bài|đã đọc',query,re.I))
         if not query.strip():return ''
+        if referential and messages:
+            from .message_attachments import latest_documents,source_names
+            requested=source_names(latest_documents(messages))
+            requested.discard('')
+            if requested:
+                docs=[d for d in docs if d['file'].casefold() in requested]
+                if not docs:return ''
         if not referential:
             docs=[d for d in docs if any(w in (d['file']+' '+d['text']).casefold() for w in words)]
         elif not words:

@@ -21,3 +21,13 @@ def attachment_html(records):
             label='<a href="chatai-file:'+token+'">'+label+'</a>'
         blocks.append('<p>📎 '+label+'</p>')
     return ''.join(blocks)
+
+
+def latest_documents(messages):
+    for message in reversed(messages or []):
+        if message.get('role')=='user' and message.get('documents'):
+            return message['documents']
+    return []
+
+def source_names(records):
+    return {str(r.get('name') or r.get('file') or '').casefold() for r in records if isinstance(r,dict)}-{''}
