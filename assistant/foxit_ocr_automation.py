@@ -281,30 +281,48 @@ def _open_file(app, path: str):
     raise RuntimeError(f"Foxit không mở được file trong thời gian chờ: {path}")
 
 
-def _fill_open_dialog(app, path: str):
-    """Type the path into the Windows Open-file common dialog and confirm."""
-    from pywinauto import Application, timings
-    from pywinauto.keyboard import send_keys
+def _filename_edit(dlg):
+    """Resolve File name, never the address/search edit of the common dialog."""
+    combo=dlg.child_window(auto_id="1148",control_type="ComboBox")
+    candidates=[dlg.child_window(auto_id="1148",control_type="Edit"),
+                dlg.child_window(auto_id="1001",control_type="Edit"),
+                combo.child_window(control_type="Edit")]
+    for candidate in candidates:
+        try:
+            if candidate.exists(timeout=.2):return candidate.wrapper_object()
+        except Exception:continue
+    raise RuntimeError('Không tìm thấy ô File name trong hộp thoại mở PDF.')
 
+
+def _submit_pdf_path(dlg,path):
+    edit=_filename_edit(dlg)
+    edit.set_focus()
+    edit.set_edit_text(path)
+    # Verify UIA Value before clicking Open. A ComboBox write can silently fail.
+    try:value=edit.get_value()
+    except Exception:value=edit.window_text()
+    if str(value).strip().strip('"')!=path:
+        raise RuntimeError('Không điền được đường dẫn PDF vào ô File name; chưa bấm Open.')
+    button=dlg.child_window(auto_id="1",control_type="Button")
+    if not button.exists():
+        button=dlg.child_window(title_re=r'^(?:Open|Mở)(?:\(&O\))?$',control_type="Button")
+    button.click_input()
+
+
+def _fill_open_dialog(app, path: str):
+    """Fill the verified filename edit and click Open, not a folder control."""
     deadline = time.monotonic() + 15
+    last_error=None
     while time.monotonic() < deadline:
         try:
-            # Common dialog has class "#32770"
             dlg = app.window(class_name="#32770")
-            dlg.wait("visible", timeout=5)
-            # Find the filename combo/edit
-            try:
-                fn = dlg.child_window(auto_id="1148")  # "File name" edit
-            except Exception:
-                fn = dlg.child_window(title_re=".*", control_type="Edit")
-            fn.set_focus()
-            fn.set_edit_text(path)
-            send_keys("{ENTER}")
+            dlg.wait("visible", timeout=2)
+            _submit_pdf_path(dlg,path)
             return
-        except Exception:
-            pass
+        except Exception as exc:
+            last_error=exc
         time.sleep(0.3)
-    raise RuntimeError("Hộp thoại Mở file không xuất hiện.")
+    raise RuntimeError('Không mở được PDF qua hộp thoại: '+str(last_error))
 
 
 def _run_ocr_dialog(app, language: str = "English"):
