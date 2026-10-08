@@ -66,3 +66,28 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
   const status=await response.json();assert.equal(status.providers.deepseek.model,'deepseek-flash');
  });
 }
+
+for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',server]]){
+ test(`${name}: image requests use Flash with the shared DeepSeek key`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',DEEPSEEK_API_KEY:'test-shared-deepseek-key'};
+  const original=globalThis.fetch,seen=[];
+  const image={type:'image_url',image_url:{url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=='}};
+  try{
+   globalThis.fetch=async(url,options)=>{
+    assert.equal(url,'https://api.deepseek.com/chat/completions');
+    assert.equal(options.headers.Authorization,'Bearer '+env.DEEPSEEK_API_KEY);
+    const body=JSON.parse(options.body);seen.push(body);
+    assert.equal(body.model,'deepseek-flash');assert.equal(body.thinking.type,'disabled');
+    assert.deepEqual(body.messages[0].content,[{type:'text',text:'Đọc bảng số liệu'},image]);
+    return Response.json({choices:[{message:{content:'Đã đọc bảng'}}]});
+   };
+   for(const provider of ['deepseek','deepseek_flash','deepseek_pro','deepseek_r1']){
+    const response=await worker.fetch(new Request('https://example.workers.dev/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider,messages:[{role:'user',content:[{type:'text',text:'Đọc bảng số liệu'},image]}]})}),env,{});
+    assert.equal(response.status,200,await response.text());
+   }
+   assert.equal(seen.length,4);
+   const rejected=await worker.fetch(new Request('https://example.workers.dev/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'deepseek_flash',messages:[{role:'system',content:[image]}]})}),env,{});
+   assert.equal(rejected.status,400);assert.equal(seen.length,4);
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
+}

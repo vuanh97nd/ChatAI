@@ -1659,13 +1659,31 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  }
  const testing=path.endsWith('/test');
  const messages=testing?[{role:'user',content:'Chỉ trả lời OK.'}]:body.messages;
- if(!Array.isArray(messages)||!messages.length||messages.length>40||JSON.stringify(messages).length>150000)return fail('Ngữ cảnh không hợp lệ.');
- if(messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string'))return fail('Tin nhắn không hợp lệ.');
+ if(!Array.isArray(messages)||!messages.length||messages.length>40||JSON.stringify(messages).length>1800000)return fail('Ngữ cảnh không hợp lệ.');
+ const hasImage=messages.some(m=>Array.isArray(m?.content)&&m.content.some(part=>part?.type==='image_url'));
+ const imageCount=messages.reduce((total,m)=>total+(Array.isArray(m?.content)?m.content.filter(part=>part?.type==='image_url').length:0),0);
+ if(imageCount>2)return fail('Mỗi lượt chỉ hỗ trợ tối đa 2 ảnh.');
+ const validContent=(message)=>{
+  if(typeof message.content==='string')return true;
+  if(!Array.isArray(message.content)||message.content.length>8)return false;
+  return message.content.every(part=>{
+   if(part?.type==='text')return typeof part.text==='string'&&part.text.length<=140000;
+   if(part?.type!=='image_url'||message.role!=='user')return false;
+   const url=part.image_url?.url;
+   const match=typeof url==='string'&&url.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
+   if(!match||match[2].length>1398104)return false;
+   try{const bytes=atob(match[2]),sig=match[1]==='image/jpeg'?[255,216,255]:[137,80,78,71,13,10,26,10];return bytes.length>8&&bytes.length<=1048576&&sig.every((v,i)=>bytes.charCodeAt(i)===v);}catch{return false;}
+  });
+ };
+ if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
  const maxTokens=testing?1024:Math.max(64,Math.min(4096,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
  const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/llama-3.1-nemotron-ultra-253b-v1';
  let selectedModel=testing&&body.model?String(body.model):configuredModel||models[provider];
+ // Image requests use Flash vision and inherit the existing DeepSeek key.
+ if(hasImage&&provider==='deepseek')selectedModel='deepseek-flash';
+ if(hasImage&&!testing&&provider==='nvidia')selectedModel=env.NVIDIA_VISION_MODEL||(configuredModel&&/omni|vision/i.test(configuredModel)?configuredModel:'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
  if(!/^[A-Za-z0-9._/-]{1,160}$/.test(selectedModel))return fail('Mã AI không hợp lệ.');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),110000);
  let streaming=false;
@@ -1673,7 +1691,15 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
   let url,payload,headers={'Content-Type':'application/json'};
   if(provider==='gemini'){
    url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(selectedModel)+':generateContent';headers['x-goog-api-key']=key;
-   payload={contents:messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]})),generationConfig:{temperature,maxOutputTokens:maxTokens}};
+   const geminiParts=content=>{
+    if(typeof content==='string')return[{text:content}];
+    return content.map(part=>{
+     if(part.type==='text')return{text:part.text};
+     const match=part.image_url.url.match(/^data:(image\/(?:jpeg|png));base64,(.+)$/);
+     return{inlineData:{mimeType:match[1],data:match[2]}};
+    });
+   };
+   payload={contents:messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:geminiParts(m.content)})),generationConfig:{temperature,maxOutputTokens:maxTokens}};
    const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');if(system)payload.systemInstruction={parts:[{text:system}]};
   }else{
    url=_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/chat/completions':'https://api.deepseek.com/chat/completions';headers.Authorization='Bearer '+key;
@@ -1683,7 +1709,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
-   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
+   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){

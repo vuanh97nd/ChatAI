@@ -134,12 +134,12 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         units=[{'location':f'đoạn {i}','text':x} for i,x in enumerate(re.split(r'\n\s*\n',text[:MAX_TEXT]),1) if x.strip()]
     if not units or not any(x['text'].strip() for x in units):
         if pdf_ocr:
-            raise ValueError('PDF không có lớp chữ và OCR không nhận diện được chữ. Hãy dùng bản scan rõ hơn hoặc kiểm tra model đọc ảnh Ollama.')
+            raise ValueError('PDF không có lớp chữ và OCR không nhận diện được chữ. Hãy dùng bản scan rõ hơn hoặc kiểm tra dịch vụ AI đọc ảnh đã chọn.')
         raise ValueError('PDF không có lớp chữ trích xuất; cần bật luồng OCR cục bộ trước khi tóm tắt.')
     combined='\n\n'.join('['+x['location']+']\n'+x['text'] for x in units)
     coverage_parts=[]
     if ocr_pages:
-        coverage_parts.append(f'{len(ocr_pages)} trang scan đã OCR bằng AI đọc ảnh cục bộ; ký tự và số liệu OCR có thể sai, cần đối chiếu bản gốc.')
+        coverage_parts.append(f'{len(ocr_pages)} trang scan đã OCR bằng {getattr(pdf_ocr, "source", "AI đọc ảnh cục bộ")}; ký tự và số liệu OCR có thể sai, cần đối chiếu bản gốc.')
     coverage_parts.extend(issues[:4])
     coverage_note=' '.join(coverage_parts) or 'Đã trích xuất hết phần văn bản có thể đọc từ tệp.'
     return {'text':combined,'units':units,'title':title,'format':format_name,'ocr_pages':ocr_pages,
