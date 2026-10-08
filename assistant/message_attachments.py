@@ -31,3 +31,12 @@ def latest_documents(messages):
 
 def source_names(records):
     return {str(r.get('name') or r.get('file') or '').casefold() for r in records if isinstance(r,dict)}-{''}
+
+
+def document_turn_history(messages):
+    """Keep the latest attachment's user thread; previous summaries are not evidence."""
+    start=next((i for i in range(len(messages)-1,-1,-1) if messages[i].get('role')=='user' and messages[i].get('documents')),None)
+    if start is None:return messages
+    records=messages[start:]
+    return [m for m in records if m.get('role')=='user' or
+            (m.get('role')=='assistant' and any(x in m.get('content','').casefold() for x in ('ocr thất bại','chưa đọc được','không mở được pdf')))]

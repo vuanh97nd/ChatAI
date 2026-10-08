@@ -35,3 +35,14 @@ class MessageAttachmentTests(unittest.TestCase):
             context=memory.context('alice','tóm tắt file',messages=messages)
             self.assertIn('3D model geometry',context)
             self.assertNotIn('Excavation and dewatering',context)
+
+    def test_new_document_thread_excludes_old_and_hallucinated_summaries(self):
+        from assistant.message_attachments import document_turn_history
+        messages=[{'role':'user','content':'2D','documents':[{'name':'2D.pdf'}]},
+                  {'role':'assistant','content':'Old 2D summary'},
+                  {'role':'user','content':'đọc','documents':[{'name':'3D.pdf'}]},
+                  {'role':'assistant','content':'Repeated 2D summary'},
+                  {'role':'assistant','content':'OCR thất bại: chưa mở PDF'},
+                  {'role':'user','content':'tóm tắt file'}]
+        history=document_turn_history(messages)
+        self.assertEqual([m['content'] for m in history],['đọc','OCR thất bại: chưa mở PDF','tóm tắt file'])

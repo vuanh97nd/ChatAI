@@ -140,6 +140,11 @@ class SupportMixin:
             active_sources=latest_documents(state['messages']) if document_hint or attached_paths else []
             names=source_names(active_sources);names.discard('')
             if names:
+                from .message_attachments import document_turn_history
+                scoped=document_turn_history(state['messages'][:-1])
+                history=conversation_context(scoped,online=provider!='cloudflare')
+                history.insert(0,{'role':'user','content':'Tệp đang được yêu cầu: '+', '.join(sorted(names))+'. Nội dung các câu trả lời cũ không phải bằng chứng đọc tệp này.'})
+                body['history']=history
                 # Selection is independent of reading success: never fall back to an old PDF.
                 state['recent_documents']=[d for d in state.get('recent_documents',[]) if str(d.get('file','')).casefold() in names]
                 if not attached_paths and not state['recent_documents']:
