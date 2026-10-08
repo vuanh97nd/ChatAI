@@ -302,7 +302,7 @@ class ServerApiClient:
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def stream_answer(self,model,messages,**kwargs):
         if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider) not in ('deepseek','deepseek_flash','deepseek_pro','deepseek_r1'):
-            yield self.chat(model,messages,**kwargs)['message']['content'];return
+            yield 'text',self.chat(model,messages,**kwargs)['message']['content'];return
         endpoint=self.session['endpoint']
         url=urlparse(endpoint)
         if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
@@ -324,7 +324,7 @@ class ServerApiClient:
                     if not value.get('success') or not value.get('answer'):raise CloudError(value.get('message','AI chưa trả nội dung.'))
                     record('ai.wait_first_text_json',time.monotonic()-started)
                     if self.on_status:self.on_status('Server trả toàn bộ câu trả lời; chưa dùng luồng trả lời dần.')
-                    yield value['answer'];return
+                    yield 'text',value['answer'];return
                 for raw in response:
                     if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
                     if len(raw)>100000:raise CloudError('Phản hồi server quá lớn.')
@@ -336,11 +336,14 @@ class ServerApiClient:
                     except ValueError:raise CloudError('Luồng AI trả dữ liệu không hợp lệ.') from None
                     if value.get('error'):raise CloudError('Dịch vụ AI đã ngắt luồng trả lời.')
                     choices=value.get('choices',[])
-                    delta=choices[0].get('delta',{}).get('content','') if choices else ''
+                    d=choices[0].get('delta',{}) if choices else {}
+                    reasoning=d.get('reasoning_content','')
+                    if isinstance(reasoning,str) and reasoning:yield 'reasoning',reasoning
+                    delta=d.get('content','')
                     if isinstance(delta,str) and delta:
                         if first_answer:
                             record('ai.wait_first_text_stream',time.monotonic()-started);first_answer=False
-                        yield delta
+                        yield 'text',delta
         except HTTPError as error:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}
