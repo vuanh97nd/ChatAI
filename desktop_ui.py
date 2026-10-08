@@ -366,7 +366,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         recent_header.addWidget(QLabel('Gần đây'),1)
         self.delete_btn=QPushButton('Xóa');self.delete_btn.setFlat(True)
         self.delete_btn.setFixedWidth(40);self.delete_btn.setToolTip('Xóa cuộc trò chuyện đang chọn')
-        self.delete_btn.setStyleSheet('QPushButton{border:0;background:transparent;padding:2px;color:#9aa0a6;} QPushButton:hover{color:#f28b82;} QPushButton:disabled{color:#5f6368;}')
+        self.delete_btn.setStyleSheet('QPushButton{border:0;background:transparent;padding:10px 2px 2px 2px;color:#8f8f8f;font-size:12px;font-weight:600;} QPushButton:hover{color:#f28b82;} QPushButton:disabled{color:#5f6368;}')
         self.delete_btn.clicked.connect(self.delete_chat);recent_header.addWidget(self.delete_btn)
         nav.addLayout(recent_header)
         self.history = QListWidget(); self.history.setObjectName('history'); nav.addWidget(self.history,1)
