@@ -238,6 +238,22 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     ['project_name', 'version', 'problem'])))
 
 WRITES.add('plaxis_run_problem')
+WRITES.add('plaxis_commands')
+EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_commands',
+    'Gọi API Remote Scripting PLAXIS 2D/3D theo từng bước, không bị giới hạn vào mẫu bài toán. '
+    'Dùng cho bài mới như Excavation in sand 3D: đọc manual và tra API bằng commands/info trước khi dựng hình học, vật liệu, các pha. '
+    'version=2d/3d; target=input (port 10000) hoặc output (10001). commands là chuỗi JSON mảng 1–40 bước. '
+    'Ví dụ [{"command":"commands","args":[]},{"command":"info","args":[{"ref":"g.Project"}]}]. '
+    'Mỗi bước {"command":"tên_lệnh_API","args":[...],"result":"tên_tham_chiếu_tùy_chọn"}. '
+    'Tham số ref: {"ref":"g.Soils","index":0} hoặc {"ref":"mat"}; property {"ref":"g.InitialPhase.Identification"}. '
+    'Ví dụ tạo vật liệu [{"command":"soilmat","args":[],"result":"mat"},{"command":"setproperties","args":[{"ref":"mat"},"Identification","Sand"]}]. '
+    'result chỉ tồn tại trong cùng lượt, lượt sau dùng tên đối tượng PLAXIS thực đã nhận từ kết quả. '
+    'read đọc property/đối tượng: {"command":"read","args":[{"ref":"g.Phases"}]}. '
+    'Dữ liệu trả về có thể rút gọn và được đánh dấu truncated. Dùng summarize với ref tới kết quả getresults trong cùng lượt để lấy count/min/max/max_abs trên toàn bộ mảng, không lấy cực trị từ phần xem trước. '
+    'new_project gọi server.new, chỉ dùng khi được yêu cầu tạo mô hình mới; không tự xóa mô hình đang làm. '
+    'Không nhận Python/shell hoặc lệnh đọc/ghi tệp. Khi lỗi, dừng và báo số bước/đã bắt đầu hay chưa; không chạy lại cả lượt có thể đã sửa mô hình. '
+    'Kết quả lệnh không chứng minh hội tụ; đọc trạng thái pha/Input và kết quả Output trước khi kết luận. Không bịa thông số còn thiếu từ manual.',
+    {'version':TEXT,'commands':TEXT,'target':TEXT},['version','commands'])))
 EXTRA_TOOLS.append(('plaxis_remote', schema('plaxis_run_problem',
     'Kết nối trực tiếp Plaxis 2D/3D đang chạy qua Remote Scripting Server, thực thi phân tích địa kỹ thuật '
     'và trả về kết quả số (lún, chuyển vị ngang, hệ số an toàn). '

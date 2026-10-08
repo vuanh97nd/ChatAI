@@ -51,6 +51,7 @@ def parse_plan(raw, schemas):
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
     if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
     if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
+    if tool=='plaxis_commands' and isinstance(args.get('commands'),list):args=dict(args,commands=json.dumps(args['commands'],ensure_ascii=False))
     if tool in ('plaxis_run_problem','plaxis_generate_script') and isinstance(args.get('problem'),dict):
         args=dict(args,problem=json.dumps(args['problem'],ensure_ascii=False,allow_nan=False))
     if tool:validate_call(tool,args,schemas)
@@ -246,6 +247,9 @@ def _plaxis_history_call(prompt, cfg, state, plaxis_app, plaxis_remote):
     if not is_followup: return None
 
     messages = state.get('messages', [])
+    latest_plaxis=next((call for message in reversed(messages) for call in message.get('tool_calls',[])
+                       if call.get('function',{}).get('name','').startswith('plaxis_')),None)
+    if latest_plaxis and latest_plaxis['function']['name']=='plaxis_commands':return None
     # Find the most recent plaxis tool call
     prev_args = None
     prev_tool = None
@@ -386,7 +390,7 @@ class OnlineAutomation:
         if name=='cad_create_open':return self.cad_app
         if name=='word_create_open':return self.word_app
         if name in {'pdf_source_open','pdf_local_open','pdf_read'}:return self.pdf_source
-        if name=='plaxis_run_problem':return self.plaxis_remote
+        if name in ('plaxis_run_problem','plaxis_commands'):return self.plaxis_remote
         if name=='plaxis_generate_script':return self.plaxis_app
         return self.browser if name.startswith('browser_') else self.windows
 
@@ -498,8 +502,9 @@ class OnlineAutomation:
                             yield {'type': 'status',
                                    'text': 'Chưa kết nối trực tiếp được; đang tạo script thủ công…'}
                             continue
-            if state['automation_rounds']>=8:
-                text='Đã đạt giới hạn 8 bước lập kế hoạch; hãy kiểm tra kết quả trước khi tiếp tục.'
+            round_limit=64 if self.plaxis_remote else 8
+            if state['automation_rounds']>=round_limit:
+                text=f'Đã đạt giới hạn {round_limit} bước lập kế hoạch; hãy kiểm tra kết quả trước khi tiếp tục.'
                 state['messages'].append({'role':'assistant','content':text});state['running']=False;self.save(state)
                 yield {'type':'token','text':text};return
             state['automation_rounds']+=1;self.save(state)
@@ -540,6 +545,7 @@ class OnlineAutomation:
                               'Không hỏi lại thông tin đã có. Khi đủ dữ kiện, đề xuất công cụ phù hợp. '
                               'arguments nên là đối tượng JSON, tránh mã hóa JSON thành chuỗi lồng nhau.')
             messages[0]['content']+='\n'+instruction_note
+            messages[0]['content']+='\nVới bài toán PLAXIS không có mẫu, dùng plaxis_commands để tra lệnh và dựng đúng bài từng bước. Yêu cầu "tự tạo mẫu"/"tìm cách khác" giữ nguyên bài đang làm, không đổi sang embankment chỉ vì có mẫu sẵn. Không tự đổi thông số, bỏ strut/neo/tải hoặc đề xuất giản lược nếu chưa được yêu cầu. Chỉ hỏi đúng dữ kiện còn thiếu từ tài liệu.'
             if re.fullmatch(r'\s*(?:có|ok|đồng ý|yes|[1-3])\s*[.!]?\s*',question,re.I):
                 proposal=next((m.get('content','') for m in reversed(state['messages'][:-1])
                                if m.get('role')=='assistant' and m.get('content')),'')
@@ -606,6 +612,7 @@ class OnlineAutomation:
                 if output is None:raise ValueError()
                 if output['tool']:
                     args=output['arguments']
+                    if output['tool']=='plaxis_commands':state.pop('plaxis_active_problem',None)
                     if output['tool'] in ('plaxis_run_problem','plaxis_generate_script'):
                         state['plaxis_active_problem']=dict(args)
                     call={'function':{'name':output['tool'],'arguments':args}}

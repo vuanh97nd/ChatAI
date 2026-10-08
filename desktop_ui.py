@@ -1900,7 +1900,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
                     PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
                     CdmLayoutApp(windows,files,audit),CadTracDocApp(windows,files,audit),
-                    plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app))
+                    plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app,on_status=lambda text:emit({'type':'status','text':text})))
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:

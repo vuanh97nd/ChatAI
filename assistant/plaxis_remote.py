@@ -276,13 +276,19 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
 class PlaxisRemoteApp:
     """ChatAI tool: generate + run + read results from Plaxis Remote Scripting Server."""
 
-    def __init__(self, plaxis_app):
+    def __init__(self, plaxis_app, on_status=None):
         self._app = plaxis_app  # PlaxisApp instance for script generation
+        self.on_status=on_status
 
     def prepare(self, name, args):
         version = args.get('version', '')
         if version not in ('2d', '3d'):
             raise ValueError("version phải là '2d' hoặc '3d'.")
+        if name=='plaxis_commands':
+            from .plaxis_commands import commands_from_json
+            target=args.get('target','input')
+            if target not in ('input','output'):raise ValueError('target phải là input hoặc output.')
+            return {'action':name,'version':version,'target':target,'commands':commands_from_json(args.get('commands',''))}
 
         # Reuse PlaxisApp validation — but we don't need a file path
         # We still call _validate_problem from plaxis_app
@@ -307,6 +313,13 @@ class PlaxisRemoteApp:
         }
 
     def commit(self, plan):
+        if plan.get('action')=='plaxis_commands':
+            from .plaxis_commands import execute_commands,commands_from_json
+            rows=commands_from_json(json.dumps(plan['commands']))
+            port=(_INPUT_PORT if plan['target']=='input' else _OUTPUT_PORT)[plan['version']]
+            try:server,g=_connect(port,'PLAXIS '+plan['target'])
+            except RuntimeError as exc:return {'ok':False,'not_executed':True,'error':str(exc)}
+            return execute_commands(server,g,rows,self.on_status)
         result = run_plaxis_problem(
             plan['script'],
             version=plan['version'],
