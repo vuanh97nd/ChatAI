@@ -166,7 +166,11 @@ def _launch_or_attach(exe: str):
             pass
 
     # Launch fresh
-    app = Application(backend="uia").start(exe)
+    print(f'Chat AI Foxit: launching {exe}', flush=True)
+    try:
+        app = Application(backend="uia").start(exe)
+    except Exception as err:
+        raise RuntimeError(f'Không khởi động được Foxit: {err}') from err
     # Wait for main window
     _wait_for_main_window(app, timeout=30)
     # Dismiss any startup dialogs (license, update, tip of the day)
@@ -192,19 +196,43 @@ def _wait_for_main_window(app, timeout: int = 30):
     raise RuntimeError("Foxit PDF Editor không khởi động trong thời gian chờ.")
 
 
-def _dismiss_startup_dialogs(app, wait: float = 2.0):
+_STARTUP_DIALOG_KEYWORDS = (
+    "tip", "update", "trial", "activate", "welcome",
+    "register", "subscription", "license", "agreement", "eula",
+    "renew", "notification", "what's new", "new feature",
+)
+_DISMISS_BTN_TITLES = ("Close", "Cancel", "No", "Later", "Skip", "Remind me later",
+                       "Đóng", "Hủy", "Không", "Bỏ qua", "X")
+
+
+def _dismiss_startup_dialogs(app, wait: float = 3.0):
     """Close common startup popups (license reminder, update nag, tip of day)."""
     time.sleep(wait)
-    try:
-        for w in app.windows():
-            title = (w.window_text() or "").lower()
-            if any(kw in title for kw in ("tip", "update", "trial", "activate", "welcome")):
-                try:
-                    w.close()
-                except Exception:
-                    pass
-    except Exception:
-        pass
+    for _attempt in range(3):
+        try:
+            for w in app.windows():
+                title = (w.window_text() or "").lower()
+                if not any(kw in title for kw in _STARTUP_DIALOG_KEYWORDS):
+                    continue
+                print(f'Chat AI Foxit: dismissing startup dialog "{w.window_text()}"', flush=True)
+                dismissed = False
+                for btn_title in _DISMISS_BTN_TITLES:
+                    try:
+                        btn = w.child_window(title=btn_title, control_type="Button")
+                        if btn.exists() and btn.is_enabled():
+                            btn.click_input()
+                            dismissed = True
+                            break
+                    except Exception:
+                        pass
+                if not dismissed:
+                    try:
+                        w.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        time.sleep(1.0)
 
 
 def _main_window(app):
