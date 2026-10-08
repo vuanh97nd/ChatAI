@@ -31,3 +31,8 @@ TOOL_RULES = ""
 FAST_RULES = ""
 SYSTEM = SYSTEM_PROMPT
 FAST_SYSTEM = SYSTEM_PROMPT
+
+CONTINUITY = ' Dùng lịch sử hội thoại để ghi nhớ thông tin, lựa chọn và yêu cầu người dùng đã chốt; không hỏi lại thông tin đã có. Khi người dùng chuyển chủ đề, theo chủ đề mới, không áp đặt yêu cầu của chủ đề cũ. Chỉ hỏi khi thiếu thông tin cần thiết hoặc có mâu thuẫn chưa giải quyết.'
+FAST_SYSTEM += CONTINUITY
+SYSTEM += CONTINUITY
+SYSTEM_PROMPT += CONTINUITY

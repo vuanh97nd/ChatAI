@@ -394,7 +394,8 @@ class AutomationImageTests(unittest.TestCase):
             tools=SimpleNamespace()
             agent=OnlineAutomation(client,{},store,cid,tools,tools)
             encoded=self.encoded()
-            agent.start(state,'mở word theo ảnh này','DeepSeek Flash','admin',image=encoded)
+            from assistant.automation_start import start_automation
+            start_automation(agent,state,'mở word theo ảnh này','DeepSeek Flash','admin',image=encoded)
             self.assertEqual(state['queue'],[])
             self.assertEqual(store.load(cid)['messages'][-1]['images'],[encoded])
             list(agent.run(state))
