@@ -18,7 +18,7 @@ class AutomationPanel(QWidget):
         row=QHBoxLayout();layout.addLayout(row)
         self.pause=QPushButton('Tạm dừng');row.addWidget(self.pause)
         chat=QPushButton('Mở chat');row.addWidget(chat)
-        stop=QPushButton('Kết thúc');row.addWidget(stop)
+        stop=QPushButton('Kết thúc');stop.setFocusPolicy(Qt.FocusPolicy.NoFocus);row.addWidget(stop)
         self.pause.clicked.connect(self.toggle_pause);chat.clicked.connect(self.chatRequested)
         stop.clicked.connect(self.stopRequested)
         self.paused=False;self.message='AI đang thao tác';self.started=time.monotonic()

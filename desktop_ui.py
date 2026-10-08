@@ -464,6 +464,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         status_row.addWidget(self.status,1)
         self.cancel_countdown_button=QPushButton('Hủy yêu cầu');self.cancel_countdown_button.clicked.connect(self.send_or_stop);self.cancel_countdown_button.hide();status_row.addWidget(self.cancel_countdown_button)
         self.windows_stop_button=QPushButton('Dừng app AI');self.windows_stop_button.clicked.connect(self.stop_windows_apps)
+        self.windows_stop_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.windows_stop_button.setToolTip('Chặn các bước điều khiển ứng dụng tiếp theo; không tắt app hay bỏ qua lưu tài liệu.')
         self.windows_stop_button.setVisible(self.cfg.get('windows_apps_enabled',False));status_row.addWidget(self.windows_stop_button)
         self.reply_dots=QPushButton('● · ·'); self.reply_dots.setFixedWidth(86); self.reply_dots.setVisible(False)
@@ -667,6 +668,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     def send_or_stop(self):
         if self.worker and self.worker.cancellable:
             from assistant.windows_apps import stop_automation
+            try:self.store.audit(self.cid,'automation_stop_requested',{'source':'send_or_stop'})
+            except Exception:pass
             stop_automation()
             self.worker.stop_requested.set()
             self.send_btn.setEnabled(False)
@@ -2265,7 +2268,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         dependency=QLabel(readiness(self.cfg))
         dependency.setWordWrap(True);app_box.addWidget(dependency)
         self.windows_readiness_label=dependency
-        self.windows_apps_check.toggled.connect(lambda enabled:self.stop_windows_apps() if not enabled else None)
+        self.windows_apps_check.clicked.connect(lambda enabled:self.stop_windows_apps() if not enabled else None)
         layout.addWidget(automation)
         history = QGroupBox('Lịch sử và dữ liệu'); box = QVBoxLayout(history)
         self.button(box,'Xem toàn bộ cuộc trò chuyện',self.full_history)
@@ -2880,6 +2883,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         resume_automation()
 
     def stop_windows_apps(self):
+        sender=self.sender() if hasattr(self,'sender') else None
+        source=sender.text() if hasattr(sender,'text') else 'end_app_activity'
+        try:self.store.audit(self.cid,'automation_stop_requested',{'source':source})
+        except Exception:pass
         from assistant.windows_apps import stop_automation
         stop_automation()
         if self.worker and self.worker.cancellable:self.worker.stop_requested.set()
