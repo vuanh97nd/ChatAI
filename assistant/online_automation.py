@@ -89,7 +89,7 @@ def cdm_layout_call(prompt, cfg):
     from .installed_apps import authorized_apps
     paths = [r['path'] for r in authorized_apps(cfg)
              if PureWindowsPath(r['path']).name.lower() in {'acad.exe', 'acadlt.exe'}]
-    if len(paths) != 1: return None
+    if not paths: return None
     return {'function': {'name': 'cad_cdm_layout', 'arguments': {
         'app': paths[0], 'b_road': b_road, 'l_treatment': l_treat,
         'd_pile': d_pile, 'pile_depth': depth,
