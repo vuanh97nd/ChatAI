@@ -9,7 +9,7 @@ import json
 import uuid
 from pathlib import Path
 
-_SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit'}
+_SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit', 'embankment_stability'}
 
 _PORT = {'2d': 10000, '3d': 10001}
 
@@ -111,6 +111,65 @@ def _validate_excavation_pit(problem):
     }
 
 
+def _validate_hs_soil(layer, idx):
+    """Validate a Hardening Soil material dict (used by embankment_stability)."""
+    prefix = f'Vật liệu {idx}'
+    gamma = _num(layer.get('gamma', -1), f'{prefix} gamma', 1.0, 30.0)
+    gamma_sat_raw = layer.get('gamma_sat')
+    gamma_sat = _num(gamma_sat_raw, f'{prefix} gamma_sat', 1.0, 35.0) if gamma_sat_raw is not None else gamma + 2.0
+    E50ref = _num(layer.get('E50ref', -1), f'{prefix} E50ref', 1.0, 1e9)
+    Eoedref = _num(layer.get('Eoedref', -1), f'{prefix} Eoedref', 1.0, 1e9)
+    Eurref = _num(layer.get('Eurref', -1), f'{prefix} Eurref', 1.0, 1e9)
+    m = _num(layer.get('m', 0.5), f'{prefix} m', 0.0, 1.0)
+    c_ref = _num(layer.get('c_ref', -1), f'{prefix} c_ref', 0.0, 1e6)
+    phi = _num(layer.get('phi', -1), f'{prefix} phi', 0.0, 89.0)
+    OCR = _num(layer.get('OCR', 1.0), f'{prefix} OCR', 0.1, 100.0)
+    name = layer.get('name', f'Material{idx}')
+    if not isinstance(name, str) or not name or len(name) > 100:
+        raise ValueError(f'{prefix} name phải là chuỗi 1-100 ký tự.')
+    if any(ch in name for ch in ('\n', '\r', '\0')):
+        raise ValueError(f'{prefix} name chứa ký tự không hợp lệ.')
+    return {'name': name, 'gamma': gamma, 'gamma_sat': gamma_sat,
+            'E50ref': E50ref, 'Eoedref': Eoedref, 'Eurref': Eurref,
+            'm': m, 'c_ref': c_ref, 'phi': phi, 'OCR': OCR}
+
+
+_FILL_DEFAULTS = {
+    'name': 'Bo dap (Cat)', 'gamma': 16.0, 'gamma_sat': 18.0,
+    'E50ref': 15000.0, 'Eoedref': 15000.0, 'Eurref': 45000.0,
+    'm': 0.5, 'c_ref': 3.0, 'phi': 30.0, 'OCR': 1.0,
+}
+_CLAY_DEFAULTS = {
+    'name': 'Set (Drained)', 'gamma': 13.0, 'gamma_sat': 15.0,
+    'E50ref': 5600.0, 'Eoedref': 5000.0, 'Eurref': 20000.0,
+    'm': 1.0, 'c_ref': 10.0, 'phi': 25.0, 'OCR': 1.2,
+}
+
+
+def _validate_embankment_stability(problem):
+    embankment_height = _num(problem.get('embankment_height', 4.0), 'embankment_height', 0.5, 100.0)
+    embankment_top_width = _num(problem.get('embankment_top_width', 2.0), 'embankment_top_width', 0.1, 100.0)
+    clay_thickness = _num(problem.get('clay_thickness', 6.0), 'clay_thickness', 1.0, 100.0)
+    slope_left = _num(problem.get('slope_left', 2.0), 'slope_left', 0.5, 10.0)   # H:V ratio
+    slope_right = _num(problem.get('slope_right', 3.0), 'slope_right', 0.5, 10.0)
+
+    fill_raw = {**_FILL_DEFAULTS, **(problem.get('fill_material') or {})}
+    clay_raw = {**_CLAY_DEFAULTS, **(problem.get('clay_material') or {})}
+    fill = _validate_hs_soil(fill_raw, 1)
+    clay = _validate_hs_soil(clay_raw, 2)
+
+    return {
+        'type': 'embankment_stability',
+        'embankment_height': embankment_height,
+        'embankment_top_width': embankment_top_width,
+        'clay_thickness': clay_thickness,
+        'slope_left': slope_left,
+        'slope_right': slope_right,
+        'fill_material': fill,
+        'clay_material': clay,
+    }
+
+
 def _validate_problem(raw):
     if not isinstance(raw, str) or len(raw.encode()) > 50 * 1024:
         raise ValueError('problem phải là chuỗi JSON, tối đa 50KB.')
@@ -129,7 +188,9 @@ def _validate_problem(raw):
         return _validate_foundation_settlement(problem)
     if ptype == 'retaining_wall':
         return _validate_retaining_wall(problem)
-    return _validate_excavation_pit(problem)
+    if ptype == 'excavation_pit':
+        return _validate_excavation_pit(problem)
+    return _validate_embankment_stability(problem)
 
 
 def _script_header(version, port):
@@ -393,6 +454,149 @@ def _generate_excavation_pit(problem, version, port, project_name):
     return '\n'.join(lines)
 
 
+def _hs_soil_lines(mat, vname, drainage_type='Drained'):
+    """Return Plaxis scripting lines for a Hardening Soil material."""
+    safe_name = repr(mat['name'])
+    return '\n'.join([
+        f'{vname} = g.soilmat()',
+        f'{vname}.setproperties("MaterialName", {safe_name})',
+        f'{vname}.setproperties("SoilModel", 3)',          # Hardening Soil
+        f'{vname}.setproperties("DrainageType", "{drainage_type}")',
+        f'{vname}.setproperties("gammaUnsat", {mat["gamma"]})',
+        f'{vname}.setproperties("gammaSat", {mat["gamma_sat"]})',
+        f'{vname}.setproperties("E50ref", {mat["E50ref"]})',
+        f'{vname}.setproperties("Eoedref", {mat["Eoedref"]})',
+        f'{vname}.setproperties("Eurref", {mat["Eurref"]})',
+        f'{vname}.setproperties("powerm", {mat["m"]})',
+        f'{vname}.setproperties("cref", {mat["c_ref"]})',
+        f'{vname}.setproperties("phi", {mat["phi"]})',
+        f'{vname}.setproperties("psi", 0.0)',
+        f'{vname}.setproperties("OCR", {mat["OCR"]})',
+        '',
+    ])
+
+
+def _generate_embankment_stability(problem, version, port, project_name):
+    H = problem['embankment_height']
+    W = problem['embankment_top_width']
+    clay_t = problem['clay_thickness']
+    sl = problem['slope_left']
+    sr = problem['slope_right']
+    fill = problem['fill_material']
+    clay = problem['clay_material']
+
+    # Embankment polygon vertices — placed on a 50 m wide model
+    # Left toe such that the embankment centre is at x=25
+    left_slope_h = sl * H
+    right_slope_h = sr * H
+    total_emb_width = left_slope_h + W + right_slope_h
+    x_left_toe = (50.0 - total_emb_width) / 2.0
+    x_left_crest = x_left_toe + left_slope_h
+    x_right_crest = x_left_crest + W
+    x_right_toe = x_right_crest + right_slope_h
+
+    lines = [_script_header(version, port)]
+    lines.append(f'# Bài toán: Ổn định bờ đắp - {project_name}')
+    lines.append(f'# Bờ đắp cao {H} m, đỉnh rộng {W} m')
+    lines.append(f'# Mái trái {sl:.1f}H:1V, mái phải {sr:.1f}H:1V')
+    lines.append(f'# Nền sét dày {clay_t} m, Hardening Soil model')
+    lines.append('')
+    lines.append('g.gotostructures()')
+    lines.append('')
+    lines.append('# === Vật liệu ===')
+    lines.append('# Vật liệu 1: Đất đắp bờ (Hardening Soil, Drained)')
+    lines.append(_hs_soil_lines(fill, 'mat_fill', 'Drained'))
+    lines.append('# Vật liệu 2: Sét nền - Drained (Hardening Soil, Drained)')
+    lines.append(_hs_soil_lines(clay, 'mat_clay_dr', 'Drained'))
+    lines.append('# Vật liệu 3: Sét nền - Undrained (sao chép từ Drained, đổi kiểu)')
+    clay_ud_name = repr(clay['name'].replace('Drained', 'Undrained').replace('drained', 'undrained') + ' (UD)' if 'rain' not in clay['name'] else clay['name'].replace('Drained', 'Undrained (A)'))
+    lines.append(f'mat_clay_ud = g.soilmat()')
+    lines.append(f'mat_clay_ud.setproperties("MaterialName", {clay_ud_name})')
+    lines.append(f'mat_clay_ud.setproperties("SoilModel", 3)')
+    lines.append(f'mat_clay_ud.setproperties("DrainageType", "Undrained (A)")')
+    lines.append(f'mat_clay_ud.setproperties("gammaUnsat", {clay["gamma"]})')
+    lines.append(f'mat_clay_ud.setproperties("gammaSat", {clay["gamma_sat"]})')
+    lines.append(f'mat_clay_ud.setproperties("E50ref", {clay["E50ref"]})')
+    lines.append(f'mat_clay_ud.setproperties("Eoedref", {clay["Eoedref"]})')
+    lines.append(f'mat_clay_ud.setproperties("Eurref", {clay["Eurref"]})')
+    lines.append(f'mat_clay_ud.setproperties("powerm", {clay["m"]})')
+    lines.append(f'mat_clay_ud.setproperties("cref", {clay["c_ref"]})')
+    lines.append(f'mat_clay_ud.setproperties("phi", {clay["phi"]})')
+    lines.append(f'mat_clay_ud.setproperties("psi", 0.0)')
+    lines.append(f'mat_clay_ud.setproperties("OCR", {clay["OCR"]})')
+    lines.append('')
+
+    lines.append('# === Hình học ===')
+    lines.append('# Địa tầng: lớp sét từ y=0 đến y={:.1f} m'.format(-clay_t))
+    lines.append('bh = g.borehole(0)')
+    lines.append(f'bh.Head = 0  # Mực nước ngầm tại mặt đất')
+    lines.append(f'g.soillayer(0)  # Lớp sét, dày {clay_t} m')
+    lines.append('g.Soillayers.Soil_1.Layers.Clay_1.Top = 0')
+    lines.append(f'bh.InitialWaterConditions.Head = 0')
+    lines.append('')
+    lines.append('# Đặt vật liệu drained cho nền sét ban đầu')
+    lines.append('g.setmaterial(g.Soils[0], mat_clay_dr)')
+    lines.append('')
+    lines.append('# Khối bờ đắp (soil polygon)')
+    lines.append(
+        f'emb = g.soilpolygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
+        f'({x_right_crest:.2f}, {H:.2f}), ({x_right_toe:.2f}, 0))'
+    )
+    lines.append('g.setmaterial(emb, mat_fill)')
+    lines.append('')
+
+    lines.append('# === Lưới phần tử (Fine) ===')
+    lines.append('g.gotomesh()')
+    lines.append('g.mesh(0.04)  # Fine element distribution (coarseness ~0.04)')
+    lines.append('')
+
+    lines.append('# === Các giai đoạn tính toán ===')
+    lines.append('g.gotostages()')
+    lines.append('')
+    lines.append('# Giai đoạn ban đầu: ứng suất K0 (mặc định)')
+    lines.append('phase0 = g.InitialPhase')
+    lines.append('phase0.Identification = "Ung suat ban dau K0"')
+    lines.append('')
+    lines.append('# Giai đoạn 1: Thi công bờ đắp, nền DRAINED (ổn định dài hạn)')
+    lines.append('phase1 = g.phase(phase0)')
+    lines.append('phase1.Identification = "Dap bo (Drained)"')
+    lines.append('phase1.DeformCalcType = phase1.DeformCalcType.enumeration.Plastic')
+    lines.append('phase1.LoadingType = phase1.LoadingType.enumeration.StagedConstruction')
+    lines.append('phase1.ShouldCalculate = True')
+    lines.append('g.activate(emb, phase1)')
+    lines.append('')
+    lines.append('# Giai đoạn 2: Thi công bờ đắp, nền UNDRAINED (ổn định ngắn hạn)')
+    lines.append('phase2 = g.phase(phase0)')
+    lines.append('phase2.Identification = "Dap bo (Undrained)"')
+    lines.append('phase2.DeformCalcType = phase2.DeformCalcType.enumeration.Plastic')
+    lines.append('phase2.LoadingType = phase2.LoadingType.enumeration.StagedConstruction')
+    lines.append('phase2.ShouldCalculate = True')
+    lines.append('g.activate(emb, phase2)')
+    lines.append('g.setmaterial(g.Soils[0], mat_clay_ud, phase2)')
+    lines.append('')
+    lines.append('# Giai đoạn 3: Tính hệ số an toàn (Phi-c reduction) từ pha Drained')
+    lines.append('phase3 = g.phase(phase1)')
+    lines.append('phase3.Identification = "He so an toan SF (Drained)"')
+    lines.append('phase3.DeformCalcType = phase3.DeformCalcType.enumeration.PhiCReduction')
+    lines.append('phase3.ShouldCalculate = True')
+    lines.append('')
+    lines.append('# Giai đoạn 4: Tính hệ số an toàn từ pha Undrained')
+    lines.append('phase4 = g.phase(phase2)')
+    lines.append('phase4.Identification = "He so an toan SF (Undrained)"')
+    lines.append('phase4.DeformCalcType = phase4.DeformCalcType.enumeration.PhiCReduction')
+    lines.append('phase4.ShouldCalculate = True')
+    lines.append('')
+    lines.append('g.calculate()')
+    lines.append('g.view(phase1)')
+    lines.append('print("Hoan thanh phan tich on dinh bo dap.")')
+    lines.append('try:')
+    lines.append('    print(f"SF Drained  = {phase3.ReachedValue.SumMsf:.3f}")')
+    lines.append('    print(f"SF Undrained = {phase4.ReachedValue.SumMsf:.3f}")')
+    lines.append('except Exception as e:')
+    lines.append('    print(f"Chua doc duoc SF: {e}")')
+    return '\n'.join(lines)
+
+
 def _generate_script(problem, version, port, project_name):
     ptype = problem['type']
     if ptype == 'slope_stability':
@@ -401,7 +605,9 @@ def _generate_script(problem, version, port, project_name):
         return _generate_foundation_settlement(problem, version, port, project_name)
     if ptype == 'retaining_wall':
         return _generate_retaining_wall(problem, version, port, project_name)
-    return _generate_excavation_pit(problem, version, port, project_name)
+    if ptype == 'excavation_pit':
+        return _generate_excavation_pit(problem, version, port, project_name)
+    return _generate_embankment_stability(problem, version, port, project_name)
 
 
 class PlaxisApp:
