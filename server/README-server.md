@@ -178,3 +178,30 @@ Khi cập nhật thủ công: lấy toàn bộ `server/worker.js` của nhánh m
 Worker lưu phiên bản cấu trúc dữ liệu trong `chat_ai_runtime_schema`; lần đầu cập nhật chạy migration, các cold start sau đọc một dòng phiên bản thay vì lặp DDL/PRAGMA. Khi sửa `ensureSchema` hoặc `ensureAdminSchema`, tăng `RUNTIME_SCHEMA_VERSION`. Chỉ ghi phiên bản sau khi mọi migration thành công; lỗi migration không được đánh dấu sẵn sàng. Token, khóa thiết bị và chào lần đầu được ghi theo một D1 batch; mật khẩu, trạng thái, hạn tài khoản và session epoch vẫn được kiểm tra. Các bảng dữ liệu khác tiếp tục migration riêng khi cần.
 
 Đăng nhập admin sau migration dùng tối đa 4 câu SQL ở cold start theo kiểm tra SQLite; đây là số truy vấn, không phải cam kết độ trễ mạng thực tế. Chạy `npm test` để kiểm tra schema lạnh, phục hồi migration, xác thực và thu hồi phiên.
+
+### Ba cấu hình DeepSeek dùng một key
+
+Sau khi pull ứng dụng, thay toàn bộ code của Worker hiện có bằng `work.js`
+(hoặc `server/worker.js`) và Deploy, giữ nguyên DB, ADMIN_KEY và các key.
+Trong ChatAI, admin chọn Cài đặt → Key AI trực tuyến →
+**Cấu hình 3 AI DeepSeek dùng chung key**. Endpoint quản trị
+`/api/admin/providers/deepseek-presets` dùng key DeepSeek chung đã lưu trong D1
+hoặc secret DEEPSEEK_API_KEY; không sao chép key vào từng model.
+
+- DeepSeek Flash: `deepseek-flash`, tắt suy luận.
+- DeepSeek V4 Pro: `deepseek-v4-pro`, bật suy luận.
+- DeepSeek Suy luận: `deepseek-flash`, bật suy luận (không gọi model R1 cũ).
+
+Bấm lại cập nhật cùng ID thay vì tạo bản trùng. Mục “DeepSeek R1 Suy luận”
+cũ được chuyển sang “DeepSeek Suy luận”. Chế độ suy luận được lưu trên server
+và áp dụng cho cả người dùng thường. Key riêng của các mục được cập nhật sẽ
+được thay bằng liên kết tới key chung; key chung và các AI khác được giữ nguyên.
+Các mã model cần được dịch vụ DeepSeek cấp quyền; kiểm thử giả lập không chứng
+minh tài khoản API thật có quyền dùng model.
+
+Chat DeepSeek thông thường qua key chung hỗ trợ `stream:true` tại
+`/api/provider/model`: desktop hiển thị từng đoạn nội dung ngay khi API gửi về.
+Không hiển thị reasoning_content. Agent/JSON vẫn dùng phản hồi đầy đủ; bật
+Phân tích sâu vẫn có lượt kiểm tra bổ sung. Để chat nhanh chọn DeepSeek Flash,
+tắt Phân tích sâu và Tìm web khi không cần. Pro/Suy luận có thể mất lâu hơn
+trước token trả lời đầu tiên. Không đảm bảo thời gian 1–2 giây của API thật.

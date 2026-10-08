@@ -102,12 +102,21 @@ class SupportMixin:
         use_deep=bool(getattr(self,'deep_analysis_enabled',False))
         attached_paths=list(self.pending_documents)
         attached_image=self.pending_image
-        # Giữ tệp cho tới khi server chấp nhận tin nhắn.
+        # Chụp tệp đính kèm trước khi ghi nhận tin nhắn trên máy; không chờ API để hiển thị.
         self.answer_actions.hide();self.reply_active=True;self.reply_dots.show();self.reply_timer.start()
         self.status.setText('Đang phân tích sâu; lượt này có thể lâu hơn…' if use_deep else ('Đang tìm kiếm mạng…' if use_web else 'Đang kết nối AI trên server…'))
-        def task(emit):
+        def run_chat(emit):
+            import time
+            turn_started=time.monotonic();first_text_at=None
             state=self.store.load(cid)
             history=[{'role':m['role'],'content':m['content'][:1600]} for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')][-20:]
+            state['account_username']=owner;state['model']=selected_model
+            state['online_automation']=False
+            state['messages'].append({'role':'user','content':prompt})
+            state['running']=True;state['pending']=None;state['queue']=[]
+            self.store.save(cid,state)
+            emit({'type':'sent','cid':cid,'prompt':prompt})
+            emit({'type':'snapshot','messages':[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]})
             body={'text':prompt,'history':history,'guest_token':token,'web_search':use_web,'deep_analysis':use_deep}
             if attached_image:body['image']={'mime':'image/jpeg','data':attached_image}
             if use_web:
@@ -115,7 +124,12 @@ class SupportMixin:
             if session:body.update(username=session['username'],key=session['key'])
             api_client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=getattr(self.worker,'stop_requested',None)) if provider!='cloudflare' else None
             import re
-            document_request=bool(attached_paths or use_web or re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            document_hint=bool(re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
+            # A document-related word alone does not require a separate model
+            # request when there is no file, document library or web permission.
+            document_request=bool(attached_paths or use_web or
+                                  (document_hint and (state.get('recent_documents') or self.manager.ready('rag'))))
+            if document_hint and not document_request:body['document_sources_unavailable']=True
             if api_client and document_request:
                 from .cloud import CloudDocumentClient
                 from .document_intent import analyze_intent
@@ -164,7 +178,9 @@ class SupportMixin:
                     emit({'type':'status','text':'Đang tìm kiếm web trên Worker…'})
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
-            body['options']={'num_predict':cfg.get('num_predict',1536),'temperature':cfg.get('temperature',.2),'num_ctx':cfg.get('num_ctx',4096)}
+            body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
+            body['max_tokens']=cfg.get('api_num_predict',4096)
+            preparation_finished=time.monotonic()
             events=api_answer_events(api_client,body) if api_client else cloud_events(endpoint,body)
             try:first=next(events)
             except CloudError as error:
@@ -172,13 +188,6 @@ class SupportMixin:
                     return {'cloud_action':error.code,'message':str(error)}
                 raise
             except StopIteration:raise RuntimeError('Server chưa trả về luồng AI.') from None
-            state['account_username']=owner;state['model']=selected_model
-            state['online_automation']=False
-            state['messages'].append({'role':'user','content':prompt})
-            state['running']=True;state['pending']=None;state['queue']=[]
-            self.store.save(cid,state)
-            emit({'type':'sent','cid':cid,'prompt':prompt})
-            emit({'type':'snapshot','messages':[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]})
             emit({'type':'status','text':'Đang trả lời bằng AI trên server…'})
             answer=[];completed=False;failure=None;switch_required=False
             try:
@@ -186,7 +195,9 @@ class SupportMixin:
                 for event,value in itertools.chain([first],events):
                     if event=='meta' and value.get('memory_warning'):emit({'type':'status','text':value['memory_warning']})
                     elif event=='status':emit({'type':'status','text':value.get('text','AI đang xử lý…')})
-                    if event=='delta':answer.append(value['text']);emit({'type':'token','text':value['text']})
+                    if event=='delta':
+                        if first_text_at is None and value.get('text'):first_text_at=time.monotonic()
+                        answer.append(value['text']);emit({'type':'token','text':value['text']})
                     elif event=='done':completed=True;switch_required=bool(value.get('switch_required'))
                 if not completed:failure='Luồng AI kết thúc sớm. Phần trả lời đã nhận vẫn được giữ.'
             except Exception as error:failure=str(error)
@@ -195,7 +206,22 @@ class SupportMixin:
                 if answer:state['messages'].append({'role':'assistant','content':''.join(answer)})
                 state['running']=False;self.store.save(cid,state)
             if failure:emit({'type':'status','text':failure})
-            return {'cloud_done':True,'message':failure or 'Hoàn tất','switch_required':switch_required}
+            finished_at=time.monotonic()
+            wait_finished=first_text_at if first_text_at is not None else finished_at
+            timing={'preparation':preparation_finished-turn_started,'first_text_wait':wait_finished-preparation_finished,
+                    'answer_receiving':finished_at-wait_finished}
+            summary=('Hoàn tất · chuẩn bị %.1fs · chờ chữ đầu tiên %.1fs · nhận câu trả lời %.1fs' %
+                     (timing['preparation'],timing['first_text_wait'],timing['answer_receiving']))
+            return {'cloud_done':True,'message':failure or summary,'switch_required':switch_required,'timing':timing}
+        def task(emit):
+            try:return run_chat(emit)
+            finally:
+                # Preparation/auth failures and cancellation must not leave a queued
+                # user message marked running. The local message remains available.
+                state=self.store.load(cid)
+                if state.get('running'):
+                    state['running']=False;self.store.save(cid,state)
+
         def done(result):
             if result.get('cloud_action'):
                 if self.sent_prompt==prompt and not self.input.toPlainText().strip():

@@ -106,3 +106,12 @@ Khi đăng nhập, chuyển lịch sử khách sang tài khoản chạy trong wo
 
 
 Lịch sử SQLite có chỉ mục theo chủ tài khoản và thời gian cập nhật. Đăng nhập/chuyển hội thoại khách và danh sách Gần đây dùng chỉ mục này, tránh quét/đọc nội dung của toàn bộ tài khoản. Lần đầu mở database cũ tạo chỉ mục; các lần sau dùng lại, không thay nội dung hội thoại.
+
+
+### Khi khởi động/đăng nhập vẫn mất nhiều giây
+
+UI không nạp Ollama để cài bộ lọc tiếng Việt lúc khởi động; bộ lọc được cài khi dùng client local hoặc Agent. Tự dò model local chỉ chạy khi chọn AI trên máy và sau tác vụ đăng nhập, không cạnh tranh nạp thư viện với AI trực tuyến.
+
+Menu tài khoản/dấu ba chấm → **Sao chép thời gian khởi động/đăng nhập** trả báo cáo `startup-login-3`. Báo cáo chỉ chứa tên giai đoạn và số giây: nạp Qt, import desktop, cấu hình, SQLite, trạng thái module, dựng/hiện cửa sổ; khôi phục/lưu DPAPI, chờ header HTTPS, đọc response, tùy chọn model, chuyển chat khách, render hoàn tất worker và áp dụng giao diện. `startup.total` đo từ mã Python app.py, không gồm thời gian Windows nạp python.exe trước đó. `login.network_wait_headers` gồm DNS/proxy/TLS và chờ server, không được xem riêng là thời gian server. Báo cáo giữ trong RAM, tối đa 64 dòng, không ghi mật khẩu/token/nội dung chat và không đọc/ghi thêm file trên Google Drive. Chạy app.py để có đủ số đo khởi động, rồi dán báo cáo để xác định bước chậm; không cần Deploy lại server cho thay đổi này.
+
+Đọc và giải mã đăng nhập đã ghi nhớ (DPAPI) cũng chạy nền, không chặn event loop; kết quả đọc muộn không thay tài khoản đã đăng nhập. Số đo `startup.crash_log` tách việc mở nhật ký trên Drive khỏi nạp Qt.

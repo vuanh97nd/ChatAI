@@ -1,4 +1,4 @@
-# Chat AI 2.6.5 — bộ cài Windows có runtime
+# Chat AI 2.6.6 — bộ cài Windows có runtime
 
 ## Build
 
@@ -7,7 +7,7 @@ Máy BUILD cần .NET Framework 4.x có csc.exe (hoặc Developer Pack), Windows
 1. Đóng Chat AI. Đợi Drive đồng bộ đầy đủ mã nguồn và logo_chat_ai.png.
 2. Mở Build-Setup.bat. Runtime Python được sao chép từ Python của máy build, bỏ site-packages của người build rồi cài các thư viện từ requirements-bundled.txt vào runtime riêng.
 3. Script kiểm tra import, kiểm tra sau khi đổi đường dẫn runtime, tạo icon robot nhiều kích thước và ảnh wizard, sau đó biên dịch Inno Setup.
-4. Kết quả: `dist/Chat-AI-Setup-2.6.5.exe` là bộ cài một file, có Python runtime đóng gói bên trong. Nếu thất bại: build-logs/runtime.log hoặc build-logs/setup.log.
+4. Kết quả: `dist/Chat-AI-Setup-2.6.6.exe` là bộ cài một file, có Python runtime đóng gói bên trong. Nếu thất bại: build-logs/runtime.log hoặc build-logs/setup.log.
 5. Cài thử trên Windows sạch không có Python, không có Ollama; mở shortcut, gửi câu Cloudflare và kiểm tra Office/web trước khi phát hành.
 
 Không đóng gói .venv của người build, lịch sử SQLite, mật khẩu, config đang dùng của người khác, tài liệu cá nhân hoặc AI đã tải. Trước phát hành cần kiểm tra config.json là cấu hình mặc định không có đường dẫn cá nhân. Giữ các license/notice trong runtime và trong package; Python được sao chép kèm license của bộ cài Python.

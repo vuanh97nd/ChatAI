@@ -51,8 +51,7 @@ class ProfileMixin:
             old_index=getattr(self,'profile_page_index',None)
             if old_index is not None:
                 if self.tabs.currentIndex()==old_index:self.tabs.setCurrentIndex(0)
-                old=self.tabs.widget(old_index);self.tabs.removeTab(old_index);old.deleteLater();self.profile_page_index=None
-                if getattr(self,'memory_page_index',-1)>old_index:self.memory_page_index-=1
+                self.remove_dynamic_page('profile_page_index')
 
     def account_settings_changed(self,value=None):
         if hasattr(self,'apply_settings_button'):
@@ -132,10 +131,7 @@ class ProfileMixin:
     def open_profile(self):
         session=self.server_session
         if not session:self.login_dialog();return
-        old_index=getattr(self,'profile_page_index',None)
-        if old_index is not None:
-            old=self.tabs.widget(old_index);self.tabs.removeTab(old_index);old.deleteLater()
-            if getattr(self,'memory_page_index',-1)>old_index:self.memory_page_index-=1
+        self.remove_dynamic_page('profile_page_index')
         page=QWidget();layout=QVBoxLayout(page);layout.setContentsMargins(32,24,32,24)
         self.button(layout,'← Quay lại chat',lambda:self.tabs.setCurrentIndex(0))
         name=session.get('fullname') or session['username'];avatar=QLabel()

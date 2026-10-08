@@ -6,19 +6,20 @@ import re
 import json
 import sys
 import traceback
+from assistant.performance import measure,record
 from threading import Event
 from pathlib import Path
-print("Chat AI Desktop 2.6.5: giao diện không chờ Ollama/SSL.",flush=True)
+print("Chat AI Desktop 2.6.6: giao diện không chờ Ollama/SSL.",flush=True)
 
 from assistant.runtime_compat import prepare_six
 prepare_six()
 
-from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation, QSize
+from PySide6.QtCore import QThread, Signal, QTimer, Qt, QUrl, QByteArray, QBuffer, QIODevice, QRectF, QPropertyAnimation, QSize, QEasingCurve
 from PySide6.QtGui import QDesktopServices, QTextDocument, QTextCursor, QIcon, QPixmap, QImage, QKeySequence, QPainter, QColor, QRadialGradient, QPainterPath, QTextTable, QTextCharFormat, QTextFormat
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QListWidget, QListWidgetItem, QLabel, QPushButton, QComboBox,
     QPlainTextEdit, QTextBrowser, QTabWidget, QSplitter, QMessageBox, QDialog,
-    QDialogButtonBox, QProgressBar, QFileDialog, QStackedWidget, QScrollArea, QFrame, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QMenu, QGraphicsOpacityEffect, QInputDialog, QStyle)
+    QDialogButtonBox, QProgressBar, QFileDialog, QStackedWidget, QScrollArea, QFrame, QFormLayout, QGroupBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QMenu, QGraphicsOpacityEffect, QGraphicsDropShadowEffect, QInputDialog, QStyle)
 from assistant import initialize_runtime
 initialize_runtime()
 
@@ -51,6 +52,25 @@ class WelcomeRobot(QWidget):
         painter.setPen(Qt.PenStyle.NoPen);painter.setBrush(glow)
         painter.drawEllipse(QRectF(1,y-55,110,110))
         painter.drawPixmap(QRectF(16,y-40,80,80),self.pixmap,QRectF(self.pixmap.rect()))
+
+
+class FadingStatusLabel(QLabel):
+    """QLabel that fades in each time setText is called."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._opacity = QGraphicsOpacityEffect(self)
+        self._opacity.setOpacity(1.0)
+        self.setGraphicsEffect(self._opacity)
+        self._anim = QPropertyAnimation(self._opacity, b'opacity', self)
+        self._anim.setDuration(280)
+        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def setText(self, text):
+        super().setText(text)
+        self._anim.stop()
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
+        self._anim.start()
 
 
 class PromptEdit(QPlainTextEdit):
@@ -212,6 +232,24 @@ class ChatView(QTextBrowser):
                 if path.suffix.lower()!='.mp4' or not path.is_file() or not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
             except Exception:return
+        elif url.scheme()=='chatai-file':
+            try:
+                import base64
+                value=url.toString().partition(':')[2]
+                value+='='*((4-len(value)%4)%4)
+                path=Path(base64.urlsafe_b64decode(value.encode()).decode()).resolve(strict=True)
+                if not path.is_file() or not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+            except Exception:return
+        elif url.scheme()=='chatai-folder':
+            try:
+                import base64
+                value=url.toString().partition(':')[2]
+                value+='='*((4-len(value)%4)%4)
+                path=Path(base64.urlsafe_b64decode(value.encode()).decode()).resolve(strict=True)
+                if not any(path.is_relative_to(Path(root).resolve()) for root in self.allowed_roots):return
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent if path.is_file() else path)))
+            except Exception:return
         elif url.scheme() in ('https', 'http'):
             QDesktopServices.openUrl(url)
 
@@ -226,6 +264,8 @@ class LocalOllamaClient:
         with self._lock:
             if self._client is None:
                 import ollama
+                from assistant.vi_guard import install
+                install()
                 # The validated endpoint is HTTP loopback; no TLS or environment proxy is used.
                 self._client=ollama.Client(host=self.host,timeout=self.timeout,verify=False,trust_env=False)
             client=self._client
@@ -234,13 +274,13 @@ class LocalOllamaClient:
 
 def prepare_context(progress=print):
     progress('Đang đọc cấu hình và mở lịch sử…')
-    cfg = load_config()
-    store = Store(ROOT / 'data/history.sqlite3')
+    with measure('startup.config'):cfg = load_config()
+    with measure('startup.history_database'):store = Store(ROOT / 'data/history.sqlite3')
     client = LocalOllamaClient(host=cfg['ollama_host'], timeout=180)
     progress('Đang nạp trạng thái module…')
-    manager = ModuleManager(store, client, ROOT)
+    with measure('startup.module_state'):manager = ModuleManager(store, client, ROOT)
     cid = store.create(persist=False)
-    rows = store.list(limit=100)
+    rows = store.list(limit=30)
     return dict(cfg=cfg, store=store, client=client, manager=manager,
                 rows=rows, cid=cid, state=store.load(cid), jobs=manager.jobs())
 
@@ -258,7 +298,9 @@ from assistant.admin_ui import AdminMixin,admin_session
 class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     model_probe_finished = Signal(object)
     account_enrichment_finished = Signal(object,object)
+    login_restore_finished = Signal(object)
     support_badge_finished = Signal(object)
+    session_verified = Signal(object)
     def __init__(self, context=None):
         super().__init__()
         context = context or prepare_context()
@@ -269,6 +311,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.chat_messages, self.html_cache = [], {}
         self.sent_prompt = None
         self.server_session=None; self.personal_memories=[]
+        self.login_restore_finished.connect(self.apply_restored_login)
+        self.restore_login_loading=False
         self.support_badge_finished.connect(self.apply_support_badge)
         self.trial=GuestTrial(self.store)
         self.cfg.setdefault('chat_provider','nvidia')
@@ -285,9 +329,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.model_probe_running=False
         self.model_probe_finished.connect(self.models_probed)
         self.account_enrichment_finished.connect(self.apply_account_enrichment)
+        self.session_verified.connect(self._on_session_verified)
         self.cid = context['cid']
         print('[4/5] Đang dựng cửa sổ chat…', flush=True)
-        self.setWindowTitle('Chat AI · Desktop 2.6.5')
+        self.setWindowTitle('Chat AI · Desktop 2.6.6')
         logo = ROOT / 'logo_chat_ai.png'
         if logo.is_file():
             icon = QIcon(str(logo)); self.setWindowIcon(icon)
@@ -310,14 +355,20 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.history_search=QLineEdit();self.history_search.setPlaceholderText('Tìm kiếm hội thoại');nav.addWidget(self.history_search)
         self.history_search.textChanged.connect(self.filter_history)
         self.button(nav,'▧  Thư viện ảnh / video',lambda:self.tabs.setCurrentIndex(2))
-        self.delete_btn = self.button(nav, 'Xóa cuộc trò chuyện', self.delete_chat)
         self.button(nav,'Trò chuyện',self.open_normal_chat)
         self.button(nav,'Chuyên gia',self.open_expert_chat)
+        self.work_support_button=self.button(nav,'🗂️  Hỗ trợ Công việc',self.open_work_support)
         self.support_button=self.button(nav,'Quản lý hỗ trợ',self.open_support)
         self.support_button.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogHelpButton))
         self.button(nav,'ⓘ  Giới thiệu',self.open_about)
         self.admin_button=self.button(nav,'♙  Quản lý người dùng',self.open_user_admin);self.admin_button.hide()
-        nav.addWidget(QLabel('Gần đây'))
+        recent_header=QHBoxLayout();recent_header.setContentsMargins(0,0,0,0)
+        recent_header.addWidget(QLabel('Gần đây'),1)
+        self.delete_btn=QPushButton('Xóa');self.delete_btn.setFlat(True)
+        self.delete_btn.setFixedWidth(40);self.delete_btn.setToolTip('Xóa cuộc trò chuyện đang chọn')
+        self.delete_btn.setStyleSheet('QPushButton{border:0;background:transparent;padding:10px 2px 2px 2px;color:#8f8f8f;font-size:12px;font-weight:600;} QPushButton:hover{color:#f28b82;} QPushButton:disabled{color:#5f6368;}')
+        self.delete_btn.clicked.connect(self.delete_chat);recent_header.addWidget(self.delete_btn)
+        nav.addLayout(recent_header)
         self.history = QListWidget(); self.history.setObjectName('history'); nav.addWidget(self.history,1)
         self.history.itemClicked.connect(self.select_chat)
         self.history.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -396,6 +447,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.welcome_subtitle.setGraphicsEffect(self.welcome_opacity)
         self.welcome_fade=QPropertyAnimation(self.welcome_opacity,b'opacity',self)
         self.welcome_fade.setDuration(400);self.welcome_fade.setStartValue(0.0);self.welcome_fade.setEndValue(1.0)
+        self.welcome_fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.greeting_timer=QTimer(self);self.greeting_timer.setInterval(60);self.greeting_timer.timeout.connect(self.advance_greeting)
         self.welcome_conversation=None
         suggestions = QHBoxLayout()
@@ -407,7 +459,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         wl.addLayout(suggestions); wl.addStretch(3); self.chat_stack.addWidget(welcome)
         self.code_actions={};self.copied_codes={};self.saved_code_files=[]
         self.view = ChatView();self.view.codeActionRequested.connect(self.handle_code_action); self.view.setObjectName('chatView'); self.chat_stack.addWidget(self.view)
-        self.status = QLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
+        self.status = FadingStatusLabel('Sẵn sàng'); self.status.setStyleSheet('color:#9aa0a6;font-size:12px;'); self.status.setWordWrap(True)
         status_row=QHBoxLayout(); self.reply_logo=self.logo_label(22);self.reply_logo.hide();status_row.addWidget(self.reply_logo)
         status_row.addWidget(self.status,1)
         self.cancel_countdown_button=QPushButton('Hủy yêu cầu');self.cancel_countdown_button.clicked.connect(self.send_or_stop);self.cancel_countdown_button.hide();status_row.addWidget(self.cancel_countdown_button)
@@ -438,6 +490,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
         composer = QWidget(); composer.setObjectName('composer'); cl = QVBoxLayout(composer)
         cl.setContentsMargins(10, 6, 10, 9); cl.setSpacing(3)
+        _shadow = QGraphicsDropShadowEffect(composer)
+        _shadow.setBlurRadius(20); _shadow.setOffset(0, 4); _shadow.setColor(QColor(0, 0, 0, 60))
+        composer.setGraphicsEffect(_shadow)
         self.input = PromptEdit(); self.input.setObjectName('prompt')
         self.input.setPlaceholderText('Hỏi Chat AI…'); self.input.setMinimumHeight(60); self.input.setMaximumHeight(130)
         self.input.setAccessibleName('Tin nhắn. Enter gửi; Shift Enter xuống dòng.')
@@ -537,7 +592,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.model.currentTextChanged.connect(self.model_changed)
         self.chat_mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed(self.chat_mode.currentIndex())
-        QTimer.singleShot(200, self.refresh_models)
+        QTimer.singleShot(200, self.refresh_startup_models)
         QTimer.singleShot(100,self.restore_login)
 
     @staticmethod
@@ -668,7 +723,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.paint_timer.stop()
         self.image_btn.setEnabled(True); self.video_btn.setEnabled(True); self.web_btn.setEnabled(True);self.deep_btn.setEnabled(True)
         self.new_btn.setEnabled(True); self.delete_btn.setEnabled(True); self.chat_mode.setEnabled(True); self.history.setEnabled(True); self.model.setEnabled(True)
-        self.render()
+        if getattr(worker,'performance_login',False):
+            with measure('login.finish_worker_render'):self.render()
+        else:self.render()
         worker.deleteLater()
         if worker.cancelled:
             self.status.setText('Đã dừng phản hồi.');self.sent_prompt=None
@@ -701,6 +758,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.render()
             return
         if event['type'] == 'token':
+            if not self.stream: self._flash_chat_view()
             self.stream += event['text']
             if not self.paint_timer.isActive(): self.paint_timer.start(250)
         elif event['type'] == 'snapshot':
@@ -889,13 +947,31 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def animate_reply(self):
         self.reply_frame=(self.reply_frame+1)%3
-        self.reply_dots.setText(['● · ·','· ● ·','· · ●'][self.reply_frame])
+        dots=['● · ·','· ● ·','· · ●'][self.reply_frame]
+        # Update text without triggering FadingStatusLabel animation
+        QPushButton.setText(self.reply_dots, dots)
+
+    def _smooth_scroll_to_bottom(self):
+        bar = self.view.verticalScrollBar()
+        anim = QPropertyAnimation(bar, b'value', self.view)
+        anim.setDuration(280); anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setStartValue(bar.value()); anim.setEndValue(bar.maximum())
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _flash_chat_view(self):
+        if not hasattr(self, '_view_opacity'):
+            self._view_opacity = QGraphicsOpacityEffect(self.view)
+            self.view.setGraphicsEffect(self._view_opacity)
+        eff = self._view_opacity
+        anim = QPropertyAnimation(eff, b'opacity', self.view)
+        anim.setDuration(300); anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.setKeyValueAt(0, 0.7); anim.setKeyValueAt(0.5, 1.0); anim.setKeyValueAt(1, 1.0)
+        anim.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def jump_to_reply(self):
         self.paint_timer.stop(); self.draw()
         self.tabs.setCurrentIndex(0)
-        bar=self.view.verticalScrollBar(); bar.setValue(bar.maximum())
-        QTimer.singleShot(0,lambda:bar.setValue(bar.maximum()))
+        self._smooth_scroll_to_bottom()
 
     def draw(self):
         messages = self.chat_messages[-40:]
@@ -941,6 +1017,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         import base64
                         token=base64.urlsafe_b64encode(str(path).encode()).decode().rstrip('=')
                         media_html+='<p><a href="chatai-media:'+token+'">▶ Mở video MP4</a></p>'
+                    elif item.get('kind')=='file':
+                        import base64
+                        ft=base64.urlsafe_b64encode(str(path).encode()).decode().rstrip('=')
+                        fdt=base64.urlsafe_b64encode(str(path.parent).encode()).decode().rstrip('=')
+                        media_html+=('<p>📄 <a href="chatai-file:'+ft+'">'+html.escape(path.name)+'</a>'
+                                     +'&nbsp;&nbsp;<a href="chatai-folder:'+fdt+'">📁 Mở thư mục</a></p>')
                 except Exception:continue
             if media_html and not safe_content:safe_content=media_html
             elif media_html:safe_content+='<br>'+media_html
@@ -1173,6 +1255,249 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.select_ai(preferred)
             self.status.setText('Chuyên gia dùng AI local; AI chưa tải sẽ hỏi trước khi tải.')
 
+    # ── Hỗ trợ Công việc ──────────────────────────────────────────────────────
+
+    def open_work_support(self):
+        """Mở tab Hỗ trợ Công việc (tab động, tạo lại mỗi lần)."""
+        self.remove_dynamic_page('work_support_page_index')
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(16)
+        self.button(layout, '← Quay lại chat', lambda: self.tabs.setCurrentIndex(0))
+        title_lbl = QLabel('🗂️  Hỗ trợ Công việc')
+        title_lbl.setStyleSheet('font-size:22px;font-weight:600;margin-bottom:4px;')
+        layout.addWidget(title_lbl)
+
+        # ── 1. Thư mục công việc ────────────────────────────────────────────
+        folder_box = QGroupBox('📁 Thư mục công việc')
+        fb = QVBoxLayout(folder_box)
+        roots = self.cfg.get('whitelist', [])
+        self._work_folder_list = QListWidget(); self._work_folder_list.setMaximumHeight(90)
+        for r in roots:
+            self._work_folder_list.addItem(r)
+        fb.addWidget(self._work_folder_list)
+        fb_row = QHBoxLayout()
+        def _add_work_folder():
+            from PySide6.QtWidgets import QFileDialog
+            path = QFileDialog.getExistingDirectory(page, 'Chọn thư mục công việc')
+            if not path: return
+            if path not in self.cfg.get('whitelist', []):
+                self.cfg.setdefault('whitelist', []).append(path)
+                from assistant.config import save_config
+                save_config(self.cfg)
+                self._work_folder_list.addItem(path)
+        def _scan_templates():
+            folders = [self._work_folder_list.item(i).text() for i in range(self._work_folder_list.count())]
+            if not folders:
+                QMessageBox.information(page, 'Quét mẫu', 'Thêm ít nhất một thư mục trước.')
+                return
+            self._work_scan_templates(folders, page)
+        self.button(fb_row, 'Thêm thư mục…', _add_work_folder)
+        self.button(fb_row, '🔍 Quét mẫu & Form biểu', _scan_templates)
+        fb.addLayout(fb_row)
+        layout.addWidget(folder_box)
+
+        # ── 2. Kho mẫu ──────────────────────────────────────────────────────
+        template_box = QGroupBox('📄 Mẫu thuyết minh & Form biểu')
+        tb = QVBoxLayout(template_box)
+        self._template_status = QLabel('Nhấn "Quét mẫu" để nạp tài liệu mẫu từ thư mục công việc.')
+        self._template_status.setWordWrap(True)
+        self._template_status.setStyleSheet('color:#9aa0a6;font-size:12px;')
+        tb.addWidget(self._template_status)
+        self._template_list = QListWidget(); self._template_list.setMaximumHeight(130)
+        self._template_list.setToolTip('Bấm đúp để gửi mẫu này vào chat')
+        self._template_list.itemDoubleClicked.connect(self._send_template_to_chat)
+        tb.addWidget(self._template_list)
+        tb_row = QHBoxLayout()
+        self.button(tb_row, 'Gửi mẫu vào chat', lambda: self._send_template_to_chat(self._template_list.currentItem()))
+        self.button(tb_row, 'Xóa khỏi danh sách', self._remove_template)
+        tb.addLayout(tb_row)
+        layout.addWidget(template_box)
+        self._refresh_template_list()
+
+        # ── 3. Tạo nhanh cho dự án mới ──────────────────────────────────────
+        project_box = QGroupBox('✏️  Dự án mới — Tạo tài liệu nhanh')
+        pb = QVBoxLayout(project_box)
+        pf = QFormLayout()
+        self._work_project_name = QLineEdit(); self._work_project_name.setPlaceholderText('Ví dụ: Nhà phố Quận 7 - A1')
+        self._work_project_name.setMaxLength(120)
+        pf.addRow('Tên dự án:', self._work_project_name)
+        self._work_project_type = QComboBox()
+        for t in ['Móng đơn', 'Móng băng', 'Móng bè', 'Móng cọc khoan nhồi', 'Móng cọc ép',
+                  'Tường chắn đất', 'Mái dốc / taluy', 'Nền đường', 'Mặt cắt địa chất', 'Khác']:
+            self._work_project_type.addItem(t)
+        pf.addRow('Loại công trình:', self._work_project_type)
+        self._work_project_scale = QComboBox()
+        for s in ['1:50', '1:100', '1:200', '1:500', '1:1000', 'Không cần']:
+            self._work_project_scale.addItem(s)
+        self._work_project_scale.setCurrentText('1:100')
+        pf.addRow('Tỉ lệ bản vẽ:', self._work_project_scale)
+        pb.addLayout(pf)
+        btn_grid = QHBoxLayout()
+        self.button(btn_grid, '📝 Viết thuyết minh', lambda: self._quick_action('thuyet_minh'))
+        self.button(btn_grid, '📐 Vẽ mặt cắt CAD', lambda: self._quick_action('mat_cat_cad'))
+        pb.addLayout(btn_grid)
+        btn_grid2 = QHBoxLayout()
+        self.button(btn_grid2, '📊 Bảng tính Excel', lambda: self._quick_action('bang_tinh'))
+        self.button(btn_grid2, '📋 Báo cáo Word', lambda: self._quick_action('bao_cao_word'))
+        pb.addLayout(btn_grid2)
+        btn_grid3 = QHBoxLayout()
+        self.button(btn_grid3, '🔩 Tính lún (SoilFim)', lambda: self._quick_action('tinh_lun'))
+        self.button(btn_grid3, '📈 Tính ổn định mái', lambda: self._quick_action('on_dinh_mai'))
+        pb.addLayout(btn_grid3)
+        layout.addWidget(project_box)
+
+        # ── 4. Công cụ nhanh ────────────────────────────────────────────────
+        tools_box = QGroupBox('🔧 Công cụ nhanh — không cần nhập dự án')
+        qb = QVBoxLayout(tools_box)
+        quick_items = [
+            ('🗺️  Vẽ mặt cắt địa chất nhiều lớp', 'Vẽ mặt cắt địa chất gồm nhiều lớp đất. Hỏi tôi số lớp và thông số từng lớp.'),
+            ('🏗️  Tạo bản vẽ móng AutoCAD', 'Tạo bản vẽ AutoCAD cho móng công trình. Hỏi tôi loại móng và kích thước.'),
+            ('📐 Tính toán sức chịu tải cọc', 'Tính sức chịu tải cọc theo phương pháp tĩnh. Hỏi tôi thông số đất và cọc.'),
+            ('📊 Lập bảng tổng hợp số liệu địa chất', 'Lập bảng tổng hợp số liệu địa chất từ báo cáo khảo sát. Hỏi tôi số liệu hố khoan.'),
+            ('📝 Viết thuyết minh từ mẫu đã học', 'Dùng mẫu thuyết minh đã lưu trong thư viện để viết thuyết minh tính toán mới. Hỏi tôi loại công trình.'),
+            ('🔢 Kiểm tra nội lực / tổ hợp tải trọng', 'Kiểm tra nội lực và tổ hợp tải trọng cho cấu kiện. Hỏi tôi loại kết cấu và số liệu.'),
+            ('🌊 Tính lún cố kết theo thời gian', 'Tính lún cố kết theo thời gian cho nền đất. Hỏi tôi thông số lớp đất và tải trọng.'),
+            ('🔍 Tìm tiêu chuẩn TCVN / QCVN liên quan', 'Tìm và giải thích các tiêu chuẩn TCVN / QCVN liên quan đến yêu cầu kỹ thuật. Hỏi tôi lĩnh vực cần tra.'),
+        ]
+        for label, prompt in quick_items:
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda chk=False, p=prompt: self._send_quick_prompt(p))
+            btn.setStyleSheet('text-align:left;padding:6px 10px;')
+            qb.addWidget(btn)
+        layout.addWidget(tools_box)
+        layout.addStretch(1)
+
+        self.add_scroll_page(page, '🗂️ Công việc')
+        self.work_support_page_index = self.tabs.count() - 1
+        self.tabs.setCurrentIndex(self.work_support_page_index)
+
+    def _refresh_template_list(self):
+        """Điền danh sách mẫu đã lưu trong RAG/library vào widget."""
+        if not hasattr(self, '_template_list'): return
+        self._template_list.clear()
+        try:
+            from assistant.rag import RagSearch
+            rag = RagSearch(self.store, self.cfg)
+            hits = rag.rag_search('thuyết minh tính toán mẫu form biểu')
+            seen = set()
+            for h in hits.get('sources', [])[:20]:
+                src = h.get('source') or h.get('file') or ''
+                if src and src not in seen:
+                    seen.add(src)
+                    from pathlib import Path as _P
+                    item = QListWidgetItem('📄 ' + _P(src).name)
+                    item.setData(Qt.ItemDataRole.UserRole, src)
+                    item.setToolTip(src)
+                    self._template_list.addItem(item)
+            if seen:
+                self._template_status.setText(f'Đã nạp {len(seen)} mẫu từ thư viện RAG.')
+        except Exception:
+            pass
+
+    def _work_scan_templates(self, folders, parent_widget):
+        """Quét thư mục, nạp tài liệu mẫu vào RAG và library."""
+        from pathlib import Path
+        exts = {'.docx', '.xlsx', '.pdf', '.txt', '.md'}
+        files = []
+        for folder in folders:
+            p = Path(folder)
+            if p.is_dir():
+                for f in p.rglob('*'):
+                    if f.suffix.lower() in exts and f.is_file() and f.stat().st_size < 32*1024*1024:
+                        files.append(f)
+        if not files:
+            QMessageBox.information(parent_widget, 'Quét mẫu', 'Không tìm thấy file Word/Excel/PDF/TXT trong thư mục đã chọn.')
+            return
+        count = len(files)
+        reply = QMessageBox.question(parent_widget, 'Quét mẫu',
+            f'Tìm thấy {count} file.\nNạp vào thư viện để AI học mẫu?\n\n' +
+            '\n'.join(str(f.name) for f in files[:8]) + (f'\n... và {count-8} file khác' if count > 8 else ''),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        if reply != QMessageBox.StandardButton.Yes: return
+        scanned = {'ok': 0, 'fail': 0}
+        def task(emit):
+            from assistant.rag import RagSearch
+            rag = RagSearch(self.store, self.cfg)
+            for i, f in enumerate(files):
+                emit({'type': 'status', 'text': f'Đang nạp ({i+1}/{count}): {f.name}…'})
+                try:
+                    rag.rag_index(str(f))
+                    scanned['ok'] += 1
+                except Exception:
+                    scanned['fail'] += 1
+            return scanned
+        def done(result):
+            msg = f"Đã nạp {result['ok']} mẫu vào thư viện."
+            if result['fail']: msg += f" {result['fail']} file lỗi (bỏ qua)."
+            self._template_status.setText(msg)
+            self._refresh_template_list()
+            QMessageBox.information(parent_widget, 'Quét mẫu', msg)
+        self.work({'type': 'status', 'text': 'Đang quét thư mục…'} if False else None, None)
+        self.work(task, done)
+
+    def _send_template_to_chat(self, item):
+        """Gửi mẫu đã chọn vào chat để AI phân tích và học."""
+        if not item: return
+        src = item.data(Qt.ItemDataRole.UserRole) or ''
+        name = item.text().lstrip('📄 ')
+        self.tabs.setCurrentIndex(0)
+        self.input.setPlainText(
+            f'Hãy đọc và phân tích cấu trúc mẫu tài liệu "{name}". '
+            f'Ghi nhớ định dạng, các mục tiêu đề, bảng biểu và chỗ điền số liệu để '
+            f'dùng làm mẫu cho dự án mới. Đường dẫn: {src}'
+        )
+        self.input.setFocus()
+
+    def _remove_template(self):
+        item = self._template_list.currentItem()
+        if not item: return
+        self._template_list.takeItem(self._template_list.row(item))
+
+    def _quick_action(self, action: str):
+        """Tạo prompt từ thông tin dự án đã nhập và gửi vào chat."""
+        name = self._work_project_name.text().strip()
+        kind = self._work_project_type.currentText()
+        scale = self._work_project_scale.currentText()
+        project_ctx = f' cho dự án "{name}"' if name else ''
+        prompts = {
+            'thuyet_minh': (
+                f'Viết thuyết minh tính toán {kind.lower()}{project_ctx}. '
+                f'Dùng mẫu thuyết minh đã lưu trong thư viện nếu có. '
+                f'Hỏi tôi các số liệu cần thiết (địa chất, tải trọng, kích thước).'
+            ),
+            'mat_cat_cad': (
+                f'Vẽ mặt cắt {kind.lower()}{project_ctx} bằng AutoCAD, tỉ lệ {scale}. '
+                f'Hỏi tôi thông số lớp đất, kích thước kết cấu và cao độ nền.'
+            ),
+            'bang_tinh': (
+                f'Tạo bảng tính Excel{project_ctx} cho {kind.lower()}. '
+                f'Dùng form biểu mẫu đã lưu nếu có. '
+                f'Hỏi tôi số liệu đầu vào cần điền.'
+            ),
+            'bao_cao_word': (
+                f'Tạo báo cáo kỹ thuật Word{project_ctx} về {kind.lower()}. '
+                f'Dùng mẫu báo cáo đã lưu trong thư viện nếu có. '
+                f'Hỏi tôi nội dung cần đưa vào.'
+            ),
+            'tinh_lun': (
+                f'Tính lún cố kết{project_ctx} cho {kind.lower()}. '
+                f'Hỏi tôi: số lớp đất, chiều dày, e₀, Cc, Cs, áp lực tiền cố kết, tải trọng và diện tích gia tải.'
+            ),
+            'on_dinh_mai': (
+                f'Kiểm tra ổn định mái dốc{project_ctx}. '
+                f'Hỏi tôi: góc dốc, chiều cao, thông số cường độ (c, φ), mực nước ngầm và phương pháp tính (Bishop, Fellenius).'
+            ),
+        }
+        prompt = prompts.get(action, f'Hỗ trợ {action}{project_ctx}.')
+        self._send_quick_prompt(prompt)
+
+    def _send_quick_prompt(self, prompt: str):
+        """Chuyển sang chat và điền prompt sẵn."""
+        self.tabs.setCurrentIndex(0)
+        self.input.setPlainText(prompt)
+        self.input.setFocus()
+
+    # ── Kết thúc Hỗ trợ Công việc ─────────────────────────────────────────
+
     def show_expert_details(self):
         state=self.store.load(self.cid);details=state.get('orchestration')
         if not details:
@@ -1273,7 +1598,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         from assistant.model_preferences import save_model
         save_model(self.store,getattr(self,'server_session',None),name)
         if name in REMOTE_MODELS:self.model.setToolTip('AI trực tuyến dùng key chung trên server.');return
-        if name in CHAT_MODELS:self.model.setToolTip(CHAT_MODELS[name]['label'])
+        if name in CHAT_MODELS:
+            self.model.setToolTip(CHAT_MODELS[name]['label'])
+            if not self.models:QTimer.singleShot(200,self.refresh_startup_models)
 
     def check_gpu(self):
         def task(emit):
@@ -1285,6 +1612,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 lines.append(f'{model.model}: VRAM {vram/1024**3:.2f} GiB / tổng {size/1024**3:.2f} GiB ({fraction}% theo bộ nhớ).')
             return '\n'.join(lines) or 'Chưa có model đang nạp. Gửi một tin nhắn rồi kiểm tra lại.'
         self.work(task, lambda text: QMessageBox.information(self, 'Model / GPU', text))
+
+    def refresh_startup_models(self):
+        # Online login must not compete with importing the local AI stack.
+        if self.model.currentText() in REMOTE_MODELS:return
+        if self.busy():
+            QTimer.singleShot(500,self.refresh_startup_models);return
+        self.refresh_models()
 
     def refresh_models(self):
         if self.model_probe_running:return
@@ -1363,10 +1697,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.capabilities import Capabilities
             from assistant.collaboration import collect_artifacts
             from assistant.excel import ExcelTools
+            import time as _time
             with execution_lock(ROOT/'data/agent.lock'):
                 if session:
-                    try:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
-                    except Exception:raise RuntimeError('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử tạo nội dung.') from None
+                    _cache = getattr(self, '_auth_check_cache', {})
+                    _key = (session['endpoint'], session['username'], session['key'])
+                    if _time.monotonic() - _cache.get(_key, 0) > 60:
+                        try:
+                            request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                            _cache[_key] = _time.monotonic()
+                            self._auth_check_cache = _cache
+                        except Exception:raise RuntimeError('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử tạo nội dung.') from None
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,owner):
                     raise RuntimeError('Hội thoại thuộc tài khoản khác. Hãy tạo cuộc trò chuyện mới.')
@@ -1588,10 +1929,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def task(emit):
             from assistant.agent import Agent
             from assistant.accounts import request_account
+            import time as _time
             if session:
-                try:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
-                except Exception:
-                    emit({'type':'auth_failed'});raise RuntimeError('Không xác thực được tài khoản với server. Đăng nhập lại hoặc kiểm tra mạng.') from None
+                _cache = getattr(self, '_auth_check_cache', {})
+                _key = (session['endpoint'], session['username'], session['key'])
+                if _time.monotonic() - _cache.get(_key, 0) > 60:
+                    try:
+                        request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                        _cache[_key] = _time.monotonic()
+                        self._auth_check_cache = _cache
+                    except Exception:
+                        _cache.pop(_key, None)
+                        emit({'type':'auth_failed'});raise RuntimeError('Không xác thực được tài khoản với server. Đăng nhập lại hoặc kiểm tra mạng.') from None
             with execution_lock(ROOT / 'data/agent.lock'):
                 state = self.store.load(cid)
                 owner=session['username'] if session else GUEST_OWNER
@@ -1800,7 +2149,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.manager.set_enabled(key, False); self.status.setText('Đã tắt ' + key)
 
     def build_settings(self, layout):
-        group = QGroupBox('Cấu hình máy và AI'); form = QFormLayout(group)
+        group = QGroupBox('Cấu hình máy và AI'); group_layout = QVBoxLayout(group)
+        choice_form=QFormLayout();group_layout.addLayout(choice_form)
+        local_group=QGroupBox('AI trên máy · Ollama');form=QFormLayout(local_group)
+        local_note=QLabel('Các model và cấu hình phần cứng dưới đây chỉ dành cho AI chạy trên máy.');local_note.setWordWrap(True);form.addRow(local_note)
+        group_layout.addWidget(local_group)
         self.settings_fields = {}
         from assistant.hardware_profile import LABELS
         self.hardware_info={}
@@ -1814,18 +2167,32 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(form,'Nhận diện máy',self.detect_machine)
         self.button(form,'Tải AI đề xuất',self.download_recommended_ai)
         self.button(form,'Trạng thái GPU / Ollama',self.check_gpu)
-        self.settings_provider=QComboBox();self.settings_provider.addItems([*REMOTE_MODELS,'AI trên máy']);self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'));form.addRow('AI mặc định',self.settings_provider)
-        self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
-        form.addRow(self.auto_python_check)
-        self.button(form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
+        self.settings_provider=QComboBox();self.settings_provider.addItems([*REMOTE_MODELS,'AI trên máy']);self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'));choice_form.addRow('AI mặc định',self.settings_provider)
         for key, label in [('default_model','AI trò chuyện'),('code_model','AI lập trình'),('vision_model','AI đọc ảnh')]:
             field = QComboBox(); field.addItems([n for n,v in CHAT_MODELS.items() if key!='vision_model' or v.get('vision')]); field.setCurrentText(self.cfg.get(key,'gemma3:4b'))
             self.settings_fields[key] = field; form.addRow(label,field)
-        for key,label,low,high,default in [('num_ctx','Ngữ cảnh',1024,8192,4096),('num_predict','Token trả lời tối đa',128,4096,1536),('max_rounds','Số vòng gọi công cụ tối đa',1,20,8)]:
+        for key,label,low,high,default in [('num_ctx','Ngữ cảnh Ollama',1024,32768,4096),('num_predict','Token trả lời trên máy',128,8192,2048)]:
             field = QSpinBox(); field.setRange(low,high); field.setValue(self.cfg.get(key,default))
             self.settings_fields[key]=field; form.addRow(label,field)
         field = QDoubleSpinBox(); field.setRange(0,2); field.setSingleStep(.1); field.setValue(self.cfg['temperature'])
-        self.settings_fields['temperature']=field; form.addRow('Độ sáng tạo',field)
+        self.settings_fields['temperature']=field; form.addRow('Độ sáng tạo trên máy',field)
+        online_group=QGroupBox('AI trực tuyến · API');online_form=QFormLayout(online_group)
+        online_note=QLabel('Không cần tải model hoặc cài Ollama. Flash dành cho chat nhanh; Pro/Suy luận dành cho phân tích phức tạp. Cần Internet và key trên server.');online_note.setWordWrap(True);online_form.addRow(online_note)
+        field=QSpinBox();field.setRange(128,4096);field.setValue(self.cfg.get('api_num_predict',4096))
+        field.setToolTip('Giới hạn câu trả lời API, độc lập với cấu hình máy và nút cấu hình nhẹ. Server hiện giới hạn tối đa 4096 token.')
+        self.settings_fields['api_num_predict']=field;online_form.addRow('Token trả lời trực tuyến',field)
+        field=QDoubleSpinBox();field.setRange(0,1);field.setSingleStep(.1);field.setValue(self.cfg.get('api_temperature',.2))
+        self.settings_fields['api_temperature']=field;online_form.addRow('Độ sáng tạo trực tuyến',field)
+        online_form.addRow(QLabel('Ngữ cảnh API do dịch vụ và dữ liệu gửi quyết định; không dùng ô Ngữ cảnh Ollama.'))
+        group_layout.addWidget(online_group)
+        tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
+        self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
+        tools_form.addRow(self.auto_python_check)
+        self.button(tools_form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
+        field=QSpinBox();field.setRange(1,20);field.setValue(self.cfg.get('max_rounds',8))
+        self.settings_fields['max_rounds']=field;tools_form.addRow('Số vòng Agent trên máy',field)
+        tools_note=QLabel('Điều khiển Word, Excel, CAD và chạy Python vẫn cần công cụ cài trên máy, kể cả khi AI lập kế hoạch qua API.');tools_note.setWordWrap(True);tools_form.addRow(tools_note)
+        group_layout.addWidget(tools_group)
         layout.addWidget(group)
         self.api_key_group=QGroupBox('Key AI trực tuyến · Quản trị viên');api_form=QFormLayout(self.api_key_group);self.api_key_fields={};self.api_model_fields={}
         api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, Gemini và Groq. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
@@ -1837,6 +2204,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 field.editingFinished.connect(lambda p=provider:QTimer.singleShot(200,lambda:self.load_provider_catalog(False,p)))
             self.button(api_form,'Kiểm tra '+label,lambda checked=False,p=provider:self.check_online_provider(p))
         self.button(api_form,'Thêm AI',self.add_ai_dialog)
+        self.button(api_form,'Cấu hình 3 AI DeepSeek dùng chung key',self.configure_deepseek_presets)
         self.button(api_form,'Lưu key API',self.save_settings)
         self.button(api_form,'Xem trạng thái key trên server',self.provider_key_status)
         self.api_key_group.setVisible(admin_session(self.server_session));layout.addWidget(self.api_key_group)
@@ -1910,7 +2278,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.account_logout_button=self.button(box,'Đăng xuất',self.logout_account)
         layout.addWidget(account)
         updates=QGroupBox('Cập nhật Chat AI'); box=QVBoxLayout(updates)
-        box.addWidget(QLabel('Phiên bản hiện tại: 2.6.5 · GitHub vuanh97nd/ChatAI'))
+        box.addWidget(QLabel('Phiên bản hiện tại: 2.6.6 · GitHub vuanh97nd/ChatAI'))
         self.update_status=QLabel('Chưa kiểm tra cập nhật.'); self.update_status.setWordWrap(True); box.addWidget(self.update_status)
         self.update_notes=QPlainTextEdit(); self.update_notes.setReadOnly(True); self.update_notes.setMaximumHeight(130); box.addWidget(self.update_notes)
         self.update_check=self.button(box,'Kiểm tra cập nhật',self.check_updates)
@@ -1983,16 +2351,89 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.update_task(task,done)
 
     def restore_login(self):
+        if self.server_session or self.restore_login_loading:return
+        if self.busy():QTimer.singleShot(500,self.restore_login);return
+        self.restore_login_loading=True
+        from threading import Thread
+        def load():
+            try:
+                from assistant.accounts import load_login
+                with measure('login.restore_credentials'):session=load_login()
+                value={'session':session}
+            except Exception:value={'error':True}
+            try:self.login_restore_finished.emit(value)
+            except RuntimeError:pass # The window closed while DPAPI/file I/O was pending.
+        Thread(target=load,daemon=True).start()
+
+    def apply_restored_login(self,value):
+        self.restore_login_loading=False
         if self.server_session:return
-        if self.busy():QTimer.singleShot(1500,self.restore_login);return
-        from assistant.accounts import load_login
-        try:session=load_login()
-        except Exception:
+        if value.get('error'):
             self.account_status.setText('Không đọc được đăng nhập đã lưu. Vui lòng đăng nhập lại.');return
+        session=value.get('session')
         if not session:return
-        self.chat_login.setText('Đang tự đăng nhập…')
-        self.account_status.setText('Đang khôi phục tài khoản đã ghi nhớ…')
-        self.perform_login(session,remember=True,restore=True)
+        # Áp session đã cache ngay lập tức — không chờ mạng
+        self._apply_restored_session(session)
+        # Xác minh token ở nền, cập nhật nếu cần
+        self._verify_restored_session(session)
+
+    def _apply_restored_session(self,session):
+        from assistant.model_preferences import load_model
+        self.server_session=dict(session)
+        self.server_session.setdefault('fullname',session['username'])
+        self.server_session.setdefault('role','user')
+        self.personal_memories=[]
+        self.install_custom_ai(self.cfg.get('custom_ai',[]))
+        self.apply_account_model(load_model(self.store,session))
+        if hasattr(self,'api_key_group'):self.api_key_group.setVisible(admin_session(self.server_session))
+        self.settings_server.setText(session['endpoint'])
+        self.chat_login.setText('Tài khoản: '+session['username'])
+        self.account_status.setText('Đã đăng nhập: '+session['username'])
+        self.trial.adopt(session['username'])
+        current=self.store.load(self.cid)
+        if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
+        self.store.remember_conversation(session['username'],self.cid)
+        self.render()
+
+    def _verify_restored_session(self,session):
+        from threading import Thread
+        def verify():
+            try:
+                from assistant.accounts import request_account,save_login
+                result=request_account(session['endpoint'],'/api/login',
+                    {'username':session['username'],'key':session['key'],'device_id':self.device_id})
+                updated=dict(session)
+                if result.get('session_token'):updated['key']=result['session_token']
+                for k in ('fullname','email','phone','avatar'):updated[k]=result.get(k,session.get(k,''))
+                updated['fullname']=result.get('fullname') or session['username']
+                updated['role']=result.get('role','user')
+                try:save_login(updated)
+                except Exception:pass
+                self.session_verified.emit({'ok':True,'session':updated,'result':result})
+            except Exception as exc:
+                self.session_verified.emit({'ok':False,'error':str(exc),'username':session['username']})
+        Thread(target=verify,daemon=True,name='ChatAI-session-verify').start()
+
+    def _on_session_verified(self,payload):
+        if not payload.get('ok'):
+            error=payload.get('error','')
+            # Chỉ đăng xuất khi token thực sự hết hạn (401/403), không phải lỗi mạng
+            if any(code in error for code in ('HTTP 401','HTTP 403')):
+                self.server_session=None;self.personal_memories=[]
+                self.chat_login.setText('Đăng nhập')
+                self.account_status.setText('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.')
+                self.render()
+            # Lỗi mạng: giữ session, sẽ xác minh lần sau
+            return
+        updated=payload['session']
+        if not self.server_session or self.server_session.get('username')!=updated.get('username'):return
+        for k in ('key','fullname','email','phone','avatar','role'):
+            if k in updated:self.server_session[k]=updated[k]
+        result=payload['result']
+        result['_custom_ai']=self.cfg.get('custom_ai',[])
+        self.install_custom_ai(result.get('_custom_ai',[]))
+        self.refresh_account_ui()
+        self.load_account_enrichment(dict(self.server_session))
 
     def login_dialog(self):
         if self.busy():return
@@ -2012,11 +2453,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.perform_login({'endpoint':endpoint,'username':username.text().strip(),'key':password.text().strip()},remember.isChecked())
 
     def perform_login(self,session,remember=True,restore=False):
+        login_wall_started=time.monotonic()
         self.account_status.setText('Đang đăng nhập…')
         def task(emit):
             from assistant.accounts import request_account,save_login,forget_login
             started=time.monotonic()
-            result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
+            record('login.worker_setup',started-login_wall_started)
+            with measure('login.https_request'):
+                result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
             authenticated=time.monotonic()
             if result.get('session_token'):session['key']=result['session_token']
             # The login endpoint already returns identity and role; optional profile
@@ -2027,17 +2471,19 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             stored['fullname']=result.get('fullname') or session['username'];stored['role']=result.get('role','user')
             warning=''
             try:
-                if remember:save_login(stored)
-                else:forget_login()
+                with measure('login.save_credentials'):
+                    if remember:save_login(stored)
+                    else:forget_login()
             except Exception:
                 warning=' · Đăng nhập thành công nhưng chưa lưu được ghi nhớ trên Windows'
             from assistant.model_preferences import load_model
             result['_custom_ai']=self.cfg.get('custom_ai',[])
-            result['_saved_ai']=load_model(self.store,session)
-            self.trial.adopt(session['username'])
+            with measure('login.model_preference'):result['_saved_ai']=load_model(self.store,session)
+            with measure('login.adopt_guest_history'):self.trial.adopt(session['username'])
             result['_login_timings']={'server_seconds':round(authenticated-started,3),'local_seconds':round(time.monotonic()-authenticated,3)}
             return result,[],warning
         def done(result):
+            ui_started=time.monotonic()
             self.server_session=dict(session);self.server_session['fullname']=result[0].get('fullname') or session['username'];self.server_session['role']=result[0].get('role','user');self.personal_memories=result[1]
             for key in ('fullname','email','phone','avatar'):self.server_session[key]=result[0].get(key,'')
             self.install_custom_ai(result[0].get('_custom_ai',[]))
@@ -2058,7 +2504,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
             self.store.remember_conversation(session['username'],self.cid)
             self.render()
+            record('login.apply_interface',time.monotonic()-ui_started)
+            record('login.total',time.monotonic()-login_wall_started)
         self.work(task,done)
+        if self.worker:self.worker.performance_login=True
 
     def load_account_enrichment(self,session):
         from threading import Thread
@@ -2193,10 +2642,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 self.personal_memories=[x for x in self.personal_memories if x['id']!=ident]
                 if result.get('item'):self.personal_memories.insert(0,result['item'])
                 self.memory_dialog()
-            old_index=getattr(self,'memory_page_index',None)
-            if old_index is not None:
-                old=self.tabs.widget(old_index);self.tabs.removeTab(old_index);old.deleteLater()
-                if getattr(self,'profile_page_index',-1)>old_index:self.profile_page_index-=1
+            self.remove_dynamic_page('memory_page_index')
             self.add_scroll_page(dialog,'Bộ nhớ cá nhân')
             self.memory_page_index=self.tabs.count()-1
             self.tabs.setCurrentIndex(self.memory_page_index)
@@ -2240,20 +2686,44 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.apply_theme(self.settings_theme.currentData(),self.settings_fields['font_size'].value())
 
     def apply_theme(self,theme,font_size=None):
-        self.preview_theme=theme
-        self.preview_font_size=self.cfg.get('font_size',13) if font_size is None else font_size
-        self.setStyleSheet(style_sheet(theme))
-        for widget in self.findChildren(QWidget):
-            original=widget.property('chatBaseStyle')
-            if original is None:
-                original=widget.styleSheet()
-                if not re.search(r'#[0-9a-fA-F]{6}',original):continue
-                widget.setProperty('chatBaseStyle',original)
-            widget.setStyleSheet(recolor(original,theme))
-        if hasattr(self,'settings_button'):self.settings_button.set_theme(theme)
-        if hasattr(self,'profile_avatar') and hasattr(self,'account_register_button'):self.refresh_account_ui()
-        self.apply_font();self.html_cache.clear()
-        if hasattr(self,'paint_timer'):self.draw()
+        # Fade the native window, not a QGraphicsEffect on the central widget.
+        # Parent effects nest with composer shadows/child fades and Qt can skip
+        # painting their subtrees. Keep the transition without that nesting.
+        previous=getattr(self,'_theme_animation',None)
+        if previous is not None:
+            previous.stop();previous.deleteLater()
+        self._theme_animation=None
+        def apply_colors():
+            self.preview_theme=theme
+            self.preview_font_size=self.cfg.get('font_size',13) if font_size is None else font_size
+            self.setStyleSheet(style_sheet(theme))
+            for widget in self.findChildren(QWidget):
+                original=widget.property('chatBaseStyle')
+                if original is None:
+                    original=widget.styleSheet()
+                    if not re.search(r'#[0-9a-fA-F]{6}',original):continue
+                    widget.setProperty('chatBaseStyle',original)
+                widget.setStyleSheet(recolor(original,theme))
+            if hasattr(self,'settings_button'):self.settings_button.set_theme(theme)
+            if hasattr(self,'profile_avatar') and hasattr(self,'account_register_button'):self.refresh_account_ui()
+            self.apply_font();self.html_cache.clear()
+            if hasattr(self,'paint_timer'):self.draw()
+        if not self.isVisible():
+            apply_colors();return
+        fade_out=QPropertyAnimation(self,b'windowOpacity',self)
+        fade_out.setDuration(80);fade_out.setStartValue(self.windowOpacity());fade_out.setEndValue(.85)
+        def fade_in():
+            apply_colors();fade_out.deleteLater()
+            animation=QPropertyAnimation(self,b'windowOpacity',self)
+            animation.setDuration(200);animation.setStartValue(self.windowOpacity());animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            def complete():
+                if self._theme_animation is animation:self._theme_animation=None
+                animation.deleteLater()
+            animation.finished.connect(complete)
+            self._theme_animation=animation;animation.start()
+        fade_out.finished.connect(fade_in)
+        self._theme_animation=fade_out;fade_out.start()
 
     def light_settings(self):
         self.settings_fields['default_model'].setCurrentText('qwen2.5:3b')
@@ -2270,6 +2740,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if self.settings_provider.findText(name)<0:self.settings_provider.addItem(name)
         from assistant.config import save_config
         self.cfg=save_config(self.cfg)
+
+    def configure_deepseek_presets(self):
+        if not admin_session(self.server_session) or self.busy():return
+        from assistant.accounts import request_account
+        session=dict(self.server_session)
+        def done(value):
+            replacements={item['id'] for item in value['entries']}
+            entries=[item for item in self.cfg.get('custom_ai',[]) if item['id'] not in replacements]
+            self.install_custom_ai([*entries,*value['entries']])
+            self.select_ai('DeepSeek Flash')
+            QMessageBox.information(self,'DeepSeek',value.get('message','Đã lưu cấu hình.'))
+        self.work(lambda emit:request_account(session['endpoint'],'/api/admin/providers/deepseek-presets',dict(username=session['username'],key=session['key']),timeout=30),done)
 
     def add_ai_dialog(self):
         if not admin_session(self.server_session) or self.busy():return
@@ -2466,7 +2948,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             QMessageBox.information(self,'Chat AI','Đợi tác vụ hiện tại kết thúc trước khi lưu.');return
         proposed=self.proposed_settings();proposed['machine_profile_selected']=True;old_endpoint=self.cfg.get('server_url')
         keys={k:f.text().strip() for k,f in self.api_key_fields.items() if f.text().strip()}
-        provider_models={k:f.text().strip() for k,f in self.api_model_fields.items()}
+        provider_models={k:f.text().strip() for k,f in self.api_model_fields.items() if f.text().strip() and f.text().strip()!=self.cfg.get(k+'_model','')}
         session_snapshot=dict(self.server_session) if self.server_session else None
         def task(emit):
             from assistant.config import save_config
@@ -2475,7 +2957,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if session and old_endpoint==cfg.get('server_url'):
                 from assistant.model_preferences import save_model
                 save_model(self.store,session,PROVIDER_NAMES.get(cfg['chat_provider'],cfg['default_model']))
-                if admin_session(session):
+                if admin_session(session) and (keys or provider_models):
                     from assistant.accounts import request_account
                     request_account(session['endpoint'],'/api/admin/providers/save',dict(username=session['username'],key=session['key'],providers=keys,models=provider_models))
             return cfg
@@ -2531,13 +3013,30 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             for m in messages if m['role'] in ('user', 'assistant') and m.get('content')))
         layout.addWidget(view); dialog.exec()
 
+    def remove_dynamic_page(self,attribute):
+        old_index=getattr(self,attribute,None)
+        if old_index is None:return
+        page=self.tabs.widget(old_index)
+        if page is None:
+            setattr(self,attribute,None);return
+        # Update all cached indices before removeTab emits currentChanged.
+        for name in ('memory_page_index','profile_page_index','work_support_page_index','help_page_index','admin_page_index'):
+            value=getattr(self,name,None)
+            if value==old_index:setattr(self,name,None)
+            elif value is not None and value>old_index:setattr(self,name,value-1)
+        if getattr(self,'settings_last_tab',0)>old_index:self.settings_last_tab-=1
+        elif getattr(self,'settings_last_tab',0)==old_index:self.settings_last_tab=0
+        self.tabs.removeTab(old_index)
+        page.deleteLater()
+
     def balance_panels(self, index=None):
         if hasattr(self,'settings_button'):self.settings_button.setChecked(self.tabs.currentIndex()==3)
         # Keep navigation stable while the right-hand page changes.
         if hasattr(self, 'sidebar'):
             collapsed=getattr(self,'sidebar_collapsed',False)
             self.sidebar.setFixedWidth(92 if collapsed else 260)
-            self.sidebar_stack.setCurrentIndex(1 if self.tabs.currentIndex() in (1,3) or self.tabs.currentIndex()==getattr(self,'memory_page_index',-1) else 0)
+            _dynamic_pages={getattr(self,'memory_page_index',None),getattr(self,'profile_page_index',None)}-{None}
+            self.sidebar_stack.setCurrentIndex(1 if self.tabs.currentIndex() in (1,3) or self.tabs.currentIndex() in _dynamic_pages else 0)
             self.main_splitter.setStretchFactor(0,0)
             self.main_splitter.setStretchFactor(1,1)
 
@@ -2567,6 +3066,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(layout,'Tải mô hình',lambda:self.tabs.setCurrentIndex(1))
         layout.addStretch(1)
 
+    def copy_performance_report(self):
+        from assistant.performance import report
+        QApplication.clipboard().setText(report())
+        self.status.setText('Đã sao chép thời gian khởi động/đăng nhập. Bạn có thể dán để kiểm tra.')
+
     def account_menu(self):
         menu=QMenu(self)
         if self.server_session:
@@ -2593,6 +3097,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         menu.addAction('Tải mô hình',lambda:self.tabs.setCurrentIndex(1))
         menu.addAction('Ảnh và Video',lambda:self.tabs.setCurrentIndex(2))
         menu.addAction('Hỗ trợ',self.open_support)
+        menu.addAction('Sao chép thời gian khởi động/đăng nhập',self.copy_performance_report)
         menu.addSeparator();menu.addAction('Tất cả cài đặt',lambda:self.open_settings_section(None))
         menu.exec(self.settings_button.mapToGlobal(self.settings_button.rect().topLeft()))
 
@@ -2611,7 +3116,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         title.setStyleSheet('font-size:20px;font-weight:600;')
         layout.addWidget(title)
         details=QLabel(
-            'Desktop 2.6.5\n'
+            'Desktop 2.6.6\n'
             'Ứng dụng AI hỗ trợ trò chuyện, xử lý tài liệu và sáng tạo nội dung.\n\n'
             'Tác giả: Vũ Ngọc Ánh\n'
             'Email: vuanh97nd@gmail.com\n'

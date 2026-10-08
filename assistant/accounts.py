@@ -2,6 +2,8 @@
 import ctypes
 import json
 import os
+import time
+from .performance import record
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request,urlopen
@@ -17,10 +19,14 @@ def request_account(endpoint,path,body,timeout=12):
     url=urlparse(endpoint)
     if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
         raise ValueError('URL server phải là URL gốc HTTPS.')
-    request=Request(endpoint.rstrip('/')+path,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
+    request=Request(endpoint.rstrip('/')+path,data=json.dumps(body).encode('utf-8'),headers={'Content-Type':'application/json','Accept':'application/json','User-Agent':'ChatAI-Desktop/2.6.6 (+Windows; account API)','Connection':'keep-alive'})
     try:
+        started=time.monotonic()
         with urlopen(request,timeout=timeout) as response:
+            headers_received=time.monotonic()
+            if path=='/api/login':record('login.network_wait_headers',headers_received-started)
             raw=response.read(2000001)
+            if path=='/api/login':record('login.network_read_body',time.monotonic()-headers_received)
             if len(raw)>2000000:raise RuntimeError('Phản hồi server quá lớn. Hãy chia nhỏ yêu cầu.')
             result=json.loads(raw.decode('utf-8'))
     except HTTPError as error:
@@ -31,7 +37,7 @@ def request_account(endpoint,path,body,timeout=12):
             if '1010' in str(message):message='Cloudflare chặn kết nối ứng dụng (1010). Kiểm tra quy tắc Browser Integrity Check hoặc WAF của Worker.'
         except Exception:message='Server HTTP '+str(error.code)
         if error.code==403:
-            message=str(message)+'\nKết nối Chat AI v2.5.1: server từ chối truy cập. Kiểm tra Security Events của Cloudflare; nếu có challenge, cần quy tắc dành riêng cho API ứng dụng.'
+            message=str(message)+'\nKết nối Chat AI v2.6.6: server từ chối truy cập. Kiểm tra Security Events của Cloudflare; nếu có challenge, cần quy tắc dành riêng cho API ứng dụng.'
         if not isinstance(detail,dict):detail={}
         for key in ('key','password','old_key','new_key','api_key'):
             if body.get(key):message=str(message).replace(str(body[key]),'[ẨN]')
