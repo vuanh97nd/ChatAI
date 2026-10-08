@@ -9,6 +9,8 @@ from .tools import TOOLS, EXTRA_TOOLS, WRITES, DOCUMENT_READ_SCHEMA
 from .web import WebTools
 from .media import MediaTools
 from .media_basic import BasicMediaTools
+from .source_tools import SourceTools
+from .geo_solver import geo_calculate
 
 
 
@@ -63,6 +65,7 @@ class Capabilities:
         self.cdm_layout=CdmLayoutApp(self.windows,self.files,audit)
         from .cad_tracdoc import CadTracDocApp
         self.tracdoc_app=CadTracDocApp(self.windows,self.files,audit)
+        self.source_tools=SourceTools(root/'data'/'backups',audit)
         self.active.add('klxldy')
         self.active.add('tm_xldy')
         self.active.add('geoslope_xldy')
@@ -74,11 +77,14 @@ class Capabilities:
         self.active.add('road_pipeline')
         self.active.add('cad_drawing')
         if 'windows' in self.active:self.active.update({'borehole_dxf','cdm_layout','tracdoc_app'})
+        self.active.update({'source_tools','geo_solver'})
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         from .online_automation import app_permissions
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        if name=='source_edit':return self.source_tools.prepare_edit(**args)
+        if name=='source_restore':return self.source_tools.prepare_restore(**args)
         if name=='road_analyze':return self.road_pipeline.prepare_analyze(name,args)
         if name=='road_verify':return self.road_pipeline.prepare_verify(name,args)
         if name in {'cad_tracdoc_xldy','cad_mcn_xldy'}:return self.cad_drawing.prepare(name,args)
@@ -124,6 +130,7 @@ class Capabilities:
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action in {'source_edit','source_restore'}:return self.source_tools.commit(plan)
         if action=='road_analyze':return self.road_pipeline.commit_analyze(plan)
         if action=='road_verify':return self.road_pipeline.commit_verify(plan)
         if action in {'cad_tracdoc_xldy','cad_mcn_xldy'}:
@@ -184,6 +191,10 @@ class Capabilities:
             if mode == 'full':
                 return self.soilfirm_app.read_project(args['path'])
             return self.soilfirm_app.summary(args['path'])
+        if name=='log_read':return self.source_tools.log_read(**args)
+        if name=='source_read':return self.source_tools.source_read(**args)
+        if name=='plaxis_status':return self.source_tools.plaxis_status()
+        if name=='geo_calculate':return geo_calculate(**args)
         registry = {"excel_list_files": self.excel.excel_list_files,
                     "excel_list_sheets": self.excel.excel_list_sheets,
                     "excel_read": self.excel.excel_read,

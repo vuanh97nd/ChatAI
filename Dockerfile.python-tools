@@ -1,5 +1,5 @@
 FROM python:3.11-slim
-RUN pip install --no-cache-dir "pandas>=2.2,<3" "openpyxl>=3.1.5,<4" "pypdf>=5,<7" "python-docx>=1.1,<2" "Pillow>=10,<13" "imageio>=2.34,<3" "imageio-ffmpeg>=0.5,<1" "opencv-python-headless>=4.10,<5"
+RUN pip install --no-cache-dir "pandas>=2.2,<3" "openpyxl>=3.1.5,<4" "pypdf>=5,<7" "python-docx>=1.1,<2" "Pillow>=10,<13" "imageio>=2.34,<3" "imageio-ffmpeg>=0.5,<1" "opencv-python-headless>=4.10,<5" "scipy>=1.13,<2" "sympy>=1.13,<2" "matplotlib>=3.9,<4" "shapely>=2.0,<3"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /tmp
 USER 65534:65534
