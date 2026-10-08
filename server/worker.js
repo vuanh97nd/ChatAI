@@ -1041,13 +1041,14 @@ async function streamChat(body,env,request,owner){
  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),60000);
  const onAbort=()=>abort.abort();request.signal.addEventListener('abort',onAbort,{once:true});
  const cleanup=()=>{clearTimeout(timer);request.signal.removeEventListener('abort',onAbort);};
+ const outputTokens=Math.max(128,Math.min(4096,Number(body.max_tokens)||(body.options&&Number(body.options.num_predict))||1600));
  let upstream;
  if(provider==='cloudflare'){const limit=await reserveCloud(env,owner);if(limit){cleanup();return limit;}}
  try{
   if(provider==='cloudflare'){
    if(typeof env.AI?.run!=='function'){cleanup();return fail('Thiếu binding Workers AI tên AI.',503);}
    upstream=await Promise.race([
-    env.AI.run(env.CLOUDFLARE_AI_MODEL||'@cf/qwen/qwen3-30b-a3b-fp8',{messages,max_tokens:1600,stream:true}),
+    env.AI.run(env.CLOUDFLARE_AI_MODEL||'@cf/qwen/qwen3-30b-a3b-fp8',{messages,max_tokens:outputTokens,stream:true}),
     new Promise((_,reject)=>abort.signal.addEventListener('abort',()=>reject(new Error('AI timeout')),{once:true}))
    ]);
   }else{
@@ -1058,7 +1059,7 @@ async function streamChat(body,env,request,owner){
    const prefix=_dsStreamVariant?'DEEPSEEK':provider.toUpperCase(),key=String(env[prefix+'_API_KEY']||'');
    const model=_dsStreamVariant||String(env[prefix+'_MODEL']||'');
    if(!key||!model){cleanup();return fail('Cần secret '+prefix+'_API_KEY và biến '+prefix+'_MODEL.',503);}
-   const payload={model,messages,stream:true,...(['openai','groq'].includes(provider)?{max_completion_tokens:1600}:{max_tokens:1600})};
+   const payload={model,messages,stream:true,...(['openai','groq'].includes(provider)?{max_completion_tokens:outputTokens}:{max_tokens:outputTokens})};
    if(provider==='openai')payload.store=false;
    const response=await fetch(endpoints[provider],{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key},body:JSON.stringify(payload),signal:abort.signal});
    if(!response.ok){await response.body?.cancel();cleanup();return fail('Dịch vụ AI HTTP '+response.status+'. Kiểm tra cấu hình và hạn mức.',response.status===429?429:502);}
