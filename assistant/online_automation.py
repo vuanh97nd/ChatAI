@@ -6,19 +6,47 @@ from .tools import EXTRA_TOOLS, validate_call
 from .experience import repeated_failure, task_record
 
 
+def plan_json(raw, label):
+    text=raw.strip().lstrip('\ufeff').strip()
+    if not text:raise ValueError(label+' đang rỗng; cần một đối tượng JSON.')
+    fenced=re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```',text,re.I)
+    if fenced:text=fenced.group(1).strip()
+    try:return json.loads(text)
+    except json.JSONDecodeError as error:
+        # Accept one complete object surrounded by model commentary, but never
+        # choose between multiple objects or rescue a truncated outer object.
+        start=text.find('{')
+        if start>0:
+            try:
+                value,end=json.JSONDecoder().raw_decode(text[start:])
+                if isinstance(value,dict) and not any(c in text[:start]+text[start+end:] for c in '{}'):
+                    return value
+            except json.JSONDecodeError:pass
+        raise ValueError(label+' không phải JSON hoàn chỉnh (dòng '+str(error.lineno)+', cột '+str(error.colno)+').') from None
+
+
+def discussion_response(raw):
+    """Recover a plain-language clarification only; never turn prose into a tool call."""
+    if not isinstance(raw,str):return None
+    text=raw.strip()
+    if not text or len(text)>6000 or any(c in text for c in '{}') or text.startswith(('```','<')):
+        return None
+    # Do not present an unverified action/completion claim as a recovered answer.
+    if not re.search(r'\?|(?:cần|thiếu|cho biết|chưa thể|chưa có|không thể)',text,re.I):return None
+    if re.search(r'đã\s+(?:chạy|mở|tạo|sửa|tính|hoàn thành|gửi)|hoàn tất',text,re.I):return None
+    return text+'\n\nLượt này chưa thực hiện thao tác mới.'
+
+
 def parse_plan(raw, schemas):
     if not isinstance(raw,str) or len(raw)>30000:raise ValueError('Phản hồi kế hoạch vượt giới hạn.')
-    text=raw.strip()
-    fenced=re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```',text,re.I)
-    if fenced:text=fenced.group(1)
-    output=json.loads(text)
+    output=plan_json(raw,'Phản hồi kế hoạch')
     if not isinstance(output,dict):raise ValueError('Kế hoạch phải là đối tượng JSON.')
     tool=output.get('tool','')
     answer=output.get('answer','')
     if tool is None:tool=''
     if not isinstance(tool,str) or not isinstance(answer,str):raise ValueError('tool và answer phải là chuỗi.')
     args=output.get('arguments',{})
-    if isinstance(args,str):args=json.loads(args or '{}')
+    if isinstance(args,str):args=plan_json(args if args.strip() else '{}','Tham số arguments')
     if not isinstance(args,dict):raise ValueError('arguments phải là đối tượng JSON.')
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
     if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
@@ -479,13 +507,19 @@ class OnlineAutomation:
             question=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
             instruction+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'])
             messages=planning_messages(state,instruction)
-            output=None;last_plan_error=''
+            instruction_note=('Nếu cần người dùng trợ giúp hoặc làm rõ dữ kiện còn thiếu, trả '
+                              '{"answer":"câu hỏi cụ thể","tool":"","arguments":{}} để trao đổi. '
+                              'Không hỏi lại thông tin đã có. Khi đủ dữ kiện, đề xuất công cụ phù hợp. '
+                              'arguments nên là đối tượng JSON, tránh mã hóa JSON thành chuỗi lồng nhau.')
+            messages[0]['content']+='\n'+instruction_note
+            output=None;last_plan_error='';last_raw=''
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
                 response=self.client.chat(self.client.model,messages,format={'type':'object','properties':{
-                    'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'string'}},
+                    'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'object'}},
                     'required':['answer','tool','arguments']},options={'num_predict':planning_tokens,'temperature':.1})
                 try:
+                    last_raw=response.get('message',{}).get('content','')
                     if response.get('truncated'):raise ValueError('JSON bị giới hạn token.')
                     output=parse_plan(response['message']['content'],self.schemas)
                     break
@@ -495,8 +529,12 @@ class OnlineAutomation:
                     if attempt==0:
                         if response.get('truncated'):planning_tokens=min(8192,planning_tokens*2)
                         yield {'type':'status','text':'AI đang sửa định dạng kế hoạch; chưa chạy thao tác mới…'}
-                        messages.append({'role':'assistant','content':response.get('message',{}).get('content','')[:4000]})
-                        messages.append({'role':'user','content':'Kế hoạch chưa hợp lệ: '+str(error)[:250]+'. Trả lại đúng một JSON {"answer":"...","tool":"tên công cụ hoặc chuỗi rỗng","arguments":"chuỗi JSON"}. Chỉ dùng công cụ và tham số trong danh sách. Không Markdown.'})
+                        if last_raw:messages.append({'role':'assistant','content':last_raw[:4000]})
+                        messages.append({'role':'user','content':'Kế hoạch chưa hợp lệ: '+str(error)[:250]+'. Trả lại đúng một JSON {"answer":"...","tool":"tên công cụ hoặc chuỗi rỗng","arguments":{}}. Nếu cần trợ giúp, hỏi rõ trong answer và để tool rỗng. Chỉ dùng công cụ và tham số trong danh sách. Không Markdown. JSON:'})
+            if output is None:
+                clarification=discussion_response(last_raw)
+                if clarification:
+                    output={'answer':clarification,'tool':'','arguments':{}}
             try:
                 if output is None:raise ValueError()
                 if output['tool']:

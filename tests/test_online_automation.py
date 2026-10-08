@@ -255,6 +255,17 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed,[])
         self.assertEqual(self.state['messages'][-1]['content'],'Đã hiểu')
 
+    def test_plain_help_request_is_shown_after_format_repair_fails(self):
+        self.responses=['Bạn cần tính bài toán nào?']*2
+        self.agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        events=list(self.agent.run(self.state))
+        self.assertFalse(self.state['running'])
+        self.assertEqual(self.committed,[])
+        self.assertIn('Bạn cần tính bài toán nào?',events[-1]['text'])
+        self.assertIn('chưa thực hiện thao tác',events[-1]['text'])
+        self.assertNotIn('AI chưa trả kế hoạch hợp lệ',events[-1]['text'])
+        self.assertIn('trợ giúp',self.requests[0][0]['content'])
+
     def test_preparation_error_is_replanned_before_any_execution(self):
         attempts=[]
         def prepare(name,args):
