@@ -292,11 +292,14 @@ class GeoslopeApp:
         filename = f'GeoSlope-{safe_name}-{uuid.uuid4().hex[:8]}.gsz'
         path = self.files.path(str(self.files.roots[0] / filename), exists=False)
 
+        auto_open = bool(args.get('auto_open', False))
+
         return {
             'action': 'geoslope_create',
             'path': str(path),
             'project_name': project_name,
             'problem': problem,
+            'auto_open': auto_open,
         }
 
     def commit(self, plan):
@@ -322,11 +325,30 @@ class GeoslopeApp:
             'materials': len(problem['materials']),
         })
 
-        return {
+        result = {
             'ok': True,
             'path': str(path),
             'files': [str(path)],
             'method': problem['method'],
             'materials': len(problem['materials']),
-            'note': 'Mở file .gsz bằng GeoStudio/GeoSlope để chạy phân tích.',
         }
+
+        if plan.get('auto_open'):
+            try:
+                import os, subprocess
+                if os.name == 'nt':
+                    os.startfile(str(path))
+                    result['opened'] = True
+                    result['note'] = 'File .gsz đã mở bằng GeoStudio. Nhấn Solve để chạy phân tích.'
+                else:
+                    subprocess.Popen(['xdg-open', str(path)])
+                    result['opened'] = True
+                    result['note'] = 'File .gsz đã mở. Nhấn Solve để chạy phân tích.'
+            except Exception as e:
+                result['opened'] = False
+                result['note'] = f'Không mở được GeoStudio ({e}). Mở thủ công file: {path}'
+        else:
+            result['opened'] = False
+            result['note'] = 'Mở file .gsz bằng GeoStudio/GeoSlope để chạy phân tích.'
+
+        return result

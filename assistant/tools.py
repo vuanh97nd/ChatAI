@@ -160,8 +160,9 @@ EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
     'problem: chuỗi JSON mô tả bài toán gồm slope (height, angle, crest_width, toe_width), '
     'materials (name, cohesion, phi, unit_weight, model), layers (material_index, top_y, bottom_y), '
     'method (Bishop/Morgenstern-Price/Spencer/Janbu/Ordinary), water_table (null hoặc cao trình). '
-    'Lưu file .gsz vào thư mục whitelist; mở bằng GeoStudio để chạy phân tích.',
-    {'project_name': TEXT, 'problem': TEXT},
+    'Lưu file .gsz vào thư mục whitelist; mở bằng GeoStudio để chạy phân tích. '
+    'auto_open: true để tự động mở file .gsz bằng GeoStudio sau khi tạo.',
+    {'project_name': TEXT, 'problem': TEXT, 'auto_open': {'type': 'boolean'}},
     ['project_name', 'problem'])))
 
 EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
@@ -222,8 +223,9 @@ EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     '{"type":"slope_stability","slope_angle":30,"slope_height":5,'
     '"analysis":"Bishop","soil_layers":[{"name":"Cat","E":10000,"nu":0.3,'
     '"gamma":18,"c":5,"phi":30,"thickness":5}]}. '
-    'Script sinh ra cần mở trong Plaxis bằng File > Run Script.',
-    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT},
+    'Script sinh ra cần mở trong Plaxis bằng File > Run Script. '
+    'auto_run: true để tự động kết nối Plaxis đang mở và chạy script (cần plxscripting + Plaxis Remote Scripting Server đang bật).',
+    {'project_name': TEXT, 'version': TEXT, 'problem': TEXT, 'auto_run': {'type': 'boolean'}},
     ['project_name', 'version', 'problem'])))
 
 WRITES.add('road_analyze')
