@@ -10,7 +10,8 @@ class AutomationPanel(QWidget):
     stopRequested=Signal()
 
     def __init__(self):
-        super().__init__(None,Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        super().__init__(None,Qt.WindowType.Window | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating,True)
         self.setWindowTitle('ChatAI · Đang thao tác')
         self.setFixedWidth(390)
         layout=QVBoxLayout(self)

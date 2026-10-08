@@ -65,3 +65,12 @@ class PanelTest(unittest.TestCase):
         self.assertFalse(host.isMinimized());self.assertFalse(host.automation_panel.isVisible())
         self.assertFalse(host.app_compact_active)
         host.automation_panel.deleteLater();host.deleteLater()
+
+    def test_control_panel_is_independent_window_when_chat_minimizes(self):
+        from PySide6.QtCore import Qt
+        panel=AutomationPanel()
+        self.assertIsNone(panel.parent())
+        self.assertEqual(panel.windowType(),Qt.WindowType.Window)
+        self.assertTrue(panel.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        self.assertTrue(panel.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating))
+        panel.deleteLater()
