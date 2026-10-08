@@ -139,11 +139,21 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         'coverage_note':coverage_note}
 
 
-def read_local(path,pdf_ocr=None):
+def read_local(path,pdf_ocr=None,foxit_ocr=False):
     p=Path(path)
     if not p.is_file() or p.stat().st_size>MAX_BYTES:raise ValueError('Tệp không hợp lệ hoặc vượt 20 MiB.')
-    result=read_bytes(p.read_bytes(),name=p.name,pdf_ocr=pdf_ocr)
-    return {**result,'file':p.name,'source':str(p)}
+    try:
+        result=read_bytes(p.read_bytes(),name=p.name,pdf_ocr=pdf_ocr)
+        return {**result,'file':p.name,'source':str(p)}
+    except ValueError as exc:
+        if foxit_ocr and 'OCR' in str(exc) and p.suffix.lower()=='.pdf':
+            from assistant.foxit_ocr_automation import foxit_ocr as _foxit_ocr,available as _foxit_available
+            if not _foxit_available():
+                raise
+            ocr_path=_foxit_ocr(p)
+            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=pdf_ocr)
+            return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
+        raise
 
 
 def chunks(document,max_chars=6000):
