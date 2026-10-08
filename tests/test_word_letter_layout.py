@@ -22,3 +22,19 @@ class ProfessionalLetterTest(unittest.TestCase):
             self.assertTrue(paragraphs[0].runs[0].bold)
             self.assertEqual(paragraphs[5].runs[0].font.size.pt,13)
             self.assertNotIn('-------------------','\n'.join(p.text for p in paragraphs))
+
+    def test_multiple_letter_types_use_same_structure_and_black_font(self):
+        from assistant.word_layout import resignation_paragraphs,format_resignation
+        for title in ('ĐƠN XIN VIỆC','Đơn xin nghỉ phép','Đơn đề nghị xác nhận','Đơn khiếu nại','Đơn xin chuyển công tác'):
+            with self.subTest(title=title):
+                lines=resignation_paragraphs(title,title+'\n\nKính gửi: ...\nNội dung yêu cầu cụ thể.\nNgười làm đơn')
+                self.assertEqual(lines[2],title.upper())
+                self.assertEqual(lines.count(title.upper()),1)
+                doc=Document()
+                for line in lines:doc.add_paragraph(line)
+                format_resignation(doc)
+                self.assertEqual(doc.paragraphs[2].alignment,Align.CENTER)
+                self.assertEqual(doc.paragraphs[2].runs[0].font.size.pt,16)
+                for paragraph in doc.paragraphs:
+                    self.assertEqual(str(paragraph.runs[0].font.color.rgb),'000000')
+        self.assertIsNone(resignation_paragraphs('Báo cáo','Phân tích đơn vị đo.'))

@@ -109,7 +109,7 @@ class OfficeTools:
                     doc.add_heading(plan.get('title','Tài liệu'),0)
                     for line in plan['content'].splitlines():doc.add_paragraph(line)
                 if 'font_name' in plan:
-                    from docx.shared import Pt,Cm
+                    from docx.shared import Pt,Cm,RGBColor
                     from docx.enum.text import WD_ALIGN_PARAGRAPH
                     from docx.oxml.ns import qn
                     align={'left':WD_ALIGN_PARAGRAPH.LEFT,'center':WD_ALIGN_PARAGRAPH.CENTER,'right':WD_ALIGN_PARAGRAPH.RIGHT,'justify':WD_ALIGN_PARAGRAPH.JUSTIFY}
@@ -121,6 +121,7 @@ class OfficeTools:
                         paragraph.paragraph_format.line_spacing=float(plan.get('line_spacing',1.15))
                         paragraph.paragraph_format.space_after=Pt(6)
                         for run in paragraph.runs:
+                            run.font.color.rgb=RGBColor(0,0,0)
                             run.font.name=plan['font_name'];run.font.size=Pt(float(plan.get('font_size',13)))
                             run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),plan['font_name'])
                             if index==0:run.bold=True

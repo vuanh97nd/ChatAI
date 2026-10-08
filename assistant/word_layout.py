@@ -3,19 +3,23 @@ import re
 
 
 def resignation_paragraphs(title,content):
-    if not re.search(r'đơn\s+xin\s+nghỉ\s+việc',title+'\n'+content,re.I):return None
+    def clean(raw):return re.sub(r'\s+',' ',raw.strip().strip('*# ').strip())
+    title=clean(title)
+    candidates=[clean(raw) for raw in content.splitlines()]
+    letter_title=next((line for line in candidates if re.match(r'^đơn\s+\S',line,re.I) and len(line)<=150),None)
+    if re.match(r'^đơn\s+\S',title,re.I) and len(title)<=150:letter_title=title
+    if not letter_title:return None
     body=[]
-    for raw in content.splitlines():
-        line=raw.strip().strip('*# ').strip()
+    for line in candidates:
         if not line or re.fullmatch(r'[\\\-_=\s]{3,}',line):continue
-        if re.fullmatch(r'đơn\s+xin\s+nghỉ\s+việc',line,re.I):continue
-        if re.match(r'CỘNG HÒA|Độc lập\s*[–-]',line,re.I):continue
+        if line.casefold()==letter_title.casefold() or line.casefold()==title.casefold():continue
+        if re.match(r'CỘNG HÒA|Độc lập\s*[–—-]',line,re.I):continue
         body.append(line)
-    return ['CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM','Độc lập – Tự do – Hạnh phúc','ĐƠN XIN NGHỈ VIỆC',*body]
+    return ['CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM','Độc lập – Tự do – Hạnh phúc',letter_title.upper(),*body]
 
 
 def format_resignation(doc,font_name='Times New Roman',font_size=13):
-    from docx.shared import Pt
+    from docx.shared import Pt,RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH as Align
     from docx.oxml.ns import qn
     signature=False
@@ -36,6 +40,7 @@ def format_resignation(doc,font_name='Times New Roman',font_size=13):
         fmt.keep_with_next=role in ('national','motto','title','recipient','date') or text.casefold() in ('người làm đơn','người viết đơn')
         if role=='signature' and re.match(r'\(?Ký và ghi rõ',text,re.I):fmt.space_after=Pt(36)
         for run in paragraph.runs:
+            run.font.color.rgb=RGBColor(0,0,0)
             run.font.name=font_name;run.font.size=Pt(16 if role=='title' else font_size)
             run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),font_name)
             run.bold=role in ('national','title') or text.casefold() in ('người làm đơn','người viết đơn')
