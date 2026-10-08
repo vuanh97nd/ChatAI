@@ -44,6 +44,12 @@ def validate_config(cfg):
         if not isinstance(cfg[provider+'_model'],str) or not re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',cfg[provider+'_model']):raise ValueError('Tên model API không hợp lệ.')
     if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
     for key,value in {"num_predict":2048,"font_size":13,"auto_python":True}.items():cfg.setdefault(key,value)
+    cfg.setdefault('api_num_predict',4096)
+    cfg.setdefault('api_temperature',min(1,cfg.get('temperature',.2)))
+    if type(cfg['api_num_predict']) is not int or not 128<=cfg['api_num_predict']<=4096:
+        raise ValueError('Token trực tuyến phải từ 128 đến 4096.')
+    if isinstance(cfg['api_temperature'],bool) or not isinstance(cfg['api_temperature'],(int,float)) or not 0<=cfg['api_temperature']<=1:
+        raise ValueError('Độ sáng tạo trực tuyến phải từ 0 đến 1.')
     server = urlparse(cfg.get('server_url',''))
     if cfg.get('server_url') and (server.scheme!='https' or not server.hostname or server.username or server.password or server.query or server.fragment or server.path not in ('','/')):
         raise ValueError('URL server phải là URL gốc HTTPS.')

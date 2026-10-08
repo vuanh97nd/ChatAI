@@ -2149,7 +2149,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.manager.set_enabled(key, False); self.status.setText('Đã tắt ' + key)
 
     def build_settings(self, layout):
-        group = QGroupBox('Cấu hình máy và AI'); form = QFormLayout(group)
+        group = QGroupBox('Cấu hình máy và AI'); group_layout = QVBoxLayout(group)
+        choice_form=QFormLayout();group_layout.addLayout(choice_form)
+        local_group=QGroupBox('AI trên máy · Ollama');form=QFormLayout(local_group)
+        local_note=QLabel('Các model và cấu hình phần cứng dưới đây chỉ dành cho AI chạy trên máy.');local_note.setWordWrap(True);form.addRow(local_note)
+        group_layout.addWidget(local_group)
         self.settings_fields = {}
         from assistant.hardware_profile import LABELS
         self.hardware_info={}
@@ -2163,18 +2167,32 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(form,'Nhận diện máy',self.detect_machine)
         self.button(form,'Tải AI đề xuất',self.download_recommended_ai)
         self.button(form,'Trạng thái GPU / Ollama',self.check_gpu)
-        self.settings_provider=QComboBox();self.settings_provider.addItems([*REMOTE_MODELS,'AI trên máy']);self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'));form.addRow('AI mặc định',self.settings_provider)
-        self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
-        form.addRow(self.auto_python_check)
-        self.button(form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
+        self.settings_provider=QComboBox();self.settings_provider.addItems([*REMOTE_MODELS,'AI trên máy']);self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'));choice_form.addRow('AI mặc định',self.settings_provider)
         for key, label in [('default_model','AI trò chuyện'),('code_model','AI lập trình'),('vision_model','AI đọc ảnh')]:
             field = QComboBox(); field.addItems([n for n,v in CHAT_MODELS.items() if key!='vision_model' or v.get('vision')]); field.setCurrentText(self.cfg.get(key,'gemma3:4b'))
             self.settings_fields[key] = field; form.addRow(label,field)
-        for key,label,low,high,default in [('num_ctx','Ngữ cảnh',1024,8192,4096),('num_predict','Token trả lời tối đa',128,4096,1536),('max_rounds','Số vòng gọi công cụ tối đa',1,20,8)]:
+        for key,label,low,high,default in [('num_ctx','Ngữ cảnh Ollama',1024,32768,4096),('num_predict','Token trả lời trên máy',128,8192,2048)]:
             field = QSpinBox(); field.setRange(low,high); field.setValue(self.cfg.get(key,default))
             self.settings_fields[key]=field; form.addRow(label,field)
         field = QDoubleSpinBox(); field.setRange(0,2); field.setSingleStep(.1); field.setValue(self.cfg['temperature'])
-        self.settings_fields['temperature']=field; form.addRow('Độ sáng tạo',field)
+        self.settings_fields['temperature']=field; form.addRow('Độ sáng tạo trên máy',field)
+        online_group=QGroupBox('AI trực tuyến · API');online_form=QFormLayout(online_group)
+        online_note=QLabel('Không cần tải model hoặc cài Ollama. Flash dành cho chat nhanh; Pro/Suy luận dành cho phân tích phức tạp. Cần Internet và key trên server.');online_note.setWordWrap(True);online_form.addRow(online_note)
+        field=QSpinBox();field.setRange(128,4096);field.setValue(self.cfg.get('api_num_predict',4096))
+        field.setToolTip('Giới hạn câu trả lời API, độc lập với cấu hình máy và nút cấu hình nhẹ. Server hiện giới hạn tối đa 4096 token.')
+        self.settings_fields['api_num_predict']=field;online_form.addRow('Token trả lời trực tuyến',field)
+        field=QDoubleSpinBox();field.setRange(0,1);field.setSingleStep(.1);field.setValue(self.cfg.get('api_temperature',.2))
+        self.settings_fields['api_temperature']=field;online_form.addRow('Độ sáng tạo trực tuyến',field)
+        online_form.addRow(QLabel('Ngữ cảnh API do dịch vụ và dữ liệu gửi quyết định; không dùng ô Ngữ cảnh Ollama.'))
+        group_layout.addWidget(online_group)
+        tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
+        self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
+        tools_form.addRow(self.auto_python_check)
+        self.button(tools_form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
+        field=QSpinBox();field.setRange(1,20);field.setValue(self.cfg.get('max_rounds',8))
+        self.settings_fields['max_rounds']=field;tools_form.addRow('Số vòng Agent trên máy',field)
+        tools_note=QLabel('Điều khiển Word, Excel, CAD và chạy Python vẫn cần công cụ cài trên máy, kể cả khi AI lập kế hoạch qua API.');tools_note.setWordWrap(True);tools_form.addRow(tools_note)
+        group_layout.addWidget(tools_group)
         layout.addWidget(group)
         self.api_key_group=QGroupBox('Key AI trực tuyến · Quản trị viên');api_form=QFormLayout(self.api_key_group);self.api_key_fields={};self.api_model_fields={}
         api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, Gemini và Groq. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))

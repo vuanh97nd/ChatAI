@@ -178,8 +178,8 @@ class SupportMixin:
                     emit({'type':'status','text':'Đang tìm kiếm web trên Worker…'})
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
-            body['options']={'num_predict':cfg.get('num_predict',1536),'temperature':cfg.get('temperature',.2),'num_ctx':cfg.get('num_ctx',4096)}
-            body['max_tokens']=cfg.get('num_predict',1536)
+            body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
+            body['max_tokens']=cfg.get('api_num_predict',4096)
             preparation_finished=time.monotonic()
             events=api_answer_events(api_client,body) if api_client else cloud_events(endpoint,body)
             try:first=next(events)

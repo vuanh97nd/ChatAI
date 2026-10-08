@@ -81,3 +81,16 @@ class OnlineSendVisibilityTest(unittest.TestCase):
         self.assertEqual(len(seen),1)
         self.assertTrue(seen[0]['document_sources_unavailable'])
         self.assertFalse(self.view.store.load(self.view.cid)['running'])
+
+    def test_online_options_do_not_inherit_local_limits(self):
+        self.view.cfg={'num_predict':768,'temperature':.9,'num_ctx':2048,'api_num_predict':3072,'api_temperature':.1}
+        bodies=[]
+        def answer(client,body):
+            bodies.append(body)
+            yield 'meta',{}
+            yield 'delta',{'text':'OK'}
+            yield 'done',{}
+        with patch('assistant.support_ui.api_answer_events',answer):
+            self.start('Xin chào');self.view.task(lambda event:None)
+        self.assertEqual(bodies[0]['options'],{'num_predict':3072,'temperature':.1})
+        self.assertEqual(bodies[0]['max_tokens'],3072)

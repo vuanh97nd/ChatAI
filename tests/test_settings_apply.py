@@ -75,6 +75,17 @@ class SettingsTest(unittest.TestCase):
     def tearDown(self):
         self.root_patch.stop();self.temp.cleanup()
 
+    def test_local_machine_choices_preserve_online_settings(self):
+        u=self.ui
+        u.settings_fields['api_num_predict']=Spin(3072)
+        u.settings_fields['api_temperature']=Spin(.1)
+        u.hardware_info={};u.machine_auto.setChecked(True);u.machine_profile.v='weak'
+        u.save_settings()
+        saved=json.loads((self.root/'config.json').read_text())
+        self.assertEqual(saved['api_num_predict'],3072)
+        self.assertEqual(saved['api_temperature'],.1)
+        self.assertNotEqual(saved['num_predict'],3072)
+
     def test_apply_persists_and_updates_without_changing_page(self):
         u=self.ui;self.assertFalse(u.settings_dirty())
         u.settings_fields['num_ctx'].setValue(2048);u.settings_provider.v='local'
