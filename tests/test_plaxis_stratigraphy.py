@@ -51,3 +51,20 @@ class StratigraphyTests(unittest.TestCase):
         self.assertIs(g.assert_target,soil)
         self.assertIs(soil.material,material)
         self.assertLess(script.index(line),script.index('g.gotomesh()'))
+
+    def test_embankment_stages_use_polygon_not_geometry_soil_reference(self):
+        script=_generate_script(_validate_problem(json.dumps({'type':'embankment_stability'})),'2d',10000,'Test')
+        polygon=object();obsolete_soil=object();phases=[object(),object(),object()]
+        calls=[]
+        class Stages:
+            def deactivate(self,target,phase):
+                if target is not polygon:raise RuntimeError('Unknown object')
+                calls.append(('deactivate',phase))
+            def activate(self,target,phase):
+                if target is not polygon:raise RuntimeError('Unknown object')
+                calls.append(('activate',phase))
+        lines=[line for line in script.splitlines() if line.startswith(('g.activate(emb','g.deactivate(emb'))]
+        self.assertEqual(len(lines),3)
+        exec('\n'.join(lines),{'g':Stages(),'emb_polygon':polygon,'emb':obsolete_soil,
+                               'phase0':phases[0],'phase1':phases[1],'phase2':phases[2]})
+        self.assertEqual(calls,[('deactivate',phases[0]),('activate',phases[1]),('activate',phases[2])])
