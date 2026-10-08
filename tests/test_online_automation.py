@@ -272,6 +272,72 @@ class OnlineAutomationTest(unittest.TestCase):
         list(self.agent.run(self.state))
         self.assertIn('Seequent',self.requests[0][0]['content'])
         self.assertIn('vừa chấp thuận',self.requests[0][0]['content'])
+
+    def test_unsupported_3d_template_is_routed_to_generic_api_without_another_choice(self):
+        self.cfg['windows_apps_auto_execute']=True
+        self.agent.windows.check=lambda:dict(self.cfg)
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        problem={'type':'excavation_pit','excavation_width':50,'excavation_depth':11}
+        self.responses=[json.dumps({'tool':'plaxis_run_problem','arguments':{
+            'version':'3d','project_name':'ExcavationInSand','problem':json.dumps(problem)}}),
+            json.dumps({'answer':'Tôi đã nhận được kết quả tra API.','tool':'','arguments':{}})]
+        agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        events=list(agent.run(self.state))
+        self.assertEqual([p['action'] for p in self.committed],['plaxis_commands'])
+        self.assertEqual(json.loads(self.state['plaxis_active_problem']['problem']),problem)
+        self.assertTrue(any('API tổng quát' in e.get('text','') for e in events))
+        self.assertIn('không hỏi xác nhận bắt đầu',self.requests[-1][0]['content'])
+        registry=self.requests[-1][0]['content'].split('Công cụ: ',1)[1].split('\n',1)[0]
+        self.assertNotIn('"name": "plaxis_run_problem"',registry)
+
+    def test_self_create_keeps_excavation_and_starts_api_discovery(self):
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        self.state['messages']=[{'role':'user','content':'Dựng Excavation in sand PLAXIS 3D'},
+                               {'role':'assistant','content':'Mẫu hiện tại chưa hỗ trợ hố đào 3D.'}]
+        agent.start(self.state,'Tự tạo mẫu đi','DeepSeek Flash','admin')
+        self.assertEqual(self.state['queue'][0]['function']['name'],'plaxis_commands')
+        self.assertEqual(self.state['queue'][0]['function']['arguments']['version'],'3d')
+
+    def test_ok_after_general_api_preserves_mode_and_accepts_wrapped_plan(self):
+        self.cfg['windows_apps_auto_execute']=True
+        self.agent.windows.check=lambda:dict(self.cfg)
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        self.state['messages']=[{'role':'tool','tool_name':'plaxis_commands','content':'{"ok":true}'},
+                               {'role':'assistant','content':'Bắt đầu tạo vật liệu cho Excavation in sand 3D nhé?'}]
+        self.responses=[json.dumps([{'tool':'plaxis_commands','arguments':{'version':'3d',
+                        'commands':[{'command':'soilmat','args':[]}]}}]),
+                        json.dumps({'answer':'Đã nhận kết quả bước tạo vật liệu.','tool':'','arguments':{}})]
+        agent.start(self.state,'ok','DeepSeek Flash','admin')
+        self.assertTrue(self.state['plaxis_general_mode'])
+        list(agent.run(self.state))
+        self.assertEqual(self.committed[0]['action'],'plaxis_commands')
+        self.assertFalse(self.state['running'])
+
+    def test_redundant_confirmation_after_ok_is_replanned_before_display(self):
+        self.cfg['windows_apps_auto_execute']=True
+        self.agent.windows.check=lambda:dict(self.cfg)
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        self.state['messages']=[{'role':'tool','tool_name':'plaxis_commands','content':'{"ok":true}'},
+                               {'role':'assistant','content':'Bắt đầu bước 1 nhé?'}]
+        self.responses=[json.dumps({'answer':'Bạn xác nhận để tôi bắt đầu bước 1 chứ?','tool':'','arguments':{}}),
+                        json.dumps({'tool':'plaxis_commands','arguments':{'version':'3d','commands':[{'command':'commands'}]}}),
+                        json.dumps({'answer':'Đã nhận kết quả API.','tool':'','arguments':{}})]
+        agent.start(self.state,'ok','DeepSeek Flash','admin')
+        events=list(agent.run(self.state))
+        self.assertEqual(self.committed[0]['action'],'plaxis_commands')
+        self.assertFalse(any('xác nhận để tôi bắt đầu' in e.get('text','') for e in events))
+
+    def test_ok_after_a_new_topic_does_not_resume_old_plaxis_workflow(self):
+        self.state['messages']=[{'role':'tool','tool_name':'plaxis_commands','content':'{"ok":true}'},
+                               {'role':'user','content':'Hỏi về thời tiết Hà Nội'},
+                               {'role':'assistant','content':'Bạn muốn xem dự báo hôm nay?'}]
+        self.agent.start(self.state,'ok','DeepSeek Flash','admin')
+        self.assertFalse(self.state['plaxis_general_mode'])
+        self.assertEqual(self.state['queue'],[])
     def test_truncated_plan_retries_with_larger_budget_before_execution(self):
         budgets=[]
         def chat(model,messages,**kwargs):
