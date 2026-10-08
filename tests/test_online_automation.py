@@ -314,3 +314,44 @@ class OnlineAutomationTest(unittest.TestCase):
         agent=OnlineAutomation(None,{},self.store,self.cid,tools,tools)
         names=[s['function']['name'] for s in agent.schemas]
         self.assertNotIn('cad_cdm_layout',names)
+
+class AutomationImageTests(unittest.TestCase):
+    def encoded(self,color='white'):
+        import base64,io
+        from PIL import Image
+        out=io.BytesIO();Image.new('RGB',(16,16),color).save(out,format='JPEG')
+        return base64.b64encode(out.getvalue()).decode()
+    def test_latest_image_is_forwarded_without_text_truncation(self):
+        from assistant.online_automation import planning_messages
+        first=self.encoded();second=self.encoded('red')
+        state={'messages':[{'role':'user','content':'ảnh trước','images':[first]},
+                           {'role':'assistant','content':'Đã đọc'},
+                           {'role':'user','content':'rồi nhé','images':[second]},
+                           {'role':'tool','tool_name':'windows_inspect','content':'đã kiểm tra'}]}
+        messages=planning_messages(state,'Chỉ dẫn hệ thống')
+        images=[part for m in messages if isinstance(m['content'],list) for part in m['content'] if part['type']=='image_url']
+        self.assertEqual(len(images),1)
+        self.assertEqual(images[0]['image_url']['url'],'data:image/jpeg;base64,'+second)
+        self.assertEqual(messages[3]['content'][0]['text'],'rồi nhé')
+    def test_invalid_or_oversized_image_is_rejected(self):
+        from assistant.online_automation import image_message_content
+        for value in ('https://example.org/image.jpg','abc', 'A'*1400000):
+            with self.assertRaises(ValueError):image_message_content('test',value)
+    def test_image_is_saved_and_planned_before_direct_app_action(self):
+        from assistant.online_automation import OnlineAutomation
+        with tempfile.TemporaryDirectory() as td:
+            store=Store(Path(td)/'history.db');cid=store.create();state=store.load(cid)
+            calls=[]
+            def chat(model,messages,**kw):
+                calls.append(messages)
+                return {'message':{'content':json.dumps({'answer':'Tôi đã xem ảnh bạn gửi.','tool':'','arguments':{}})}}
+            client=SimpleNamespace(model='deepseek_flash',chat=chat)
+            tools=SimpleNamespace()
+            agent=OnlineAutomation(client,{},store,cid,tools,tools)
+            encoded=self.encoded()
+            agent.start(state,'mở word theo ảnh này','DeepSeek Flash','admin',image=encoded)
+            self.assertEqual(state['queue'],[])
+            self.assertEqual(store.load(cid)['messages'][-1]['images'],[encoded])
+            list(agent.run(state))
+            self.assertTrue(any(isinstance(m['content'],list) for m in calls[0]))
+            self.assertEqual(state['messages'][-1]['content'],'Tôi đã xem ảnh bạn gửi.')

@@ -1791,8 +1791,6 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if model in REMOTE_MODELS:
             from assistant.online_automation import use_automation
             if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1):
-                if self.pending_image:
-                    QMessageBox.information(self,'Điều khiển ứng dụng','Ảnh đính kèm chưa hỗ trợ trong luồng điều khiển app; ảnh vẫn được giữ.');return
                 self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
@@ -1849,6 +1847,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if prompt is not None:self.begin_app_request()
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
         attachment_paths=list(self.pending_documents) if prompt is not None else []
+        attachment_image=self.pending_image if prompt is not None else None
         if state.get('account_username') not in (None,session['username']):
             self.cid=self.store.create(persist=False);cid=self.cid
         if prompt is not None:
@@ -1901,7 +1900,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         attachments.append({'name':source.name,'path':str(destination)})
                         audit('automation_attachment_staged',{'name':source.name,'path':str(destination)})
                     state['automation_attachments']=attachments
-                    agent.start(state,prompt,model,session['username'])
+                    agent.start(state,prompt,model,session['username'],image=attachment_image)
                     self.store.remember_conversation(session['username'],cid)
                     emit({'type':'sent','cid':cid,'prompt':prompt})
                 elif recover:
@@ -1912,7 +1911,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     if allowed:emit({'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']})
                     agent.approve(state,allowed,expected)
                 def snapshot():
-                    return [{'role':m['role'],'content':m.get('content',''),'source_index':i}
+                    return [{'role':m['role'],'content':m.get('content',''),'images':m.get('images',[]),'source_index':i}
                             for i,m in enumerate(state['messages']) if m['role'] in ('user','assistant') and m.get('content')]
                 emit({'type':'snapshot','messages':snapshot()})
                 try:
