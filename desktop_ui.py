@@ -820,9 +820,6 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def read_attachments(self, paths, progress=None, online=False):
         items=[]
-        from assistant.documents import pdf_vision_ocr
-        pdf_reader=pdf_vision_ocr(self.client,self.cfg.get('vision_model','gemma3:4b'),
-                                  num_ctx=self.cfg.get('num_ctx',4096))
         for raw in paths:
             p=Path(raw)
             if not p.is_file() or p.stat().st_size>10*1024*1024:raise ValueError('Tệp đính kèm không còn hợp lệ: '+p.name)
@@ -830,12 +827,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 ext=p.suffix.lower()
                 if ext in ('.pdf','.docx','.txt','.md'):
                     from assistant.documents import read_local
-                    if ext=='.pdf' and not online:
-                        def read_scan_page(pdf_bytes,page_index):
-                            if progress:progress(f'PDF scan: đang đọc trang {page_index+1} bằng AI đọc ảnh trên máy…')
-                            return pdf_reader(pdf_bytes,page_index)
-                        items.append(read_local(p,pdf_ocr=read_scan_page,foxit_ocr=True))
-                    else:items.append(read_local(p,foxit_ocr=True))
+                    items.append(read_local(p))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')
