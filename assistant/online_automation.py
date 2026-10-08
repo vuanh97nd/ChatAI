@@ -170,6 +170,63 @@ def plaxis_call(prompt, cfg, has_remote=False):
     return {'function': {'name': 'windows_list_apps', 'arguments': {'query': 'PLAXIS 2D'}}}
 
 
+def _plaxis_history_call(prompt, cfg, state, plaxis_app, plaxis_remote):
+    """Re-inject a Plaxis tool call for short follow-up prompts (thử lại, cách 2, …).
+
+    Looks at the last 10 messages for a previous plaxis_run_problem or
+    plaxis_generate_script call and re-uses its arguments.  For 'cách 2'
+    requests it always switches to plaxis_generate_script.
+    """
+    if not cfg.get('windows_apps_enabled'): return None
+    is_followup = bool(re.match(
+        r'\s*(?:thử\s*lại|cách\s*(?:2|hai)|tạo\s*script|file\s*script|'
+        r'chạy\s*lại|ok\s*rồi|được\s*rồi|đồng\s*ý)\s*[.!]?\s*$',
+        prompt, re.I))
+    want_generate = bool(re.search(r'cách\s*(?:2|hai)|tạo\s*script|file\s*script', prompt, re.I))
+    if not is_followup: return None
+
+    messages = state.get('messages', [])
+    # Find the most recent plaxis tool call
+    prev_args = None
+    prev_tool = None
+    for msg in reversed(messages[-20:]):
+        if msg.get('tool_calls'):
+            tc = msg['tool_calls'][0]
+            if tc['function']['name'] in ('plaxis_run_problem', 'plaxis_generate_script'):
+                prev_args = tc['function']['arguments']
+                prev_tool = tc['function']['name']
+                break
+
+    if prev_args is None:
+        # No previous plaxis call — reconstruct default embankment args if context exists
+        for msg in reversed(messages[-10:]):
+            content = msg.get('content', '')
+            if content and re.search(r'nền\s*đắp|bờ\s*đắp|embankment|plaxis', content, re.I):
+                prev_args = {
+                    'version': '2d',
+                    'project_name': 'EmbankmentAnalysis',
+                    'problem': json.dumps({'type': 'embankment_stability',
+                                           'embankment_height': 4.0,
+                                           'embankment_top_width': 2.0},
+                                          ensure_ascii=False),
+                }
+                prev_tool = 'plaxis_generate_script'
+                break
+
+    if prev_args is None: return None
+
+    # Decide which tool to use
+    if want_generate or (prev_tool == 'plaxis_run_problem' and not plaxis_remote):
+        # "cách 2" or no remote → always generate script file
+        if not plaxis_app: return None
+        return {'function': {'name': 'plaxis_generate_script', 'arguments': prev_args}}
+    if prev_tool == 'plaxis_run_problem' and plaxis_remote:
+        return {'function': {'name': 'plaxis_run_problem', 'arguments': prev_args}}
+    if prev_tool == 'plaxis_generate_script' and plaxis_app:
+        return {'function': {'name': 'plaxis_generate_script', 'arguments': prev_args}}
+    return None
+
+
 def direct_drawing_answer(state,name,result):
     if name!='cad_create_open' or not state.get('direct_drawing'):return None
     if not result.get('ok'):return 'Chưa tạo/mở được bản vẽ: '+str(result.get('error','Chưa có kết quả xác nhận.'))
@@ -223,6 +280,7 @@ class OnlineAutomation:
                      online_automation=True,automation_rounds=0)
         call=None if image is not None else (search_call(prompt,self.cfg)
               or (cdm_layout_call(prompt,self.cfg) if self.cdm_layout and not any(str(a.get('path','')).lower().endswith('.dxf') for a in state.get('automation_attachments',[])) else None)
+              or (_plaxis_history_call(prompt,self.cfg,state,self.plaxis_app,self.plaxis_remote) if (self.plaxis_remote or self.plaxis_app) else None)
               or (plaxis_call(prompt,self.cfg,bool(self.plaxis_remote)) if (self.plaxis_remote or self.plaxis_app) else None)
               or (drawing_call(prompt,self.cfg) if self.cad_app else None)
               or application_call(prompt,self.cfg))
@@ -289,6 +347,32 @@ class OnlineAutomation:
                     yield {'type':'status','text':'Đang thực hiện theo quyền điều khiển ứng dụng đã cấp…'}
                     continue
                 yield {'type':'pending'};return
+            # Auto-fallback: plaxis_run_problem failed because plxscripting not installed
+            # → inject plaxis_generate_script with the same args, bypassing AI planning
+            if self.plaxis_app and not state.get('_plaxis_gen_fallback'):
+                last_tool_msg = next(
+                    (m for m in reversed(state['messages'])
+                     if m.get('role') == 'tool' and m.get('tool_name') == 'plaxis_run_problem'),
+                    None)
+                if last_tool_msg:
+                    try: last_res = json.loads(last_tool_msg['content'])
+                    except Exception: last_res = {}
+                    if not last_res.get('ok') and 'plxscripting' in last_res.get('error', ''):
+                        orig = next(
+                            (m['tool_calls'][0] for m in reversed(state['messages'])
+                             if m.get('tool_calls')
+                             and m['tool_calls'][0]['function']['name'] == 'plaxis_run_problem'),
+                            None)
+                        if orig:
+                            state['_plaxis_gen_fallback'] = True
+                            fallback = {'function': {'name': 'plaxis_generate_script',
+                                                     'arguments': orig['function']['arguments']}}
+                            state['queue'] = [fallback]
+                            state['messages'].append({'role': 'assistant', 'content':
+                                'plxscripting chưa cài; đang tạo file script Python để bạn chạy trong Plaxis…'})
+                            yield {'type': 'status',
+                                   'text': 'Chưa kết nối trực tiếp được; đang tạo script thủ công…'}
+                            continue
             if state['automation_rounds']>=8:
                 text='Đã đạt giới hạn 8 bước lập kế hoạch; hãy kiểm tra kết quả trước khi tiếp tục.'
                 state['messages'].append({'role':'assistant','content':text});state['running']=False;self.save(state)

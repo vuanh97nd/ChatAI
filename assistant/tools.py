@@ -222,7 +222,8 @@ WRITES.add('plaxis_generate_script')
 EXTRA_TOOLS.append(('plaxis_app', schema('plaxis_generate_script',
     'Tạo script Python cho Plaxis 2D/3D để phân tích địa kỹ thuật. '
     'Hỗ trợ: slope_stability (ổn định mái dốc, Bishop/Fellenius), '
-    'foundation_settlement (lún móng nông), retaining_wall (tường chắn đất). '
+    'foundation_settlement (lún móng nông), retaining_wall (tường chắn đất), '
+    'embankment_stability (ổn định bờ đắp/nền đắp, Hardening Soil, SF drained/undrained). '
     'version: "2d" hoặc "3d". '
     'problem: chuỗi JSON mô tả bài toán, ví dụ: '
     '{"type":"slope_stability","slope_angle":30,"slope_height":5,'
