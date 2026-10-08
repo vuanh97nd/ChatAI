@@ -22,6 +22,12 @@ pip install plxscripting
    - **Output port**: 10001
 4. Nhấn **Start** — trạng thái hiện "Server is running"
 
+## Quy trình làm việc tổng quát với PLAXIS
+
+Với bài toán không có mẫu dựng sẵn, ChatAI dùng `plaxis_commands` để đọc API và điều khiển dự án đang mở. Các lượt làm việc tổng quát được giới hạn ở 12 vòng lập kế hoạch để tránh một yêu cầu chạy không kiểm soát; nếu bài còn dang dở, kiểm tra trạng thái đã xác minh rồi gửi yêu cầu tiếp tục.
+
+Để giảm độ trễ, AI được hướng dẫn gom các lần đọc liên quan và mỗi nhóm thay đổi nhỏ vào một lần gọi công cụ. Sau khi một lệnh thay đổi thành công, không được chạy lại chỉ vì lượt đọc xác minh sau đó lỗi. Đối tượng mới cần được xác nhận bằng kết quả đọc trạng thái thực; việc tạo hình học lặp lại, đặc biệt extrude nhiều lần từ cùng một mặt, cần xác minh không chồng lấn và đúng tài liệu trước khi tiếp tục.
+
 ---
 
 ## Công cụ AI: `plaxis_run_problem`

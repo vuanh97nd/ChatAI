@@ -5,6 +5,8 @@ from pathlib import PureWindowsPath
 from .tools import EXTRA_TOOLS, validate_call
 from .experience import repeated_failure, task_record
 
+PLAXIS_AUTOMATION_ROUND_LIMIT = 12
+
 
 def plan_json(raw, label):
     text=raw.strip().lstrip('\ufeff').strip()
@@ -586,7 +588,7 @@ class OnlineAutomation:
                             yield {'type': 'status',
                                    'text': 'Chưa kết nối trực tiếp được; đang tạo script thủ công…'}
                             continue
-            round_limit=64 if self.plaxis_remote else 8
+            round_limit=PLAXIS_AUTOMATION_ROUND_LIMIT if self.plaxis_remote else 8
             if state['automation_rounds']>=round_limit:
                 text=f'Đã đạt giới hạn {round_limit} bước lập kế hoạch; hãy kiểm tra kết quả trước khi tiếp tục.'
                 state['messages'].append({'role':'assistant','content':text});state['running']=False;self.save(state)
@@ -639,6 +641,8 @@ class OnlineAutomation:
                               'arguments nên là đối tượng JSON, tránh mã hóa JSON thành chuỗi lồng nhau.')
             messages[0]['content']+='\n'+instruction_note
             messages[0]['content']+='\nVới bài toán PLAXIS không có mẫu, dùng plaxis_commands để tra lệnh và dựng đúng bài từng bước. Yêu cầu "tự tạo mẫu"/"tìm cách khác" giữ nguyên bài đang làm, không đổi sang embankment chỉ vì có mẫu sẵn. Không tự đổi thông số, bỏ strut/neo/tải hoặc đề xuất giản lược nếu chưa được yêu cầu. Chỉ hỏi đúng dữ kiện còn thiếu từ tài liệu.'
+            if any(schema['function']['name']=='plaxis_commands' for schema in planning_schemas):
+                messages[0]['content']+='\nKỷ luật PLAXIS: thao tác trên dự án đang mở, không tạo project mới. Trước khi sửa, đọc trạng thái/collection liên quan; gom các lần đọc có liên quan và một nhóm thay đổi nhỏ vào ít lượt gọi nhất. Một lệnh thay đổi thành công được xem là đã áp dụng: không lặp lại vì phản hồi hoặc bước xác minh sau đó bị lỗi. Ghi nhận tên đối tượng thực trả về, không tạo lại đối tượng đã có. Trước khi extrude cùng một mặt nhiều lần, xác minh các khối dự kiến không chồng lấn và đúng manual; nếu không thể xác minh thì dừng bước đó, không tự đoán. Sau mỗi nhóm, đọc lại đối tượng vừa tạo để xác nhận. Chỉ tiếp tục việc thực sự chưa làm; không gửi lời hứa thao tác ở lượt sau thay cho việc gọi công cụ trong lượt này.'
             if re.fullmatch(r'\s*(?:có|ok|đồng ý|yes|[1-3])\s*[.!]?\s*',question,re.I):
                 proposal=next((m.get('content','') for m in reversed(state['messages'][:-1])
                                if m.get('role')=='assistant' and m.get('content')),'')
