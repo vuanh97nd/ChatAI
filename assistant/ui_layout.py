@@ -60,7 +60,6 @@ def sidebar(win):
     for button in win.sidebar.findChildren(type(win.new_btn)):
         if button.text() in rename:
             button.setText(rename[button.text()])
-    win.delete_btn.hide()  # chuyển vào menu ⋯
     for label in _labels(win, 'Gần đây'):
         if label.text() == 'Gần đây':
             _style(label, 'color:#8f8f8f;font-size:12px;font-weight:600;padding:10px 12px 2px 12px;')
