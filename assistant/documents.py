@@ -161,8 +161,10 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False):
     try:
         result=read_bytes(p.read_bytes(),name=p.name,pdf_ocr=pdf_ocr)
         return {**result,'file':p.name,'source':str(p)}
-    except ValueError as exc:
-        if foxit_ocr and 'OCR' in str(exc) and p.suffix.lower()=='.pdf':
+    except (ValueError,RuntimeError) as exc:
+        # Never turn a cancellation or an intentional page limit into UI OCR.
+        stopped=any(word in str(exc).casefold() for word in ('đã dừng','cancel','giới hạn đọc ảnh','chạm giới hạn'))
+        if foxit_ocr and not stopped and ('OCR' in str(exc) or pdf_ocr is not None) and p.suffix.lower()=='.pdf':
             from assistant.foxit_ocr_automation import foxit_ocr as _foxit_ocr,available as _foxit_available
             if not _foxit_available():
                 raise ValueError('OCR cục bộ không khả dụng: cần Windows và thư viện pywinauto (pip install pywinauto).')
@@ -170,7 +172,7 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False):
                 ocr_path=_foxit_ocr(p)
             except Exception as foxit_err:
                 raise ValueError(f'Foxit OCR thất bại: {foxit_err}') from foxit_err
-            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=pdf_ocr)
+            result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=None)
             return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
         raise
 
