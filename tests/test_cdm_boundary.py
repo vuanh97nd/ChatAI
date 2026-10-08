@@ -77,3 +77,17 @@ class BoundaryTests(unittest.TestCase):
             source.write_bytes(source.read_bytes()+b'\n')
             with self.assertRaisesRegex(PermissionError,'đã đổi'):tools.commit(plan)
             self.assertFalse(Path(plan['path']).exists())
+
+
+    def test_shared_grid_origin_keeps_adjacent_regions_aligned(self):
+        d,e=self.doc(((0,0),(12,0),(12,10),(0,10)))
+        other=d.modelspace().add_lwpolyline([(0,10),(12,10),(12,20),(0,20)],close=True)
+        origin=(1,1)
+        first=self.layout(d,e,grid_origin=origin)
+        second=self.layout(d,other,grid_origin=origin)
+        self.assertEqual(len(first['centers']),30)
+        self.assertEqual(len(second['centers']),30)
+        for x,y in first['centers']+second['centers']:
+            self.assertAlmostEqual((x-1)%2,0)
+            self.assertAlmostEqual((y-1)%2,0)
+        self.assertEqual(min(math.dist(a,b) for a in first['centers'] for b in second['centers']),2)

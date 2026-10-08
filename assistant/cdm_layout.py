@@ -311,6 +311,7 @@ class CdmLayoutApp:
         if app.name.lower() not in ('acad.exe','acadlt.exe'):raise ValueError('Chọn EXE AutoCAD đã được phép.')
         values={key:args[key] for key in ('handle','diameter_m','spacing_x_m','spacing_y_m','drawing_units')}
         values.update(edge_clearance_m=args.get('edge_clearance_m',0),angle_deg=args.get('angle_deg',0))
+        if 'grid_origin' in args:values['grid_origin']=args['grid_origin']
         result=layout_in_boundary(doc,**values)
         destination=self.files.path(str(source.with_name(source.stem+'-CDM-'+uuid.uuid4().hex[:8]+'.dxf')),exists=False)
         plan.update(app=str(app),sha256=fingerprint(app),path=str(destination),values=values,

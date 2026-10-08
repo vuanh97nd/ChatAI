@@ -377,9 +377,10 @@ EXTRA_TOOLS.append(('cdm_layout',schema('cad_cdm_fill_boundary',
     'Giữ bố cục, entities, styles và layers gốc; thêm layer riêng và lưu bản sao mới. Không tạo bản vẽ rời. '
     'handle lấy từ cad_cdm_regions hoặc LIST; xác nhận drawing_units mm/cm/m/inch theo kích thước thực vì header có thể sai. '
     'diameter_m, spacing_x_m, spacing_y_m và edge_clearance_m đều tính bằng mét, tự đổi sang drawing_units. '
-    'edge_clearance_m là khoảng cách từ mép cọc đến biên; mặc định 0. angle_deg xoay lưới, mặc định 0. '
+    'edge_clearance_m là khoảng cách từ mép cọc đến biên; mặc định 0. angle_deg xoay lưới, mặc định 0. grid_origin=[x,y] là tọa độ tim một cọc theo đơn vị bản vẽ; dùng cùng gốc khi bố trí nhiều vùng để lưới đồng pha. '
     'Cả vòng tròn phải nằm trong vùng; lưới căn giữa bounding box, tối đa 10000 cọc. Không hỗ trợ cung bulge, biên tự giao hay vùng có lỗ. '
     'Không sửa font toàn bản vẽ gốc, không chèn chữ che hình. Chưa tính sức chịu tải/lún/ổn định.',
     {'app':TEXT,'path':TEXT,'handle':TEXT,'drawing_units':TEXT,'diameter_m':{'type':'number'},
-     'spacing_x_m':{'type':'number'},'spacing_y_m':{'type':'number'},'edge_clearance_m':{'type':'number'},'angle_deg':{'type':'number'}},
+     'spacing_x_m':{'type':'number'},'spacing_y_m':{'type':'number'},'edge_clearance_m':{'type':'number'},'angle_deg':{'type':'number'},
+     'grid_origin':{'type':'array','items':{'type':'number'},'minItems':2,'maxItems':2}},
     ['app','path','handle','drawing_units','diameter_m','spacing_x_m','spacing_y_m'])))

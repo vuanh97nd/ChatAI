@@ -53,7 +53,7 @@ def list_regions(doc, start=0, limit=40):
             'units_header':doc.units,'note':'Chọn handle theo vùng người dùng chỉ định; không tự chọn polyline lớn nhất hoặc khung Defpoints. Xác nhận đơn vị hình học, header DXF có thể sai.'}
 
 
-def layout_in_boundary(doc, handle, diameter_m, spacing_x_m, spacing_y_m, drawing_units, edge_clearance_m=0, angle_deg=0):
+def layout_in_boundary(doc, handle, diameter_m, spacing_x_m, spacing_y_m, drawing_units, edge_clearance_m=0, angle_deg=0, grid_origin=None):
     if drawing_units not in MM_PER_UNIT:raise ValueError('Xác nhận drawing_units: mm/cm/m/inch; không suy đoán từ header.')
     for name,v in [('D',diameter_m),('sx',spacing_x_m),('sy',spacing_y_m),('mép',edge_clearance_m),('góc',angle_deg)]:
         if isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or (name not in ('mép','góc') and v<=0) or (name=='mép' and v<0):raise ValueError('Thông số cọc không hợp lệ: '+name)
@@ -73,6 +73,13 @@ def layout_in_boundary(doc, handle, diameter_m, spacing_x_m, spacing_y_m, drawin
     if nx*ny>MAX_CANDIDATES or nx*ny*len(edges)>5_000_000:raise ValueError('Lưới vượt 100000 vị trí thử; kiểm tra đơn vị hoặc chia vùng.')
     # Center the grid in the bounding box; spacing and phase stay deterministic.
     x0=(minx+maxx-(nx-1)*sx)/2;y0=(miny+maxy-(ny-1)*sy)/2
+    if grid_origin is not None:
+        if len(grid_origin)!=2 or any(not isinstance(v,(int,float)) or isinstance(v,bool) or not math.isfinite(v) for v in grid_origin):raise ValueError('Gốc lưới không hợp lệ.')
+        gx,gy=local(grid_origin)
+        x0=gx+math.ceil((minx+clearance-gx)/sx-1e-9)*sx
+        y0=gy+math.ceil((miny+clearance-gy)/sy-1e-9)*sy
+        nx=max(0,math.floor((maxx-clearance-x0)/sx+1e-9)+1)
+        ny=max(0,math.floor((maxy-clearance-y0)/sy+1e-9)+1)
     def inside(x,y):
         hit=False
         for (ax,ay),(bx,by) in edges:
