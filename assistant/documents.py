@@ -10,17 +10,19 @@ from html.parser import HTMLParser
 MAX_BYTES=20*1024**2
 MAX_TEXT=1_000_000
 MAX_PAGES=1500
-MAX_OCR_PAGES=40
+MAX_OCR_PAGES=200
 
 
 def pdf_vision_ocr(client, model='gemma3:4b', *, num_ctx=4096):
     """Return a callback that locally renders and reads a scanned PDF page with Ollama vision."""
-    cached_pdf=None
+    cached_pdf=None;cached_raw=None
     def read_page(raw, page_index):
-        nonlocal cached_pdf
+        nonlocal cached_pdf,cached_raw
         try:
             import pypdfium2 as pdfium
-            if cached_pdf is None:cached_pdf=pdfium.PdfDocument(raw)
+            if cached_pdf is None or cached_raw!=raw:
+                if cached_pdf is not None:cached_pdf.close()
+                cached_pdf=pdfium.PdfDocument(raw);cached_raw=raw
             page=cached_pdf[page_index]
             page_width,page_height=page.get_size()
             scale=min(2.0,2400.0/max(page_width,page_height,1.0))
@@ -93,7 +95,11 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
                 if pdf_ocr and len(ocr_pages)<MAX_OCR_PAGES:
                     text=pdf_ocr(raw,index-1) or ''
                     if text.strip():ocr_pages.append(index)
-                    else:issues.append(f'Trang {index} không nhận được chữ bằng OCR.')
+                    elif getattr(pdf_ocr,'skip_reason',''):
+                        if not ocr_limit_reported:
+                            issues.append(f'Từ trang {index}: '+pdf_ocr.skip_reason)
+                            ocr_limit_reported=True
+                    else:issues.append(f'Trang {index} đã gửi OCR nhưng không nhận được chữ.')
                 elif pdf_ocr:
                     if not ocr_limit_reported:
                         issues.append(f'Đã chạm giới hạn OCR {MAX_OCR_PAGES} trang; các trang scan còn lại chưa đọc.')
@@ -134,6 +140,7 @@ def read_bytes(raw,kind='',name='document',pdf_ocr=None):
         units=[{'location':f'đoạn {i}','text':x} for i,x in enumerate(re.split(r'\n\s*\n',text[:MAX_TEXT]),1) if x.strip()]
     if not units or not any(x['text'].strip() for x in units):
         if pdf_ocr:
+            if getattr(pdf_ocr,'skip_reason',''):raise ValueError(pdf_ocr.skip_reason)
             raise ValueError('PDF không có lớp chữ và OCR không nhận diện được chữ. Hãy dùng bản scan rõ hơn hoặc kiểm tra dịch vụ AI đọc ảnh đã chọn.')
         raise ValueError('PDF không có lớp chữ trích xuất; cần bật luồng OCR cục bộ trước khi tóm tắt.')
     combined='\n\n'.join('['+x['location']+']\n'+x['text'] for x in units)

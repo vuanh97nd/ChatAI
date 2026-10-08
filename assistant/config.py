@@ -31,9 +31,12 @@ def validate_config(cfg):
         cfg.setdefault(key,False)
         if type(cfg[key]) is not bool:raise ValueError('Quyền công cụ trực tuyến phải là bật/tắt.')
     cfg.setdefault('online_document_provider','deepseek_flash')
-    cfg.setdefault('online_document_pages',5)
+    if cfg.get('online_document_revision')!=1:
+        if cfg.get('online_document_pages',5)==5:cfg['online_document_pages']=40
+        cfg['online_document_revision']=1
+    cfg.setdefault('online_document_pages',40)
     if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia'):raise ValueError('API đọc PDF không hợp lệ.')
-    if type(cfg['online_document_pages']) is not int or not 1<=cfg['online_document_pages']<=40:raise ValueError('Số trang trực tuyến phải từ 1 đến 40.')
+    if type(cfg['online_document_pages']) is not int or not 1<=cfg['online_document_pages']<=200:raise ValueError('Số trang trực tuyến phải từ 1 đến 200.')
 
     if cfg['machine_profile'] not in ('weak','medium','high'):raise ValueError('Cấu hình máy không hợp lệ.')
     if type(cfg['machine_auto_ai']) is not bool:raise ValueError('Tự chọn AI phải là bật/tắt.')
