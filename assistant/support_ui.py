@@ -113,7 +113,11 @@ class SupportMixin:
             history=conversation_context(state['messages'],online=provider!='cloudflare')
             state['account_username']=owner;state['model']=selected_model
             state['online_automation']=False
-            state['messages'].append({'role':'user','content':prompt})
+            from .message_attachments import attachment_records
+            message={'role':'user','content':prompt}
+            if attached_paths:message['documents']=attachment_records(attached_paths)
+            if attached_image:message['images']=[attached_image]
+            state['messages'].append(message)
             state['running']=True;state['pending']=None;state['queue']=[]
             self.store.save(cid,state)
             emit({'type':'sent','cid':cid,'prompt':prompt})
@@ -180,7 +184,7 @@ class SupportMixin:
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
             from .document_memory import DocumentMemory
-            memory_context=DocumentMemory(self.store).context(owner,prompt)
+            memory_context=DocumentMemory(self.store).context(owner,prompt,messages=state['messages'])
             if memory_context:body['document_context']=(body.get('document_context','')+memory_context)[:140000]
             body['options']={'num_predict':cfg.get('api_num_predict',4096),'temperature':cfg.get('api_temperature',.2)}
             body['max_tokens']=cfg.get('api_num_predict',4096)

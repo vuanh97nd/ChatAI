@@ -90,10 +90,22 @@ class DocumentMemory:
                 except (ValueError,TypeError,KeyError):continue
                 self.remember(owner,[item])
 
-    def context(self,owner,query,limit=30000):
+    def context(self,owner,query,limit=30000,messages=None):
+        # A retry refers to the most recent user task, not the newest cached PDF.
+        if re.fullmatch(r'\s*(?:thử lại(?: nhé)?|chạy lại|retry|ok|đồng ý)\s*[.!]?\s*',query,re.I):
+            users=[m.get('content','') for m in (messages or []) if m.get('role')=='user']
+            if users and users[-1]==query:users.pop()
+            query=next((q for q in reversed(users) if not re.fullmatch(r'\s*(?:thử lại(?: nhé)?|chạy lại|retry|ok|đồng ý)\s*[.!]?\s*',q,re.I)),'')
         docs=self.records(owner)
         if not docs:return ''
         words=set(re.findall(r'\w{3,}',query.casefold()))-{'tài','liệu','đọc','hãy','của','trong','theo','được','nhớ','lại'}
+        referential=bool(re.search(r'tài liệu|file|pdf|văn bản|đề bài|đã đọc',query,re.I))
+        if not query.strip():return ''
+        if not referential:
+            docs=[d for d in docs if any(w in (d['file']+' '+d['text']).casefold() for w in words)]
+        elif not words:
+            docs=docs[:1]
+        if not docs:return ''
         sections=[];remaining=limit
         for d in docs[:5]:
             chunks=[d['text'][i:i+2500] for i in range(0,len(d['text']),2500)]

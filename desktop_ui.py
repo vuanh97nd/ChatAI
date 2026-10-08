@@ -1043,6 +1043,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for msg in messages:
             if msg['role'] == 'user':
                 content = html.escape(msg['content']).replace('\n', '<br>')
+                from assistant.message_attachments import attachment_html
+                content+=attachment_html(msg.get('documents',[]))
                 for encoded in msg.get('images',[]):
                     import hashlib
                     image=QImage.fromData(QByteArray.fromBase64(encoded.encode('ascii')))
@@ -1109,7 +1111,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.conversation_title.setToolTip(full_title)
         state = initial["state"] if initial else self.store.load(self.cid)
         self.saved_code_files=state.get('generated_files',[])
-        self.chat_messages = [{'role': m['role'], 'content': m.get('content',''), 'images': m.get('images',[]),
+        self.chat_messages = [{'role': m['role'], 'content': m.get('content',''), 'images': m.get('images',[]), 'documents':m.get('documents',[]),
                                'media':m.get('media',[]),'source_index':i} for i,m in enumerate(state['messages'])
                               if m['role'] in ('user', 'assistant') and (m.get('content') or m.get('media'))]
         authorized=bool(self.server_session)
@@ -1525,7 +1527,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if last:
             self.input.setPlainText(last['content'])
             if last.get('images'):self.pending_image=last['images'][0]
-            self.pending_documents=[d['source'] for d in state.get('attached_documents',[]) if d.get('source') and Path(d['source']).is_file()]
+            self.pending_documents=[d.get('path') or d.get('source') for d in last.get('documents',[]) if (d.get('path') or d.get('source')) and Path(d.get('path') or d.get('source')).is_file()]
         self.input.setFocus();self.status.setText('Đã chọn lại chuyên gia. Bấm Gửi để xử lý lại yêu cầu.')
 
     def mode_changed(self, index):
@@ -1727,7 +1729,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 if not session:self.trial.consume(cid,state)
                 self.store.remember_conversation(owner,cid)
                 def snapshot():
-                    return [{'role':m['role'],'content':m.get('content',''),'images':m.get('images',[]),
+                    return [{'role':m['role'],'content':m.get('content',''),'images':m.get('images',[]), 'documents':m.get('documents',[]),
                              'media':m.get('media',[]),'source_index':i}
                             for i,m in enumerate(state['messages'])
                             if m['role'] in ('user','assistant') and (m.get('content') or m.get('media'))]
@@ -1911,6 +1913,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         audit('automation_attachment_staged',{'name':source.name,'path':str(destination)})
                     state['automation_attachments']=attachments
                     agent.start(state,prompt,model,session['username'],image=attachment_image)
+                    state['messages'][-1]['documents']=attachments
+                    agent.save(state)
                     self.store.remember_conversation(session['username'],cid)
                     emit({'type':'sent','cid':cid,'prompt':prompt})
                 elif recover:
@@ -1921,7 +1925,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     if allowed:emit({'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']})
                     agent.approve(state,allowed,expected)
                 def snapshot():
-                    return [{'role':m['role'],'content':m.get('content',''),'images':m.get('images',[]),'source_index':i}
+                    return [{'role':m['role'],'content':m.get('content',''),'images':m.get('images',[]), 'documents':m.get('documents',[]),'source_index':i}
                             for i,m in enumerate(state['messages']) if m['role'] in ('user','assistant') and m.get('content')]
                 emit({'type':'snapshot','messages':snapshot()})
                 try:
@@ -2015,6 +2019,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     state['video_source_paths']=media_paths
                     if session:agent.start(state, prompt, model, images=images,expert_mode=requested_mode==5,expert_override=requested_expert)
                     else:self.trial.start(agent,state,prompt,model,images=images,expert_mode=requested_mode==5,expert_override=requested_expert)
+                    from assistant.message_attachments import attachment_records
+                    state['messages'][-1]['documents']=attachment_records(attached_paths)
+                    agent.save(state)
                     state['web_results']=web_results
                     state.pop('attached_documents',None)
                     if attached_paths:
@@ -2056,7 +2063,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         emit({'type':'app_activity','text':'Đang thực hiện: '+action})
                     agent.approve(state, allowed)
                 def snapshot():
-                    return [{'role': m['role'], 'content': m.get('content',''), 'images': m.get('images',[]),
+                    return [{'role': m['role'], 'content': m.get('content',''), 'images': m.get('images',[]), 'documents':m.get('documents',[]),
                              'media':m.get('media',[]),'source_index':i} for i,m in enumerate(state['messages'])
                             if m['role'] in ('user', 'assistant') and (m.get('content') or m.get('media'))]
                 if prompt is not None:emit({'type':'sent','cid':cid,'prompt':prompt})
