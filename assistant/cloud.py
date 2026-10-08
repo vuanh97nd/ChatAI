@@ -369,13 +369,18 @@ class ServerApiClient:
         import random,time
         from threading import Event
         cancel=self.cancel_event or Event()
-        for attempt in range(self.retry_limit):
+        for attempt in range(max(2,self.retry_limit)):
             if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
             try:
                 request=lambda:request_account(self.session['endpoint'],'/api/provider/model',body,timeout=self.timeout)
                 result=cancellable_request(request,cancel,self.on_status) if self.cancel_event is not None else request()
                 break
             except AccountAPIError as error:
+                if error.status==502 and error.code in ('EMPTY_AI_RESPONSE','AI_OUTPUT_LIMIT') and attempt==0:
+                    body['repair_response']=True
+                    body['max_tokens']=min(8192 if body.get('format') else 4096,max(2048,int(body['max_tokens'])*2))
+                    if self.on_status:self.on_status('AI trả nội dung rỗng; đang tự khôi phục phản hồi một lần…')
+                    continue
                 if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)!='nvidia' or error.status!=429 or error.code=='QUOTA_EXHAUSTED' or attempt==self.retry_limit-1:raise
                 delay=(attempt+1)*15+random.uniform(0,2)
                 if error.retry_after:

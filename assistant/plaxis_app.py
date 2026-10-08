@@ -222,6 +222,17 @@ def _soil_lines(layers, version):
     return '\n'.join(lines)
 
 
+def _stratigraphy_lines(layers, version):
+    """Create positive-thickness strata and assign each material before meshing."""
+    lines=['g.gotosoil()', 'bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)',
+           'bh.Head = 0']
+    for i,layer in enumerate(layers):
+        lines.append(f'g.soillayer({layer["thickness"]!r})')
+        lines.append(f'g.setmaterial(g.Soillayers[{i}].Soil, soil{i+1})')
+    lines.append('g.gotostructures()')
+    return '\n'.join(lines)
+
+
 def _generate_slope_stability(problem, version, port, project_name):
     angle = problem['slope_angle']
     height = problem['slope_height']
@@ -242,16 +253,8 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
 
-    # Geometry: simple slope polygon
-    lines.append('# Hình học mái dốc')
-    lines.append(f'g.borehole(0)')
-    depth = sum(l['thickness'] for l in layers)
-    lines.append(f'g.borehole(0).Head = 0')
-    cum = 0.0
-    for i, layer in enumerate(layers):
-        cum += layer['thickness']
-        lines.append(f'g.soillayer({i})')
-
+    lines.append('# Địa tầng và gán vật liệu đất')
+    lines.append(_stratigraphy_lines(layers, version))
     lines.append('')
     lines.append('# Mái dốc dạng polyline')
     lines.append(f'slope = g.line(({-base:.2f}, 0), (0, 0), (0, {height:.2f}), ({total_width:.2f}, {height:.2f}))')
@@ -290,9 +293,7 @@ def _generate_foundation_settlement(problem, version, port, project_name):
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
     lines.append('# Hình học mô hình (đối xứng trục, nửa mô hình)')
-    lines.append(f'g.borehole(0)')
-    for i, layer in enumerate(layers):
-        lines.append(f'g.soillayer({i})  # {layer["name"]}, dày {layer["thickness"]} m')
+    lines.append(_stratigraphy_lines(layers, version))
     lines.append('')
     lines.append(f'# Móng (tải tập trung phân bố đều trên bề mặt rộng {B} m)')
     lines.append(f'g.lineload(0, -{D}, {B / 2:.3f}, -{D})')
@@ -326,6 +327,7 @@ def _generate_retaining_wall(problem, version, port, project_name):
     lines.append('')
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
+    lines.append(_stratigraphy_lines(layers, version))
     lines.append('# Vật liệu tường (bê tông cốt thép)')
     lines.append('wall_mat = g.platemat()')
     lines.append('wall_mat.setproperties("Identification", "Tuong BTCT")')
@@ -397,9 +399,7 @@ def _generate_excavation_pit(problem, version, port, project_name):
     lines.append('')
 
     lines.append('# Hình học: mô hình nửa đối xứng (trục đối xứng tại x=0)')
-    lines.append(f'g.borehole(0)')
-    for i, layer in enumerate(layers):
-        lines.append(f'g.soillayer({i})  # {layer["name"]}, dày {layer["thickness"]} m')
+    lines.append(_stratigraphy_lines(layers, version))
     lines.append('')
 
     if wt is not None:
@@ -528,14 +528,14 @@ def _generate_embankment_stability(problem, version, port, project_name):
 
     lines.append('# === Hình học ===')
     lines.append('# Địa tầng: lớp sét từ y=0 đến y={:.1f} m'.format(-clay_t))
-    lines.append('bh = g.borehole(0)')
+    lines.append('g.gotosoil()')
+    lines.append('bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)')
     lines.append(f'bh.Head = 0  # Mực nước ngầm tại mặt đất')
-    lines.append(f'g.soillayer(0)  # Lớp sét, dày {clay_t} m')
-    lines.append('g.Soillayers.Soil_1.Layers.Clay_1.Top = 0')
-    lines.append(f'bh.InitialWaterConditions.Head = 0')
+    lines.append(f'g.soillayer({clay_t!r})  # Lớp sét')
     lines.append('')
     lines.append('# Đặt vật liệu drained cho nền sét ban đầu')
-    lines.append('g.setmaterial(g.Soils[0], mat_clay_dr)')
+    lines.append('g.setmaterial(g.Soillayers[0].Soil, mat_clay_dr)')
+    lines.append('g.gotostructures()')
     lines.append('')
     lines.append('# Khối bờ đắp (soil polygon)')
     lines.append(

@@ -255,6 +255,38 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed,[])
         self.assertEqual(self.state['messages'][-1]['content'],'Đã hiểu')
 
+    def test_preparation_error_is_replanned_before_any_execution(self):
+        attempts=[]
+        def prepare(name,args):
+            attempts.append(args['path'])
+            if args['path'].endswith('missing.exe'):raise ValueError('EXE không tồn tại')
+            return {'action':name,**args}
+        self.agent.windows.prepare=prepare
+        self.responses=[json.dumps({'answer':'','tool':'windows_open','arguments':{'path':r'C:\Apps\missing.exe'}}),
+                        json.dumps({'answer':'','tool':'windows_open','arguments':{'path':r'C:\Apps\chrome.exe'}})]
+        self.agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        events=list(self.agent.run(self.state))
+        self.assertEqual(len(attempts),2)
+        self.assertTrue(any('sửa kế hoạch' in e.get('text','') for e in events))
+        self.assertEqual(self.committed,[])
+        self.assertEqual(self.state['pending']['plan']['path'],r'C:\Apps\chrome.exe')
+
+    def test_known_plaxis_material_error_regenerates_exact_problem_once(self):
+        args={'version':'2d','problem':'{"type":"slope_stability"}','project_name':'Test'}
+        prepared=[];committed=[]
+        def prepare(name,received):
+            prepared.append(received);return {'action':name,'script':'corrected script'}
+        def commit(plan):
+            committed.append(plan['script'])
+            if len(committed)==1:return {'ok':False,'error':'InitialPhase Soil has no material assigned'}
+            return {'ok':True,'note':'Đã tính'}
+        self.agent.plaxis_remote=SimpleNamespace(prepare=prepare,commit=commit)
+        self.state.update(running=True,queue=[{'function':{'name':'plaxis_run_problem','arguments':args}}],
+                          pending={'plan':{'action':'plaxis_run_problem','script':'old script'},'decision_started':False})
+        self.agent.approve(self.state,True,self.state['pending'])
+        self.assertEqual(prepared,[args]);self.assertEqual(committed,['old script','corrected script'])
+        self.assertFalse(self.state['running']);self.assertEqual(self.state['plaxis_repairs'],1)
+
     def test_local_model_chrome_search_also_waits_for_approval(self):
         import test_app as fixtures
         from assistant.agent import Agent

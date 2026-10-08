@@ -1752,7 +1752,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
    if(provider==='deepseek'&&body.format)payload.response_format={type:'json_object'};
-   if(provider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
+   if(provider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&body.repair_response!==true&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){
@@ -1791,7 +1791,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    const limited=finish==='length'||finish==='MAX_TOKENS';
    const reasoningOnly=Boolean(result.choices?.[0]?.message?.reasoning_content);
    if(testing)return reply({success:true,message:'API phản hồi HTTP 200 nhưng chưa có câu trả lời'+(limited?' vì hết giới hạn token.':reasoningOnly?'; chỉ nhận được phần suy luận.':'.')+' Chưa xác nhận AI hoạt động đầy đủ. Hãy chọn mã AI từ danh sách dịch vụ rồi kiểm tra lại.'});
-   return fail(limited?'AI đã dùng hết giới hạn token trước khi trả lời. Tăng Token trả lời tối đa hoặc đổi AI.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng. Hãy thử lại hoặc chọn AI khác.',502);
+   return reply({success:false,code:finish==='content_filter'||finish==='SAFETY'?'AI_CONTENT_FILTER':limited?'AI_OUTPUT_LIMIT':'EMPTY_AI_RESPONSE',message:limited?'AI đã dùng hết giới hạn token trước khi trả lời.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng.'},502);
   }
   return reply({success:true,answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
  }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return fail((provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:''),503);}finally{if(!streaming)clearTimeout(timer);}
