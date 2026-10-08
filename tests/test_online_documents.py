@@ -11,9 +11,9 @@ class OnlineDocumentsTests(unittest.TestCase):
             self.assertIsNone(online_pdf_reader(cfg,{},client_factory=forbidden))
 
     def test_scan_is_bounded_cached_and_labeled(self):
-        calls=[]
+        calls=[];providers=[]
         class Client:
-            def __init__(self,*a,**kw):pass
+            def __init__(self,session,provider,**kw):providers.append(provider)
             def chat(self,**kwargs):
                 calls.append(kwargs)
                 return {'message':{'content':'Nội dung trang đã đọc'}}
@@ -21,6 +21,7 @@ class OnlineDocumentsTests(unittest.TestCase):
         output=io.BytesIO();writer.write(output);raw=output.getvalue()
         reader=online_pdf_reader({'online_tools_enabled':True,'online_document_upload':True,'online_document_pages':1},{'username':'test'},client_factory=Client)
         result=read_bytes(raw,name='scan.pdf',pdf_ocr=reader)
+        self.assertEqual(providers,['deepseek_flash'])
         self.assertEqual(len(calls),1)
         self.assertFalse(result['full_text'])
         self.assertEqual(reader(raw,0),'Nội dung trang đã đọc')

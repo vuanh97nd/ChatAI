@@ -30,9 +30,9 @@ def validate_config(cfg):
     for key in ('online_tools_enabled','online_document_upload'):
         cfg.setdefault(key,False)
         if type(cfg[key]) is not bool:raise ValueError('Quyền công cụ trực tuyến phải là bật/tắt.')
-    cfg.setdefault('online_document_provider','gemini')
+    cfg.setdefault('online_document_provider','deepseek_flash')
     cfg.setdefault('online_document_pages',5)
-    if cfg['online_document_provider'] not in ('gemini','nvidia'):raise ValueError('API đọc PDF không hợp lệ.')
+    if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia'):raise ValueError('API đọc PDF không hợp lệ.')
     if type(cfg['online_document_pages']) is not int or not 1<=cfg['online_document_pages']<=40:raise ValueError('Số trang trực tuyến phải từ 1 đến 40.')
 
     if cfg['machine_profile'] not in ('weak','medium','high'):raise ValueError('Cấu hình máy không hợp lệ.')

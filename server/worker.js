@@ -1676,12 +1676,13 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
   });
  };
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
- if(hasImage&&provider==='deepseek')return fail('DeepSeek trong cấu hình hiện tại không hỗ trợ đọc ảnh. Chọn Cloudflare AI, Gemini, NVIDIA Vision hoặc Groq Vision.');
  const maxTokens=testing?1024:Math.max(64,Math.min(4096,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
  const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/llama-3.1-nemotron-ultra-253b-v1';
  let selectedModel=testing&&body.model?String(body.model):configuredModel||models[provider];
+ // Image requests use Flash vision and inherit the existing DeepSeek key.
+ if(hasImage&&provider==='deepseek')selectedModel='deepseek-flash';
  if(hasImage&&!testing&&provider==='nvidia')selectedModel=env.NVIDIA_VISION_MODEL||(configuredModel&&/omni|vision/i.test(configuredModel)?configuredModel:'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
  if(!/^[A-Za-z0-9._/-]{1,160}$/.test(selectedModel))return fail('Mã AI không hợp lệ.');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),110000);
@@ -1708,7 +1709,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
-   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
+   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){

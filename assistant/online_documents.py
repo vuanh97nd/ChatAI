@@ -7,9 +7,9 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
         return None
     if not session:
         raise ValueError('Đăng nhập trước khi dùng công cụ đọc PDF trực tuyến.')
-    provider=cfg.get('online_document_provider','gemini')
-    if provider not in ('gemini','nvidia'):
-        raise ValueError('Chọn Gemini hoặc NVIDIA Vision để đọc trang PDF.')
+    provider=cfg.get('online_document_provider','deepseek_flash')
+    if provider not in ('deepseek_flash','gemini','nvidia'):
+        raise ValueError('Chọn DeepSeek Flash, Gemini hoặc NVIDIA Vision để đọc trang PDF.')
     from .cloud import ServerApiClient
     client=(client_factory or ServerApiClient)(session,provider,cancel_event=cancel_event,on_status=on_status,retry_limit=0)
     class VisionAdapter:
