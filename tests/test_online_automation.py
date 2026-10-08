@@ -181,6 +181,20 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.state['pending']['plan']['action'],'windows_open')
         self.assertIn('KHÔNG phải toàn bộ',self.requests[-1][0]['content'])
 
+    def test_search_discovery_separates_app_and_task_when_chrome_paths_are_ambiguous(self):
+        from assistant.online_automation import application_call
+        cfg={'windows_apps_enabled':True,'windows_apps_allowed':[r'C:\Apps\Chrome\chrome.exe',r'D:\Apps\Chrome\chrome.exe']}
+        for app in ('chrome','chorme','google chrome','google chorme'):
+            prompt='Hãy mở '+app+' tìm tiêu chuẩn 41-2022 và tóm tắt'
+            self.assertIsNone(search_call(prompt,cfg))
+            self.assertEqual(application_call(prompt,cfg)['function']['arguments']['query'],'Chrome')
+
+    def test_chrome_path_aliases_and_summary_instruction_do_not_pollute_search(self):
+        cfg={'windows_apps_enabled':True,'windows_apps_allowed':[r'C:\Apps\Chrome\chrome.exe','C:/Apps/Chrome/chrome.exe']}
+        call=search_call('Hãy mở google chorme tìm tiêu chuẩn 41-2022 và tóm tắt',cfg)
+        self.assertEqual(call['function']['name'],'browser_search')
+        self.assertEqual(call['function']['arguments']['query'],'tiêu chuẩn 41-2022')
+
     def test_generic_app_discovery_respects_negative_requests(self):
         from assistant.online_automation import application_call
         cfg={'windows_apps_enabled':True,'windows_apps_all_installed':True}

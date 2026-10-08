@@ -45,9 +45,9 @@ def search_call(prompt, cfg):
     if not re.search(r'mở.*(?:chrome|chorme)',prompt,re.I):return None
     match=re.search(r'tìm(?:\s+kiếm)?(?:\s+thông tin)?(?:\s+về)?\s+(.+)',prompt,re.I)
     from .installed_apps import authorized_apps
-    paths=[row['path'] for row in authorized_apps(cfg) if PureWindowsPath(row['path']).name.lower()=='chrome.exe']
+    paths=list({str(PureWindowsPath(row['path'])).casefold():row['path'] for row in authorized_apps(cfg) if PureWindowsPath(row['path']).name.lower()=='chrome.exe'}.values())
     if not match or len(paths)!=1:return None
-    return {'function':{'name':'browser_search','arguments':{'path':paths[0],'query':match.group(1).strip()}}}
+    return {'function':{'name':'browser_search','arguments':{'path':paths[0],'query':re.sub(r'\s+(?:và|rồi)\s+tóm\s+tắt\s*[.!]?\s*$','',match.group(1),flags=re.I).strip()}}}
 
 
 def drawing_call(prompt,cfg):
@@ -77,7 +77,8 @@ def application_call(prompt, cfg):
     if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
     match=re.match(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?:(?:ứng dụng|phần mềm|app)\s+)?(.+)',prompt,re.I)
     if not match:return None
-    target=re.split(r'\s+(?:và|rồi|để|giúp|cho|vẽ|viết)\s+',match.group(1),maxsplit=1,flags=re.I)[0].strip()
+    target=re.split(r'\s+(?:và|rồi|để|giúp|cho|vẽ|viết|tìm|đọc|bật|chạy)\s+',match.group(1),maxsplit=1,flags=re.I)[0].strip()
+    if re.fullmatch(r'(?:google\s+)?(?:chrome|chorme)',target,re.I):target='Chrome'
     if re.match(r'(?:rộng|lòng|bài|đầu)\b',target,re.I):return None
     return {'function':{'name':'windows_list_apps','arguments':{'query':target[:150]}}}
 
