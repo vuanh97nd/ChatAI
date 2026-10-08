@@ -2235,6 +2235,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Chỉ dùng DeepSeek Flash với key DeepSeek trên server; không chạy Foxit OCR. Đặt số trang bằng 0 để đọc lần lượt không giới hạn tổng số trang. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
         group_layout.addWidget(network_group)
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
+        self.ai_tools_auto_check=QCheckBox('AI tự thực hiện các công cụ trong phạm vi đã cấp quyền, không hỏi lại từng bước');self.ai_tools_auto_check.setChecked(self.cfg.get('ai_tools_auto_execute',False))
+        tools_form.addRow(self.ai_tools_auto_check)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
         tools_form.addRow(self.auto_python_check)
         self.button(tools_form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
@@ -2987,6 +2989,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for provider,field in self.api_model_fields.items():proposed[provider+'_model']=field.text().strip()
         proposed['theme']=self.settings_theme.currentData()
         proposed['auto_python']=self.auto_python_check.isChecked()
+        if hasattr(self,'ai_tools_auto_check'):proposed['ai_tools_auto_execute']=self.ai_tools_auto_check.isChecked()
         if hasattr(self,'online_tools_check'):
             proposed['online_tools_enabled']=self.online_tools_check.isChecked()
             proposed['online_document_upload']=self.online_upload_check.isChecked()

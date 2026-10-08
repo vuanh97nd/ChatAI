@@ -19,6 +19,8 @@ def load_config():
 
 def validate_config(cfg):
     cfg = dict(cfg)
+    cfg.setdefault('ai_tools_auto_execute',False)
+    if type(cfg['ai_tools_auto_execute']) is not bool:raise ValueError('Quyền tự thực hiện công cụ phải là bật/tắt.')
     from .windows_apps import validate_settings
     validate_settings(cfg)
     from .cloud import register_custom_ai
