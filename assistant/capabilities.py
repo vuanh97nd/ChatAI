@@ -59,6 +59,8 @@ class Capabilities:
         self.road_pipeline=RoadPipelineApp(self.files,self.soilfirm_app,audit)
         from .cad_drawing import CadDrawingApp
         self.cad_drawing=CadDrawingApp(self.files,audit)
+        from .cdm_layout import CdmLayoutApp
+        self.cdm_layout=CdmLayoutApp(self.windows,self.files,audit)
         self.active.add('klxldy')
         self.active.add('tm_xldy')
         self.active.add('geoslope_xldy')
@@ -69,7 +71,7 @@ class Capabilities:
         self.active.add('soilfirm_app')
         self.active.add('road_pipeline')
         self.active.add('cad_drawing')
-        if 'windows' in self.active:self.active.add('borehole_dxf')
+        if 'windows' in self.active:self.active.update({'borehole_dxf','cdm_layout'})
         self.schemas = TOOLS + [DOCUMENT_READ_SCHEMA] + [schema for module, schema in EXTRA_TOOLS if module in self.active and (schema['function']['name']!='python_search' or 'web' in self.active)]
         from .online_automation import app_permissions
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
@@ -86,6 +88,7 @@ class Capabilities:
         if name=='plaxis_generate_script':return self.plaxis_app.prepare(name,args)
         if name=='plaxis_run_problem':return self.plaxis_remote.prepare(name,args)
         if name=='cad3d_create_open':return self.cad3d_app.prepare(name,args)
+        if name=='cad_cdm_layout':return self.cdm_layout.prepare(name,args)
         if name=='cad_create_open':return self.cad_app.prepare(name,args)
         if name=='word_create_open':return self.word_app.prepare(name,args)
         if name in {'pdf_source_open','pdf_read'}:return self.pdf_source.prepare(name,args)
@@ -136,6 +139,7 @@ class Capabilities:
         if action=='plaxis_run_problem':return self.plaxis_remote.commit(plan)
         if action=='geoslope_create':return self.geoslope_app.commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
+        if action=='cad_cdm_layout':return self.cdm_layout.commit(plan)
         if action=='cad_create_open':return self.cad_app.commit(plan)
         if action=='word_create_open':return self.word_app.commit(plan)
         if action.startswith("windows_"):return self.windows.commit(plan)
