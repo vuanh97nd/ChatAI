@@ -109,7 +109,8 @@ class SupportMixin:
             import time
             turn_started=time.monotonic();first_text_at=None
             state=self.store.load(cid)
-            history=[{'role':m['role'],'content':m['content'][:1600]} for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')][-20:]
+            from .conversation_context import conversation_context
+            history=conversation_context(state['messages'],online=provider!='cloudflare')
             state['account_username']=owner;state['model']=selected_model
             state['online_automation']=False
             state['messages'].append({'role':'user','content':prompt})

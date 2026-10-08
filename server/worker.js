@@ -949,7 +949,7 @@ async function handleSharedMemory(db,actor,path,body){
  memoryError('Không có API bộ nhớ này.',404);
 }
 
-const CHAT_AI_PROMPT = "Bạn là Chat AI. Trả lời bằng tiếng Việt.";
+const CHAT_AI_PROMPT = "Bạn là Chat AI. Trả lời bằng tiếng Việt. Dùng lịch sử hội thoại để ghi nhớ thông tin, lựa chọn và yêu cầu người dùng đã chốt; không hỏi lại thông tin đã có. Khi người dùng chuyển chủ đề, theo chủ đề mới, không áp đặt yêu cầu của chủ đề cũ. Chỉ hỏi khi thiếu thông tin cần thiết hoặc có mâu thuẫn chưa giải quyết.";
 const chatSchemaJobs = new WeakMap();
 async function ensureChatSchema(db) {
  if(chatSchemaJobs.has(db))return chatSchemaJobs.get(db);
@@ -957,14 +957,47 @@ async function ensureChatSchema(db) {
   db.prepare("CREATE TABLE IF NOT EXISTS ai_conversations(id TEXT PRIMARY KEY,owner TEXT NOT NULL,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT)"),
   db.prepare("CREATE TABLE IF NOT EXISTS ai_messages(id INTEGER PRIMARY KEY AUTOINCREMENT,conversation_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('user','assistant')),content TEXT NOT NULL,created_at TEXT NOT NULL,client_id TEXT NOT NULL,UNIQUE(conversation_id,client_id))"),
   db.prepare('CREATE INDEX IF NOT EXISTS ai_conversations_owner ON ai_conversations(owner,deleted_at,updated_at)'),
-  db.prepare('CREATE INDEX IF NOT EXISTS ai_messages_conversation ON ai_messages(conversation_id,id)')
+  db.prepare('CREATE INDEX IF NOT EXISTS ai_messages_conversation ON ai_messages(conversation_id,id)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS desktop_history(owner TEXT NOT NULL,id TEXT NOT NULL,state TEXT NOT NULL,revision INTEGER NOT NULL,deleted INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL,PRIMARY KEY(owner,id))')
  ]);
  chatSchemaJobs.set(db,task);
  try {await task;}catch(error){chatSchemaJobs.delete(db);throw error;}
 }
-async function conversationAPI(path,body,actor,db) {
+export async function conversationAPI(path,body,actor,db) {
  await ensureChatSchema(db);
  const now=new Date().toISOString(),owner=actor.username;
+ if(path.startsWith('/api/conversations/sync/')){
+  if(path.endsWith('/list')){
+   const offset=Number(body.offset||0);
+   if(!Number.isSafeInteger(offset)||offset<0)return fail('Offset không hợp lệ.');
+   const rows=await db.prepare('SELECT id,revision,deleted FROM desktop_history WHERE owner=? ORDER BY id LIMIT 100 OFFSET ?').bind(owner,offset).all();
+   return reply({success:true,items:rows.results||[],next_offset:rows.results?.length===100?offset+100:null});
+  }
+  const id=String(body.conversation_id||'');
+  if(!/^[a-f0-9]{32}$/.test(id))return fail('Mã hội thoại không hợp lệ.');
+  if(path.endsWith('/get')){
+   const row=await db.prepare('SELECT state,revision,deleted,updated_at FROM desktop_history WHERE owner=? AND id=?').bind(owner,id).first();
+   if(!row)return fail('Không tìm thấy hội thoại.',404);
+   return reply({success:true,state:JSON.parse(row.state),revision:row.revision,deleted:row.deleted,updated_at:row.updated_at});
+  }
+  if(path.endsWith('/put')){
+   const revision=body.revision,deleted=body.deleted===true;
+   if(!Number.isSafeInteger(revision)||revision<0)return fail('Phiên bản không hợp lệ.');
+   const state=body.state;
+   if(!state||!Array.isArray(state.messages)||state.messages.length>10000||state.messages.some(m=>!m||!['user','assistant','tool'].includes(m.role)||typeof m.content!=='string'))return fail('Nội dung hội thoại không hợp lệ.');
+   // Store dialogue only; never credentials, executable queues or file contents.
+   const clean={messages:state.messages.map(m=>({role:m.role,content:m.content,...(m.role==='tool'?{tool_name:String(m.tool_name||'tool').slice(0,100)}:{})})),custom_title:String(state.custom_title||'').slice(0,120),model:typeof state.model==='string'?state.model.slice(0,150):null,online_automation:state.online_automation===true};
+   const raw=JSON.stringify(clean);
+   if(new TextEncoder().encode(raw).length>1500000)return fail('Hội thoại quá lớn để đồng bộ một lần.',413);
+   const result=revision===0
+    ?await db.prepare('INSERT OR IGNORE INTO desktop_history(owner,id,state,revision,deleted,updated_at) VALUES(?,?,?,1,?,?)').bind(owner,id,raw,deleted?1:0,now).run()
+    :deleted?await db.prepare('UPDATE desktop_history SET revision=revision+1,deleted=1,updated_at=? WHERE owner=? AND id=? AND revision=?').bind(now,owner,id,revision).run()
+    :await db.prepare('UPDATE desktop_history SET state=?,revision=revision+1,deleted=0,updated_at=? WHERE owner=? AND id=? AND revision=?').bind(raw,now,owner,id,revision).run();
+   if(!result.meta?.changes)return fail('Hội thoại đã thay đổi trên thiết bị khác.',409);
+   return reply({success:true,revision:revision+1});
+  }
+  return fail('Route not found.',404);
+ }
  if(path==='/api/conversations/list'){
   const offset=Number(body.offset||0);
   if(!Number.isSafeInteger(offset)||offset<0)return fail('Offset không hợp lệ.');
@@ -1676,7 +1709,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
   });
  };
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
- const maxTokens=testing?1024:Math.max(64,Math.min(4096,Number(body.max_tokens)||1600));
+ const maxTokens=testing?1024:Math.max(64,Math.min(body.format?8192:4096,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
  const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/llama-3.1-nemotron-ultra-253b-v1';
@@ -1709,7 +1742,8 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
-   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
+   if(_baseProvider==='deepseek'&&body.format)payload.response_format={type:'json_object'};
+   if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
   if(!response.ok){

@@ -32,7 +32,7 @@ jobs:
           python-version: '3.12'
       - name: Test Worker and deployment preservation
         run: |
-          node --test server/tests/*.test.js
+          node --test server/tests/*.test.js tests/test_history_sync.mjs
           python -m unittest discover -s tests -p test_worker_deploy.py -v
       - name: Deploy existing Cloudflare Worker
         env:

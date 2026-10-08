@@ -8,6 +8,17 @@ function database(){
  return {raw,prepare(sql){return {args:[],bind(...args){this.args=args;return this;},async run(){return {meta:{changes:Number(raw.prepare(sql).run(...this.args).changes)}};},async first(){return raw.prepare(sql).get(...this.args)||null;},async all(){return {results:raw.prepare(sql).all(...this.args)};}};},async batch(items){return Promise.all(items.map(item=>item.run()));}};
 }
 for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',server]]){
+ test(`${name}: JSON planning disables thinking and accepts a larger retry budget`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',DEEPSEEK_API_KEY:'test-only-key'};
+  const original=globalThis.fetch;let payload;
+  try{
+   globalThis.fetch=async(url,options)=>{payload=JSON.parse(options.body);return Response.json({choices:[{message:{content:'{"answer":"OK","tool":"","arguments":"{}"}'}}]});};
+   const response=await worker.fetch(new Request('https://example.org/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'deepseek_pro',format:{type:'object'},max_tokens:8192,messages:[{role:'user',content:'Lập kế hoạch JSON'}]})}),env,{});
+   assert.equal(response.status,200);
+   assert.equal(payload.thinking.type,'disabled');assert.equal(payload.max_tokens,8192);
+   assert.equal(payload.response_format.type,'json_object');
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
  for(const source of ['D1','secret'])test(`${name}: three custom DeepSeek entries inherit one ${source} key`,async()=>{
   const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length'};
   const shared='test-shared-deepseek-key';

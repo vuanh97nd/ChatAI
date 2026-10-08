@@ -52,6 +52,8 @@ class Store:
                     id TEXT PRIMARY KEY, title TEXT NOT NULL,
                     updated TEXT NOT NULL, state TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS history_deletions (id TEXT PRIMARY KEY, owner TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS history_sync (server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(server,owner,id));
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     at TEXT NOT NULL, conversation_id TEXT NOT NULL,
@@ -113,6 +115,7 @@ class Store:
                      "Cuộc trò chuyện mới")
         title=state.get('custom_title') or title
         with self.connection() as db:
+            db.execute("DELETE FROM history_deletions WHERE id=?",(cid,))
             db.execute("INSERT INTO conversations(id,title,updated,state) VALUES (?,?,?,?) "
                        "ON CONFLICT(id) DO UPDATE SET title=excluded.title,updated=excluded.updated,state=excluded.state",
                        (cid,title,now(),dumps(state)))
@@ -136,11 +139,8 @@ class Store:
                 if saved:
                     state=json.loads(saved[0])
                     if state.get('account_username')==username and state.get('messages'):return row[0]
-            rows=db.execute('SELECT id,state FROM conversations ORDER BY updated DESC').fetchall()
-        for cid,raw in rows:
-            state=json.loads(raw)
-            if state.get('account_username')==username and state.get('messages'):return cid
-        return None
+            row=db.execute("SELECT id FROM conversations WHERE json_extract(state,'$.account_username')=? AND json_array_length(state,'$.messages')>0 ORDER BY updated DESC LIMIT 1",(username,)).fetchone()
+        return row[0] if row else None
 
     def audit(self, cid, action, details):
         with self.connection() as db:
@@ -163,6 +163,7 @@ class Store:
             if row is None: raise KeyError('Hội thoại không còn tồn tại.')
             snapshot = {'id': cid, 'title': row[0], 'updated': row[1], 'state': json.loads(row[2])}
             with backup.open('x', encoding='utf-8') as out: out.write(dumps(snapshot))
+            db.execute('INSERT OR REPLACE INTO history_deletions VALUES (?,?)',(cid,snapshot['state'].get('account_username','')))
             db.execute('DELETE FROM conversations WHERE id=?', (cid,))
             db.execute('INSERT INTO audit(at,conversation_id,action,details) VALUES (?,?,?,?)',
                        (now(), cid, 'conversation_deleted', dumps({'backup': str(backup)})))
@@ -176,6 +177,7 @@ class Store:
             db.execute('BEGIN IMMEDIATE')
             if db.execute('SELECT 1 FROM conversations WHERE id=?',(cid,)).fetchone():
                 raise ValueError('Hội thoại đã tồn tại; không ghi đè.')
+            db.execute('DELETE FROM history_deletions WHERE id=?',(cid,))
             db.execute('INSERT INTO conversations(id,title,updated,state) VALUES (?,?,?,?)',
                        (cid,snapshot['title'],now(),dumps(snapshot['state'])))
             db.execute('INSERT INTO audit(at,conversation_id,action,details) VALUES (?,?,?,?)',

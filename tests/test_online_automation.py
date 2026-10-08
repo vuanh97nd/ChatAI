@@ -242,6 +242,19 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertTrue(any('sửa định dạng' in event.get('text','') for event in events))
         self.assertEqual(events[-1]['type'],'pending');self.assertEqual(self.committed,[])
         self.assertEqual(len(self.requests),2)
+    def test_truncated_plan_retries_with_larger_budget_before_execution(self):
+        budgets=[]
+        def chat(model,messages,**kwargs):
+            budgets.append(kwargs['options']['num_predict'])
+            if len(budgets)==1:return {'truncated':True,'message':{'content':'{"answer":'}}
+            return {'message':{'content':json.dumps({'answer':'Đã hiểu','tool':'','arguments':{}})}}
+        self.agent.client.chat=chat
+        self.agent.start(self.state,'Tiếp tục','DeepSeek Flash','admin')
+        list(self.agent.run(self.state))
+        self.assertEqual(budgets,[4096,8192])
+        self.assertEqual(self.committed,[])
+        self.assertEqual(self.state['messages'][-1]['content'],'Đã hiểu')
+
     def test_local_model_chrome_search_also_waits_for_approval(self):
         import test_app as fixtures
         from assistant.agent import Agent

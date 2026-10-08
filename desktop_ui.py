@@ -300,6 +300,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     account_enrichment_finished = Signal(object,object)
     login_restore_finished = Signal(object)
     support_badge_finished = Signal(object)
+    history_sync_finished = Signal(object)
     session_verified = Signal(object)
     def __init__(self, context=None):
         super().__init__()
@@ -311,6 +312,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.chat_messages, self.html_cache = [], {}
         self.sent_prompt = None
         self.server_session=None; self.personal_memories=[]
+        self.history_sync_loading=False
+        self.history_sync_finished.connect(self.apply_history_sync)
+        self.history_sync_timer=QTimer(self);self.history_sync_timer.setInterval(15000)
+        self.history_sync_timer.timeout.connect(self.sync_history)
+        self.history_sync_timer.start()
         self.login_restore_finished.connect(self.apply_restored_login)
         self.restore_login_loading=False
         self.support_badge_finished.connect(self.apply_support_badge)
@@ -737,6 +743,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             QMessageBox.warning(self, 'Chat AI', worker.failure)
         elif callback:
             if not getattr(self,'exit_when_idle',False):callback(worker.result)
+        if not worker.failure:self.sync_history()
         if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
@@ -2381,6 +2388,36 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.open_path(Path(result['path']).parent)
         self.update_task(task,done)
 
+    def sync_history(self):
+        if not self.server_session or self.history_sync_loading or self.busy():return
+        self.history_sync_loading=True
+        session=dict(self.server_session)
+        from threading import Thread
+        def task():
+            try:
+                from assistant.history_sync import HistorySync
+                changed=HistorySync(self.store,session).cycle()
+                result={'session':session,'changed':changed}
+            except Exception as error:result={'session':session,'error':str(error)}
+            try:self.history_sync_finished.emit(result)
+            except RuntimeError:pass
+        Thread(target=task,daemon=True,name='ChatAI-history-sync').start()
+
+    def apply_history_sync(self,result):
+        self.history_sync_loading=False
+        session=result['session']
+        if not self.server_session or any(self.server_session.get(k)!=session.get(k) for k in ('username','endpoint')):return
+        if result.get('error'):
+            self.account_status.setToolTip('Lịch sử vẫn được lưu trên máy; đang chờ đồng bộ server: '+result['error'])
+            return
+        self.account_status.setToolTip('Nội dung hội thoại đã đồng bộ lên server. Ảnh và tệp gốc được giữ trên máy.')
+        if result.get('changed') and not self.busy():
+            state=self.store.load(self.cid)
+            if not state.get('messages'):
+                saved=self.store.last_conversation(session['username'])
+                if saved:self.cid=saved
+            self.html_cache.clear();self.render()
+
     def restore_login(self):
         if self.server_session or self.restore_login_loading:return
         if self.busy():QTimer.singleShot(500,self.restore_login);return
@@ -2423,6 +2460,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.trial.adopt(session['username'])
         current=self.store.load(self.cid)
         if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
+        saved=self.store.last_conversation(session['username'])
+        if saved and not self.store.load(self.cid).get('messages'):self.cid=saved
         self.store.remember_conversation(session['username'],self.cid)
         self.render()
 
@@ -2465,6 +2504,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.install_custom_ai(result.get('_custom_ai',[]))
         self.refresh_account_ui()
         self.load_account_enrichment(dict(self.server_session))
+        self.sync_history()
 
     def login_dialog(self):
         if self.busy():return
@@ -2533,8 +2573,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.load_account_enrichment(dict(self.server_session))
             current=self.store.load(self.cid)
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
+            saved=self.store.last_conversation(session['username'])
+            if saved and not self.store.load(self.cid).get('messages'):self.cid=saved
             self.store.remember_conversation(session['username'],self.cid)
             self.render()
+            self.sync_history()
             record('login.apply_interface',time.monotonic()-ui_started)
             record('login.total',time.monotonic()-login_wall_started)
         self.work(task,done)
