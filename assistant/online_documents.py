@@ -4,6 +4,11 @@ from .documents import pdf_vision_ocr
 
 def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client_factory=None):
     if not (cfg.get('online_tools_enabled') is True and cfg.get('online_document_upload') is True):
+        if on_status:
+            missing=[]
+            if cfg.get('online_tools_enabled') is not True:missing.append('công cụ API trực tuyến chưa bật')
+            if cfg.get('online_document_upload') is not True:missing.append('quyền gửi ảnh trang tài liệu chưa bật')
+            on_status('AI đọc ảnh PDF chưa được chọn: '+', '.join(missing)+'. Số trang tối đa không tự bật các quyền này.')
         return None
     if not session:
         raise ValueError('Đăng nhập trước khi dùng công cụ đọc PDF trực tuyến.')

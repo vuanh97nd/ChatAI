@@ -25,3 +25,11 @@ class PdfAIFirstTests(unittest.TestCase):
             with patch('assistant.documents.read_bytes',side_effect=RuntimeError('Đã dừng đọc PDF')),patch('assistant.foxit_ocr_automation.foxit_ocr') as foxit:
                 with self.assertRaisesRegex(RuntimeError,'Đã dừng'):read_local(path,pdf_ocr=object(),foxit_ocr=True)
                 foxit.assert_not_called()
+
+    def test_combined_error_retains_original_ai_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'scan.pdf';path.write_bytes(b'%PDF-test')
+            with patch('assistant.documents.read_bytes',side_effect=RuntimeError('vision model rejected image')),patch('assistant.foxit_ocr_automation.available',return_value=True),patch('assistant.foxit_ocr_automation.foxit_ocr',side_effect=RuntimeError('Open dialog ambiguous')):
+                with self.assertRaises(ValueError) as error:read_local(path,pdf_ocr=object(),foxit_ocr=True)
+            self.assertIn('vision model rejected image',str(error.exception))
+            self.assertIn('Open dialog ambiguous',str(error.exception))

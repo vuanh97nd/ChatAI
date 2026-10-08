@@ -316,15 +316,34 @@ def _submit_native_dialog(dialog,path):
     dialog.child_window(control_id=1).click()
 
 
+def _native_open_dialog(native):
+    """Disambiguate visible Open dialogs by title and filename control."""
+    candidates=[]
+    for window in native.windows(class_name='#32770',visible_only=True,enabled_only=True):
+        try:
+            if window.window_text().strip().casefold() not in ('open','mở','open file','mở tệp'):continue
+            dialog=native.window(handle=window.handle)
+            if dialog.child_window(control_id=1148).exists(timeout=.2):candidates.append(dialog)
+        except Exception:continue
+    if len(candidates)>1:
+        raise RuntimeError('Có nhiều hộp thoại Open đang hoạt động; chưa chọn hoặc mở tệp.')
+    return candidates[0] if candidates else None
+
+
 def _open_native_filename(app,path):
     from pywinauto import Application
     from pywinauto.keyboard import send_keys
     window=_main_window(app)
     native=Application(backend='win32').connect(handle=window.handle)
-    dialog=native.window(class_name='#32770')
-    if not dialog.exists(timeout=.3):
+    dialog=_native_open_dialog(native)
+    if dialog is None:
         window.set_focus();send_keys('^o')
-    dialog.wait('visible',timeout=8)
+        deadline=time.monotonic()+8
+        while time.monotonic()<deadline:
+            dialog=_native_open_dialog(native)
+            if dialog is not None:break
+            time.sleep(.2)
+    if dialog is None:raise RuntimeError('Không tìm thấy hộp thoại Open có ô File name trong Foxit.')
     _submit_native_dialog(dialog,path)
 
 

@@ -68,3 +68,10 @@ class OnlineDocumentsTests(unittest.TestCase):
         self.assertEqual(validate_config(updated)['online_document_pages'],200)
         updated['online_document_pages']=201
         with self.assertRaises(ValueError):validate_config(updated)
+
+    def test_page_limit_does_not_hide_disabled_upload_permission(self):
+        statuses=[]
+        reader=online_pdf_reader({'online_document_pages':20,'online_tools_enabled':True},{'username':'test'},on_status=statuses.append)
+        self.assertIsNone(reader)
+        self.assertIn('quyền gửi ảnh',statuses[0])
+        self.assertIn('không tự bật',statuses[0])

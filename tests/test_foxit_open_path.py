@@ -69,3 +69,18 @@ class FoxitOpenPathTests(unittest.TestCase):
         button.reset_mock()
         with self.assertRaisesRegex(RuntimeError,'chưa bấm Open'):_submit_native_dialog(dialog,path)
         button.click.assert_not_called()
+    def test_three_common_dialogs_selects_only_open_by_handle(self):
+        from assistant.foxit_ocr_automation import _native_open_dialog
+        native=Mock();windows=[]
+        for handle,title in ((10,'Activate Foxit'),(20,'Save As'),(30,'Open')):
+            window=Mock();window.handle=handle;window.window_text.return_value=title;windows.append(window)
+        native.windows.return_value=windows
+        selected=Mock();selected.child_window.return_value.exists.return_value=True
+        native.window.return_value=selected
+        self.assertIs(_native_open_dialog(native),selected)
+        native.window.assert_called_once_with(handle=30)
+        native.windows.assert_called_once_with(class_name='#32770',visible_only=True,enabled_only=True)
+    def test_no_open_dialog_does_not_use_an_unrelated_popup(self):
+        from assistant.foxit_ocr_automation import _native_open_dialog
+        native=Mock();popup=Mock();popup.window_text.return_value='Save As';native.windows.return_value=[popup]
+        self.assertIsNone(_native_open_dialog(native));native.window.assert_not_called()

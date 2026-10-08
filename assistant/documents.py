@@ -175,7 +175,7 @@ def read_local(path,pdf_ocr=None,foxit_ocr=False,progress=None):
                 if progress:progress('AI/trích xuất chưa đọc được '+p.name+'; chuyển sang OCR Foxit. Lý do: '+str(exc)[:300])
                 ocr_path=_foxit_ocr(p,on_status=progress) if progress else _foxit_ocr(p)
             except Exception as foxit_err:
-                raise ValueError(f'Foxit OCR thất bại: {foxit_err}') from foxit_err
+                raise ValueError(f'Không đọc được {p.name}. Bước AI/trích xuất: {exc}. Foxit OCR thất bại: {foxit_err}') from foxit_err
             result=read_bytes(ocr_path.read_bytes(),name=ocr_path.name,pdf_ocr=None,**({'progress':progress} if progress else {}))
             return {**result,'file':ocr_path.name,'source':str(ocr_path),'foxit_ocr':True}
         raise
