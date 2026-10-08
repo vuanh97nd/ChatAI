@@ -47,8 +47,8 @@ def _layer_name(value):
 def _validate_styles(raw_styles):
     if raw_styles is None:
         return []
-    if not isinstance(raw_styles, list) or len(raw_styles) > 50:
-        raise ValueError('styles phải là danh sách tối đa 50 phần tử.')
+    if not isinstance(raw_styles, list) or len(raw_styles) > 200:
+        raise ValueError('styles phải là danh sách tối đa 200 phần tử.')
     result = []
     names = set()
     for item in raw_styles:
@@ -65,8 +65,8 @@ def _validate_styles(raw_styles):
 def _validate_layers(raw_layers):
     if raw_layers is None:
         return []
-    if not isinstance(raw_layers, list) or len(raw_layers) > 50:
-        raise ValueError('layers phải là danh sách tối đa 50 phần tử.')
+    if not isinstance(raw_layers, list) or len(raw_layers) > 200:
+        raise ValueError('layers phải là danh sách tối đa 200 phần tử.')
     result = []
     names = set()
     for item in raw_layers:
