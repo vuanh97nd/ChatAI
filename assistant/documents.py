@@ -187,14 +187,14 @@ def chunks(document,max_chars=6000):
                'pages':list(dict.fromkeys(page_numbers))}
 
 
-def read_document_range(files,path,start=0,limit=6000,pdf_ocr=None):
+def read_document_range(files,path,start=0,limit=6000,pdf_ocr=None,foxit_ocr=False):
     """Tool đọc theo offset, có thể đọc tiếp đến hết; không gọi mạng."""
     p=files.path(path)
     if p.suffix.lower() not in ('.pdf','.docx','.txt','.md','.html'):
         raise ValueError('PDF/DOCX/TXT/MD/HTML; Excel dùng excel_read.')
     if type(start) is not int or start<0 or type(limit) is not int or not 1<=limit<=8000:
         raise ValueError('start >= 0, limit 1..8000.')
-    document=read_local(p,pdf_ocr=pdf_ocr);offset=0;locations=[]
+    document=read_local(p,pdf_ocr=pdf_ocr,foxit_ocr=foxit_ocr);offset=0;locations=[]
     for unit in document['units']:
         length=len('['+unit['location']+']\n'+unit['text'])
         if offset+length>start and offset<start+limit:locations.append(unit['location'])
