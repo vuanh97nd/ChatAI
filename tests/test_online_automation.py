@@ -338,6 +338,35 @@ class OnlineAutomationTest(unittest.TestCase):
         self.agent.start(self.state,'ok','DeepSeek Flash','admin')
         self.assertFalse(self.state['plaxis_general_mode'])
         self.assertEqual(self.state['queue'],[])
+
+    def test_plain_permission_loop_is_repaired_instead_of_displayed(self):
+        self.cfg['windows_apps_auto_execute']=True
+        self.agent.windows.check=lambda:dict(self.cfg)
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        self.responses=['Bạn xác nhận để tôi mở URL raw và đọc cú pháp chứ?']*2+[
+            json.dumps({'tool':'plaxis_commands','arguments':{'version':'3d','commands':[{'command':'commands'}]}}),
+            json.dumps({'answer':'Đã nhận kết quả API.','tool':'','arguments':{}})]
+        agent.start(self.state,'hãy tra tiếp cú pháp','DeepSeek Flash','admin')
+        events=list(agent.run(self.state))
+        self.assertEqual(self.committed[0]['action'],'plaxis_commands')
+        self.assertFalse(any('xác nhận để tôi mở' in e.get('text','') for e in events))
+
+    def test_autonomy_only_rejects_procedural_questions(self):
+        from assistant.online_automation import check_confirmation
+        cfg={'windows_apps_auto_execute':True}
+        state={'messages':[{'role':'user','content':'hãy tra mạng đi'}]}
+        for answer in ['Bạn muốn tôi tra tiếp bằng commands không?',
+                       'Bạn cho tôi biết tài liệu có ghi rõ cú pháp tạo borehole không?',
+                       'Bạn xác nhận để tôi thực hiện bước đặt Head = -4 m chứ?']:
+            with self.subTest(answer=answer),self.assertRaises(ValueError):
+                check_confirmation({'tool':'','answer':answer},state,cfg)
+        for answer in ['Chiều dài bờ đắp thực tế là bao nhiêu mét?',
+                       'Tài liệu và bản vẽ có cao độ khác nhau; bạn chọn cao độ nào?',
+                       'Bạn cần đăng nhập để mở tài liệu riêng tư.',
+                       'Đã nhận kết quả API.']:
+            check_confirmation({'tool':'','answer':answer},state,cfg)
+        check_confirmation({'tool':'','answer':'Bạn muốn tôi tra tiếp bằng commands không?'},state,{})
     def test_truncated_plan_retries_with_larger_budget_before_execution(self):
         budgets=[]
         def chat(model,messages,**kwargs):
