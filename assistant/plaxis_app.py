@@ -210,7 +210,7 @@ def _soil_lines(layers, version):
         # Use repr() so any quotes or special chars in name are safely escaped
         safe_name = repr(layer["name"])
         lines.append(f'{vname} = g.soilmat()')
-        lines.append(f'{vname}.setproperties("MaterialName", {safe_name})')
+        lines.append(f'{vname}.setproperties("Identification", {safe_name})')
         lines.append(f'{vname}.setproperties("SoilModel", 2)')  # Mohr-Coulomb
         lines.append(f'{vname}.setproperties("Eref", {layer["E"]})')
         lines.append(f'{vname}.setproperties("nu", {layer["nu"]})')
@@ -328,7 +328,7 @@ def _generate_retaining_wall(problem, version, port, project_name):
     lines.append(_soil_lines(layers, version))
     lines.append('# Vật liệu tường (bê tông cốt thép)')
     lines.append('wall_mat = g.platemat()')
-    lines.append('wall_mat.setproperties("MaterialName", "Tuong BTCT")')
+    lines.append('wall_mat.setproperties("Identification", "Tuong BTCT")')
     lines.append('wall_mat.setproperties("EA", 2.1e7)')
     lines.append('wall_mat.setproperties("EI", 155000)')
     lines.append('wall_mat.setproperties("w", 5.0)')
@@ -387,7 +387,7 @@ def _generate_excavation_pit(problem, version, port, project_name):
 
     lines.append('# Vật liệu tường vây (bê tông cốt thép)')
     lines.append('wall_mat = g.platemat()')
-    lines.append('wall_mat.setproperties("MaterialName", "Tuong vay BTCT")')
+    lines.append('wall_mat.setproperties("Identification", "Tuong vay BTCT")')
     EA = 3.0e7 * t
     EI = 3.0e7 * (t ** 3) / 12.0
     lines.append(f'wall_mat.setproperties("EA", {EA:.3e})')
@@ -459,7 +459,7 @@ def _hs_soil_lines(mat, vname, drainage_type='Drained'):
     safe_name = repr(mat['name'])
     return '\n'.join([
         f'{vname} = g.soilmat()',
-        f'{vname}.setproperties("MaterialName", {safe_name})',
+        f'{vname}.setproperties("Identification", {safe_name})',
         f'{vname}.setproperties("SoilModel", 3)',          # Hardening Soil
         f'{vname}.setproperties("DrainageType", "{drainage_type}")',
         f'{vname}.setproperties("gammaUnsat", {mat["gamma"]})',
@@ -511,7 +511,7 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('# Vật liệu 3: Sét nền - Undrained (sao chép từ Drained, đổi kiểu)')
     clay_ud_name = repr(clay['name'].replace('Drained', 'Undrained').replace('drained', 'undrained') + ' (UD)' if 'rain' not in clay['name'] else clay['name'].replace('Drained', 'Undrained (A)'))
     lines.append(f'mat_clay_ud = g.soilmat()')
-    lines.append(f'mat_clay_ud.setproperties("MaterialName", {clay_ud_name})')
+    lines.append(f'mat_clay_ud.setproperties("Identification", {clay_ud_name})')
     lines.append(f'mat_clay_ud.setproperties("SoilModel", 3)')
     lines.append(f'mat_clay_ud.setproperties("DrainageType", "Undrained (A)")')
     lines.append(f'mat_clay_ud.setproperties("gammaUnsat", {clay["gamma"]})')
