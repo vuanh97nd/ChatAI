@@ -23,6 +23,8 @@ def parse_plan(raw, schemas):
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
     if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
     if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
+    if tool in ('plaxis_run_problem','plaxis_generate_script') and isinstance(args.get('problem'),dict):
+        args=dict(args,problem=json.dumps(args['problem'],ensure_ascii=False,allow_nan=False))
     if tool:validate_call(tool,args,schemas)
     elif not answer.strip():raise ValueError('Thiếu câu trả lời hoặc công cụ.')
     return {'answer':answer,'tool':tool,'arguments':args}
