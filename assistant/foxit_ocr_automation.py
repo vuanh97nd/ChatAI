@@ -156,7 +156,7 @@ def _launch_or_attach(exe: str):
     from pywinauto import Application, findwindows
 
     # Try attaching to an existing Foxit window first
-    for title_re in (r"Foxit PDF Editor", r"Foxit PDF Reader"):
+    for title_re in (r".*Foxit PDF Editor.*", r".*Foxit PDF Reader.*"):
         try:
             handles = findwindows.find_windows(title_re=title_re, visible_only=True)
             if handles:
@@ -172,19 +172,24 @@ def _launch_or_attach(exe: str):
     except Exception as err:
         raise RuntimeError(f'Không khởi động được Foxit: {err}') from err
     # Wait for main window
-    _wait_for_main_window(app, timeout=30)
+    window=_wait_for_main_window(app, timeout=30)
+    app=Application(backend="uia").connect(handle=window.handle)
     # Dismiss any startup dialogs (license, update, tip of the day)
     _dismiss_startup_dialogs(app)
     return app
 
 
 def _wait_for_main_window(app, timeout: int = 30):
-    from pywinauto import timings
+    from pywinauto import Application, findwindows
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             wins = app.windows()
+            # Foxit may hand off the file to an existing process.
+            if not any("Foxit" in w.window_text() for w in wins):
+                handles=findwindows.find_windows(title_re=r".*Foxit PDF (?:Editor|Reader).*",visible_only=True)
+                wins=[Application(backend="uia").connect(handle=handle).window(handle=handle) for handle in handles]
             for w in wins:
                 title = w.window_text()
                 if "Foxit" in title:
@@ -239,7 +244,7 @@ def _main_window(app):
     """Return the primary Foxit window."""
     from pywinauto import findwindows
 
-    for title_re in (r"Foxit PDF Editor", r"Foxit PDF Reader"):
+    for title_re in (r".*Foxit PDF Editor.*", r".*Foxit PDF Reader.*"):
         try:
             handles = findwindows.find_windows(title_re=title_re, visible_only=True)
             if handles:

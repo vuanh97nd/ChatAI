@@ -827,7 +827,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 ext=p.suffix.lower()
                 if ext in ('.pdf','.docx','.txt','.md'):
                     from assistant.documents import read_local
-                    items.append(read_local(p))
+                    items.append(read_local(p,foxit_ocr=True))
                     continue
                 from assistant.code_files import CODE_SUFFIXES
                 if ext in CODE_SUFFIXES:content=p.read_text(encoding='utf-8-sig',errors='strict')

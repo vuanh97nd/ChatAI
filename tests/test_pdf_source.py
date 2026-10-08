@@ -46,13 +46,13 @@ class PDFSourceTest(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 self.tools.prepare('pdf_local_open',{'path':str(other),'app':str(self.app)})
 
-    def test_pdf_read_never_starts_automatic_ocr(self):
+    def test_pdf_read_requests_ocr_and_reports_failure_without_looping(self):
         with patch('assistant.documents.read_document_range',side_effect=ValueError('PDF không có text; cần OCR.')) as read,patch('assistant.foxit_ocr_automation.foxit_ocr') as ocr:
             result=self.tools.read(self.root/'scan.pdf')
-        self.assertFalse(read.call_args.kwargs['foxit_ocr'])
+        self.assertTrue(read.call_args.kwargs['foxit_ocr'])
         ocr.assert_not_called()
         self.assertFalse(result['read_ok']);self.assertEqual(result['coverage'],'none')
-        self.assertIn('OCR tự động đang tắt',result['note'])
+        self.assertIn('OCR tự động không hoàn tất',result['note'])
 
     def test_download_and_open_only_after_approval(self):
         writer=PdfWriter();writer.add_blank_page(width=100,height=100)
