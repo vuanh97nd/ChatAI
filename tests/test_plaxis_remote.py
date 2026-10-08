@@ -130,7 +130,7 @@ class TestPrepareValidation(unittest.TestCase):
             self._prepare(problem=json.dumps({'slope_angle': 30}))
 
     def test_3d_version_accepted(self):
-        plan = self._prepare(version='3d')
+        plan = self._prepare(version='3d',problem=json.dumps({'type':'embankment_stability','embankment_length':20}))
         self.assertEqual(plan['version'], '3d')
 
 

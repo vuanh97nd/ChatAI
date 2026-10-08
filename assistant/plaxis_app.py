@@ -11,7 +11,7 @@ from pathlib import Path
 
 _SUPPORTED_TYPES = {'slope_stability', 'foundation_settlement', 'retaining_wall', 'excavation_pit', 'embankment_stability'}
 
-_PORT = {'2d': 10000, '3d': 10001}
+_PORT = {'2d': 10000, '3d': 10000}
 
 
 def _num(val, name, lo, hi):
@@ -165,6 +165,7 @@ def _validate_embankment_stability(problem):
         'clay_thickness': clay_thickness,
         'slope_left': slope_left,
         'slope_right': slope_right,
+        **({'embankment_length': _num(problem['embankment_length'], 'embankment_length', 0.1, 10000.0)} if 'embankment_length' in problem else {}),
         'fill_material': fill,
         'clay_material': clay,
     }
@@ -532,7 +533,11 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('# === Hình học ===')
     lines.append('# Địa tầng: lớp sét từ y=0 đến y={:.1f} m'.format(-clay_t))
     lines.append('g.gotosoil()')
-    if version=='2d':lines.append(f'g.SoilContour.initializerectangular(0, {-clay_t!r}, {domain_width!r}, {H!r})')
+    if version=='2d':
+        lines.append(f'g.SoilContour.initializerectangular(0, {-clay_t!r}, {domain_width!r}, {H!r})')
+    else:
+        length=problem['embankment_length']
+        lines.append(f'g.SoilContour.initializerectangular(0, 0, {domain_width!r}, {length!r})')
     lines.append('bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)')
     lines.append(f'bh.Head = 0  # Mực nước ngầm tại mặt đất')
     lines.append(f'g.soillayer({clay_t!r})  # Lớp sét')
@@ -541,12 +546,16 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('g.setmaterial(g.Soillayers[0].Soil, mat_clay_dr)')
     lines.append('g.gotostructures()')
     lines.append('')
-    lines.append('# Khối bờ đắp (soil polygon)')
-    lines.append(
-        f'emb_polygon, emb = g.polygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), '
-        f'({x_right_crest:.2f}, {H:.2f}), ({x_right_toe:.2f}, 0))'
-    )
-    lines.append('g.setmaterial(emb, mat_fill)')
+    if version=='2d':
+        lines.append(f'emb_polygon, emb = g.polygon(({x_left_toe:.2f}, 0), ({x_left_crest:.2f}, {H:.2f}), ({x_right_crest:.2f}, {H:.2f}), ({x_right_toe:.2f}, 0))')
+        lines.append('g.setmaterial(emb, mat_fill)')
+    else:
+        lines.append('# Cross-section in X/Z; extrude along Y to create a soil volume.')
+        lines.append(f'emb_surface = g.surface(({x_left_toe:.2f}, 0, 0), ({x_left_crest:.2f}, 0, {H:.2f}), ({x_right_crest:.2f}, 0, {H:.2f}), ({x_right_toe:.2f}, 0, 0))')
+        lines.append(f'g.extrude(emb_surface, 0, {length!r}, 0)')
+        lines.append('emb_volume = g.Volumes[-1]')
+        lines.append('emb_polygon = emb_volume')
+        lines.append('g.setmaterial(emb_volume.Soil, mat_fill)')
     lines.append('')
 
     lines.append('# === Lưới phần tử (Fine) ===')
@@ -609,6 +618,11 @@ def _generate_embankment_stability(problem, version, port, project_name):
 
 def _generate_script(problem, version, port, project_name):
     ptype = problem['type']
+    if version=='3d':
+        if ptype!='embankment_stability':
+            raise ValueError('Mẫu PLAXIS 3D hiện hỗ trợ bờ đắp; bài toán này cần hình học và tải trọng 3D riêng, không dùng script 2D.')
+        if 'embankment_length' not in problem:
+            raise ValueError('PLAXIS 3D cần embankment_length (chiều dài dọc tuyến, m); không tự suy đoán từ đề 2D.')
     if ptype == 'slope_stability':
         return _generate_slope_stability(problem, version, port, project_name)
     if ptype == 'foundation_settlement':
@@ -640,6 +654,8 @@ class PlaxisApp:
             raise ValueError("version phải là '2d' hoặc '3d'.")
 
         problem = _validate_problem(args.get('problem', ''))
+
+        _generate_script(problem, version, _PORT[version], project_name)  # Reject missing 3D geometry before preview.
 
         if not self.files.roots:
             raise PermissionError('Thêm thư mục lưu script được phép trong Cài đặt.')

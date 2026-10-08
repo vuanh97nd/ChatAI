@@ -54,7 +54,7 @@ def _safe_list(obj):
         return []
 
 
-def _extract_results(g_out, phases, problem_type):
+def _extract_results(g_out, phases, problem_type, version='2d'):
     """Extract settlement, stress, and safety-factor results from Plaxis Output.
 
     Returns a dict with keys: max_settlement_mm, max_stress_kpa, safety_factor,
@@ -77,7 +77,7 @@ def _extract_results(g_out, phases, problem_type):
         # Settlement (Uy – vertical displacement, negative = downward)
         try:
             uy_vals = _safe_list(
-                g_out.getresults(phase, g_out.ResultTypes.Soil.Uy, 'node')
+                g_out.getresults(phase, g_out.ResultTypes.Soil.Uz if version=='3d' else g_out.ResultTypes.Soil.Uy, 'node')
             )
             if uy_vals:
                 max_set = abs(min(uy_vals))  # most negative = largest settlement
@@ -93,7 +93,14 @@ def _extract_results(g_out, phases, problem_type):
                 g_out.getresults(phase, g_out.ResultTypes.Soil.Ux, 'node')
             )
             if ux_vals:
-                max_horiz = max(abs(v) for v in ux_vals)
+                if version=='3d':
+                    import math
+                    uy_horizontal=_safe_list(g_out.getresults(phase,g_out.ResultTypes.Soil.Uy,'node'))
+                    if len(uy_horizontal)!=len(ux_vals):
+                        raise ValueError('Incomplete 3D horizontal displacement components')
+                    max_horiz=max(math.hypot(x,y) for x,y in zip(ux_vals,uy_horizontal))
+                else:
+                    max_horiz = max(abs(v) for v in ux_vals)
                 phase_entry['max_horizontal_displacement_mm'] = round(max_horiz * 1000, 2)
                 if (results['max_horizontal_displacement_mm'] is None
                         or max_horiz * 1000 > results['max_horizontal_displacement_mm']):
@@ -248,7 +255,7 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
         s_out, g_out = _connect(out_port, f'{label} Output')
         phases = list(g_out.Phases)
         if phases:
-            structured = _extract_results(g_out, phases, problem_type)
+            structured = _extract_results(g_out, phases, problem_type, version)
         else:
             structured = {'raw_summary': 'Không có giai đoạn nào sau khi tính toán.'}
     except Exception as exc:

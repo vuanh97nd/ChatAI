@@ -10,7 +10,8 @@ class MaterialPropertiesTests(unittest.TestCase):
         problems=[FOUNDATION_PROBLEM,SLOPE_PROBLEM,RETAINING_PROBLEM,EXCAVATION_PROBLEM,
                   json.dumps({'type':'embankment_stability'})]
         for version in ('2d','3d'):
-            for source in problems:
+            sources=problems if version=='2d' else [json.dumps({'type':'embankment_stability','embankment_length':20})]
+            for source in sources:
                 with self.subTest(version=version,problem=json.loads(source)['type']):
                     problem=_validate_problem(source)
                     script=_generate_script(problem,version,10000,'Test')
