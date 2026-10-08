@@ -56,9 +56,14 @@ def validate_config(cfg):
     if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
     for key,value in {"num_predict":2048,"font_size":13,"auto_python":True}.items():cfg.setdefault(key,value)
     cfg.setdefault('api_num_predict',4096)
-    cfg.setdefault('api_temperature',min(1,cfg.get('temperature',.2)))
-    if type(cfg['api_num_predict']) is not int or not 128<=cfg['api_num_predict']<=4096:
-        raise ValueError('Token trực tuyến phải từ 128 đến 4096.')
+    cfg.setdefault('api_temperature',0.7)
+    # Nâng nhiệt độ cũ ≤0.2 lên 0.7 để chat online tự nhiên hơn (mặc định cũ kế thừa từ local).
+    if cfg.get('api_temperature_revision') != 1:
+        if isinstance(cfg.get('api_temperature'),(int,float)) and not isinstance(cfg.get('api_temperature'),bool) and cfg['api_temperature'] <= 0.2:
+            cfg['api_temperature'] = 0.7
+        cfg['api_temperature_revision'] = 1
+    if type(cfg['api_num_predict']) is not int or not 128<=cfg['api_num_predict']<=8192:
+        raise ValueError('Token trực tuyến phải từ 128 đến 8192.')
     if isinstance(cfg['api_temperature'],bool) or not isinstance(cfg['api_temperature'],(int,float)) or not 0<=cfg['api_temperature']<=1:
         raise ValueError('Độ sáng tạo trực tuyến phải từ 0 đến 1.')
     server = urlparse(cfg.get('server_url',''))

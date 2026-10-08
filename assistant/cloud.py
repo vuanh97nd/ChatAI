@@ -143,7 +143,7 @@ class ApiDocumentClient:
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def _build_payload(self,model,messages,options,stream):
         payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':stream,
-                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),4096),
+                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),8192),
                  'temperature':options.get('temperature',.2)}
         if self.provider=='gemini':payload['reasoning_effort']='low';payload['max_tokens']+=1024
         return payload
