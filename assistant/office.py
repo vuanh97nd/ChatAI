@@ -53,7 +53,10 @@ class OfficeTools:
             self.check(str(p))
             if not args['search'] or len(args['search']) > 6000 or len(args['replacement']) > 10000:
                 raise ValueError('Chuỗi tìm/thay không hợp lệ.')
-        elif name == 'office_create':
+        elif name in ('office_create','office_overwrite'):
+            if name=='office_overwrite':
+                if p.suffix.lower()!='.docx':raise ValueError('Ghi đè chỉ hỗ trợ DOCX.')
+                if p.exists():self.check(str(p))
             if not args.get('content') or len(args['content']) > 30000 or len(args.get('title','')) > 500:
                 raise ValueError('Nội dung 1–30000 ký tự, tiêu đề tối đa 500.')
             if p.suffix.lower()=='.docx' and 'font_name' in args:

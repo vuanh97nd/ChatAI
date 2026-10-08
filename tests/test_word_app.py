@@ -32,3 +32,22 @@ class WordAppTest(unittest.TestCase):
                 with self.assertRaises(RuntimeError):tool.commit(plan)
             exe.write_bytes(b'changed')
             with self.assertRaises(PermissionError):tool.commit(plan)
+
+    def test_named_file_and_overwrite_preserve_backup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);exe=root/'WINWORD.EXE';exe.write_bytes(b'fixture')
+            files=FileTools([str(root)],root/'backups',lambda *a:None)
+            tool=WordApp(SimpleNamespace(check=lambda:{},allowed_path=lambda p:Path(p)),files)
+            args={'app':str(exe),'path':'Don-xin-nghi.docx','title':'Đơn','content':'Nội dung cũ'}
+            with patch('assistant.word_app.subprocess.Popen'):
+                first=tool.commit(tool.prepare('word_create_open',args))
+                self.assertEqual(Path(first['path']).name,'Don-xin-nghi.docx')
+                old=Path(first['path']).read_bytes()
+                with self.assertRaises(ValueError):tool.prepare('word_create_open',args)
+                args.update(mode='overwrite',content='Nội dung mới')
+                result=tool.commit(tool.prepare('word_create_open',args))
+                self.assertEqual(Path(result['backup']).read_bytes(),old)
+                self.assertIn('Nội dung mới','\n'.join(p.text for p in Document(result['path']).paragraphs))
+                plan=tool.prepare('word_create_open',args)
+                Document().save(result['path'])
+                with self.assertRaises(RuntimeError):tool.commit(plan)
