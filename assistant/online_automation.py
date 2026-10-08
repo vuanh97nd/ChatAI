@@ -228,10 +228,25 @@ def _plaxis_history_call(prompt, cfg, state, plaxis_app, plaxis_remote):
 
 
 def direct_drawing_answer(state,name,result):
-    if name!='cad_create_open' or not state.get('direct_drawing'):return None
-    if not result.get('ok'):return 'Chưa tạo/mở được bản vẽ: '+str(result.get('error','Chưa có kết quả xác nhận.'))
-    if not result.get('document_created'):return None
-    return 'Đã tạo DXF: '+result['path']+'\nĐã gửi lệnh mở AutoCAD; chưa xác minh cửa sổ hiển thị.'
+    if name=='cad_create_open':
+        if not state.get('direct_drawing'):return None
+        if not result.get('ok'):return 'Chưa tạo/mở được bản vẽ: '+str(result.get('error','Chưa có kết quả xác nhận.'))
+        if not result.get('document_created'):return None
+        return 'Đã tạo DXF: '+result['path']+'\nĐã gửi lệnh mở AutoCAD; chưa xác minh cửa sổ hiển thị.'
+    if name=='plaxis_generate_script':
+        if not result.get('ok'):
+            return 'Chưa tạo được script Plaxis: '+str(result.get('note') or result.get('error','Lỗi không xác định.'))
+        path=result.get('path','')
+        note=result.get('note','')
+        msg='Đã tạo script Python cho Plaxis'+(f' tại: {path}' if path else '')+'.'
+        if note:msg+='\n'+note
+        return msg
+    if name=='plaxis_run_problem':
+        if not result.get('ok'):
+            return 'Chưa chạy được bài toán Plaxis: '+str(result.get('note') or result.get('error','Lỗi không xác định.'))
+        note=result.get('note','')
+        return note or 'Phân tích Plaxis hoàn tất.'
+    return None
 
 
 def application_call(prompt, cfg):
