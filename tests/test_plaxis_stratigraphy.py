@@ -68,3 +68,19 @@ class StratigraphyTests(unittest.TestCase):
         exec('\n'.join(lines),{'g':Stages(),'emb_polygon':polygon,'emb':obsolete_soil,
                                'phase0':phases[0],'phase1':phases[1],'phase2':phases[2]})
         self.assertEqual(calls,[('deactivate',phases[0]),('activate',phases[1]),('activate',phases[2])])
+
+    def test_undrained_assignment_resolves_all_staged_clay_clusters(self):
+        script=_generate_script(_validate_problem(json.dumps({'type':'embankment_stability'})),'2d',10000,'Test')
+        staged=script.split('g.gotostages()',1)[1]
+        self.assertNotIn('Soillayers',staged)
+        initial=object();undrained=object()
+        clay=SimpleNamespace(Identification='SetDrained')
+        fill=SimpleNamespace(Identification='BoDapCat')
+        soils=[SimpleNamespace(Material={initial:material}) for material in (fill,clay,clay)]
+        calls=[]
+        g=SimpleNamespace(Soils=soils,setmaterial=lambda *args:calls.append(args))
+        block=staged[staged.index('clay_clusters ='):staged.index('# Giai đoạn 3:')]
+        exec(block,{'g':g,'phase0':initial,'phase2':undrained,'mat_clay_dr':clay,'mat_clay_ud':'UD'})
+        self.assertEqual(calls,[(soils[1],undrained,'UD'),(soils[2],undrained,'UD')])
+        with self.assertRaisesRegex(RuntimeError,'Khong tim thay'):
+            exec(block,{'g':SimpleNamespace(Soils=[soils[0]]),'phase0':initial,'phase2':undrained,'mat_clay_dr':clay,'mat_clay_ud':'UD'})
