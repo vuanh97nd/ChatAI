@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-CURRENT_VERSION = '2.6.5'
+CURRENT_VERSION = '2.6.6'
 REPOSITORY = 'vuanh97nd/ChatAI'
 RELEASES_URL = 'https://github.com/' + REPOSITORY + '/releases'
 API_URL = 'https://api.github.com/repos/' + REPOSITORY + '/releases/latest'
@@ -17,7 +17,7 @@ MAX_DOWNLOAD = 500 * 1024 * 1024
 def version_tuple(value):
     match = re.fullmatch(r'v?(\d+)\.(\d+)(?:\.(\d+))?', str(value).strip())
     if not match:
-        raise ValueError('Release cần tag dạng v2.6.5, không phải bản thử nghiệm.')
+        raise ValueError('Release cần tag dạng v2.6.6, không phải bản thử nghiệm.')
     return tuple(int(x or 0) for x in match.groups())
 
 def parse_release(data):

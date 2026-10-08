@@ -58,7 +58,7 @@ def main():
     run([python,'-m','ensurepip','--upgrade'])
     run([python,'-m','pip','install','--disable-pip-version-check','--only-binary=:all:','-r',ROOT/'requirements-bundled.txt'])
     run([python,'-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe()); print("Bundled imports OK")'])
-    manifest={'python':sys.version,'version':'2.6.5','bundled':True,'requirements':'requirements-bundled.txt'}
+    manifest={'python':sys.version,'version':'2.6.6','bundled':True,'requirements':'requirements-bundled.txt'}
     (stage/'chat-ai-runtime.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     freeze=subprocess.check_output([str(python),'-m','pip','freeze'],text=True)
     (stage/'bundled-packages.txt').write_text(freeze,encoding='utf-8')

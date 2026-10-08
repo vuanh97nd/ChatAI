@@ -31,9 +31,9 @@ if errorlevel 1 goto runtime_failed
 echo [2/2] Compiling Inno Setup...
 "%CHAT_ISCC%" "Chat-AI-Setup.iss" >"build-logs\setup.log" 2>&1
 if errorlevel 1 goto setup_failed
-if not exist "dist\Chat-AI-Setup-2.6.5.exe" goto setup_failed
-echo Build successful: dist\Chat-AI-Setup-2.6.5.exe
-start "" explorer.exe /select,"%CD%\dist\Chat-AI-Setup-2.6.5.exe"
+if not exist "dist\Chat-AI-Setup-2.6.6.exe" goto setup_failed
+echo Build successful: dist\Chat-AI-Setup-2.6.6.exe
+start "" explorer.exe /select,"%CD%\dist\Chat-AI-Setup-2.6.6.exe"
 popd
 pause
 exit /b 0

@@ -14,7 +14,7 @@ class ServerStreamingTest(unittest.TestCase):
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek_flash')
         seen=[]
         def open_request(request,timeout):
-            self.assertEqual(request.get_header('User-agent'),'ChatAI-Desktop/2.5 (+Windows; account API)')
+            self.assertEqual(request.get_header('User-agent'),'ChatAI-Desktop/2.6.6 (+Windows; account API)')
             seen.append(json.loads(request.data));return response
         with patch('assistant.cloud.urlopen',open_request),patch('assistant.performance.record') as timing:
             stream=client.stream_answer(client.model,[{'role':'user','content':'Chao'}])

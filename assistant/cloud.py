@@ -57,7 +57,7 @@ def cloud_events(endpoint, body, opener=urlopen):
     if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
         raise ValueError('URL server phải là URL gốc HTTPS.')
     request = Request(endpoint.rstrip('/') + '/api/cloud/chat', data=json.dumps(body).encode(),
-                      headers={'Content-Type': 'application/json', 'Accept': 'text/event-stream', 'User-Agent': 'ChatAI-Desktop/2.5'})
+                      headers={'Content-Type': 'application/json', 'Accept': 'text/event-stream', 'User-Agent': 'ChatAI-Desktop/2.6.6'})
     try:
         with opener(request, timeout=150 if body.get('deep_analysis') else 75) as response:
             yield from parse_events(response)
@@ -312,7 +312,7 @@ class ServerApiClient:
               'messages':messages,'max_tokens':options.get('num_predict',1600),
               'temperature':options.get('temperature',.2),'stream':True}
         request=Request(endpoint.rstrip('/')+'/api/provider/model',data=json.dumps(body).encode(),
-                        headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/2.5 (+Windows; account API)'})
+                        headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/2.6.6 (+Windows; account API)'})
         import time
         from .performance import record
         started=time.monotonic();first_answer=True

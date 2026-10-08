@@ -9,7 +9,7 @@ import traceback
 from assistant.performance import measure,record
 from threading import Event
 from pathlib import Path
-print("Chat AI Desktop 2.6.5: giao diện không chờ Ollama/SSL.",flush=True)
+print("Chat AI Desktop 2.6.6: giao diện không chờ Ollama/SSL.",flush=True)
 
 from assistant.runtime_compat import prepare_six
 prepare_six()
@@ -332,7 +332,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.session_verified.connect(self._on_session_verified)
         self.cid = context['cid']
         print('[4/5] Đang dựng cửa sổ chat…', flush=True)
-        self.setWindowTitle('Chat AI · Desktop 2.6.5')
+        self.setWindowTitle('Chat AI · Desktop 2.6.6')
         logo = ROOT / 'logo_chat_ai.png'
         if logo.is_file():
             icon = QIcon(str(logo)); self.setWindowIcon(icon)
@@ -2278,7 +2278,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.account_logout_button=self.button(box,'Đăng xuất',self.logout_account)
         layout.addWidget(account)
         updates=QGroupBox('Cập nhật Chat AI'); box=QVBoxLayout(updates)
-        box.addWidget(QLabel('Phiên bản hiện tại: 2.6.5 · GitHub vuanh97nd/ChatAI'))
+        box.addWidget(QLabel('Phiên bản hiện tại: 2.6.6 · GitHub vuanh97nd/ChatAI'))
         self.update_status=QLabel('Chưa kiểm tra cập nhật.'); self.update_status.setWordWrap(True); box.addWidget(self.update_status)
         self.update_notes=QPlainTextEdit(); self.update_notes.setReadOnly(True); self.update_notes.setMaximumHeight(130); box.addWidget(self.update_notes)
         self.update_check=self.button(box,'Kiểm tra cập nhật',self.check_updates)
@@ -3103,7 +3103,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         title.setStyleSheet('font-size:20px;font-weight:600;')
         layout.addWidget(title)
         details=QLabel(
-            'Desktop 2.6.5\n'
+            'Desktop 2.6.6\n'
             'Ứng dụng AI hỗ trợ trò chuyện, xử lý tài liệu và sáng tạo nội dung.\n\n'
             'Tác giả: Vũ Ngọc Ánh\n'
             'Email: vuanh97nd@gmail.com\n'

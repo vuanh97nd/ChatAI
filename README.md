@@ -1,4 +1,4 @@
-# Chat AI Desktop 2.6.5
+# Chat AI Desktop 2.6.6
 
 Ứng dụng Windows native bằng PySide6, chạy mô hình trên Ollama local. RAM16GB/RTX3070 8GB: Qwen2.5 7B mặc định, Qwen Coder7B cho code; có Qwen1.5B/3B, DeepSeek R1 1.5B/8B, Gemma3 4B đọc ảnh.
 
@@ -64,7 +64,7 @@ Updater dùng https://github.com/vuanh97nd/ChatAI/releases. Kiểm tra khi ngư�
 
 ## Bộ cài Inno Setup
 
-Cài Inno Setup 6.3+ hoặc 7 từ https://jrsoftware.org/isdl.php. Mở `Chat-AI-Setup.iss` → Build → Compile hoặc chạy `Build-Setup.bat`. Bộ cài tạo tại `dist/Chat-AI-Setup-2.6.5.exe` và đóng gói Python runtime trong một file EXE.
+Cài Inno Setup 6.3+ hoặc 7 từ https://jrsoftware.org/isdl.php. Mở `Chat-AI-Setup.iss` → Build → Compile hoặc chạy `Build-Setup.bat`. Bộ cài tạo tại `dist/Chat-AI-Setup-2.6.6.exe` và đóng gói Python runtime trong một file EXE.
 
 Bộ cài mặc định vào `%LOCALAPPDATA%/Programs/Chat-AI`, có Start Menu và tùy chọn Desktop. Máy đích không cần cài Python riêng; cần cài Ollama và tải model để dùng AI local. Giữ config hiện có khi nâng cấp; gỡ cài giữ dữ liệu/workspace. Không tự chuyển lịch sử từ thư mục Google Drive sang thư mục cài mới.
 

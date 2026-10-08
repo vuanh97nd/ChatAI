@@ -1,5 +1,10 @@
 # Lịch sử cập nhật Chat AI
 
+## 2.6.6
+
+- Đồng bộ phiên bản giao diện, khởi động, updater, runtime, bộ cài và API server thành 2.6.6.
+- Tách cấu hình AI trực tuyến khỏi Ollama; sửa lỗi lưu độ sáng tạo do gửi mã AI trống.
+
 ## 2.6.5
 
 - Đồng bộ phiên bản ứng dụng, updater, Python runtime và bộ cài Windows.

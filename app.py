@@ -38,7 +38,7 @@ def main():
         def run(self):
             self.result, self.error = None, None
             try:
-                self.progress.emit('Đang nạp giao diện · phiên bản 2.6.5…')
+                self.progress.emit('Đang nạp giao diện · phiên bản 2.6.6…')
                 with measure('startup.desktop_import'):
                     from desktop_ui import Window, prepare_context
                 with measure('startup.prepare_context'):
@@ -113,7 +113,7 @@ def main():
                 record('startup.total',time.monotonic()-LAUNCH_STARTED)
                 splash.loading=False; splash.logo.animation.stop(); splash.close()
             QTimer.singleShot(450,reveal)
-            print('Chat AI Desktop 2.6.5 đã mở.',flush=True)
+            print('Chat AI Desktop 2.6.6 đã mở.',flush=True)
         except Exception:
             error=traceback.format_exc(); print(error,flush=True)
             QMessageBox.critical(splash,'Không mở được Chat AI',error)
