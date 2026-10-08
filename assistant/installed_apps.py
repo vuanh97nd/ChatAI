@@ -56,4 +56,6 @@ def authorized_apps(cfg):
 def matches_app(row,query):
     query=query.casefold().strip()
     if not query or query in (row['name']+' '+row['path']).casefold():return True
-    return query in {'autocad','auto cad','autocad lt','cad'} and PureWindowsPath(row['path']).name.casefold() in {'acad.exe','acadlt.exe'}
+    if query in {'autocad','auto cad','autocad lt','cad'} and PureWindowsPath(row['path']).name.casefold() in {'acad.exe','acadlt.exe'}:return True
+    if query in {'foxit','foxit reader','foxit pdf reader','foxit editor','foxit pdf editor'} and PureWindowsPath(row['path']).name.casefold() in {'foxitpdfreader.exe','foxitreader.exe','foxitpdfeditor.exe'}:return True
+    return False
