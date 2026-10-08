@@ -698,7 +698,8 @@ class PlaxisApp:
         try:
             from plxscripting.easy import new_server
         except ImportError:
-            return {'executed': False, 'error': 'Chưa cài plxscripting. Chạy: pip install plxscripting'}
+            from .plaxis_dependency import missing_scripting_message
+            return {'executed': False, 'error': missing_scripting_message()}
 
         try:
             s, g = new_server('localhost', port, password='')

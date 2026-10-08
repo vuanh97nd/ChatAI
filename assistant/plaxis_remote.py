@@ -30,10 +30,8 @@ def _connect(port, label):
     try:
         from plxscripting.easy import new_server
     except ImportError:
-        raise RuntimeError(
-            'Chưa cài plxscripting. Chạy: pip install plxscripting\n'
-            'Sau đó khởi động lại ChatAI.'
-        )
+        from .plaxis_dependency import missing_scripting_message
+        raise RuntimeError(missing_scripting_message()) from None
     try:
         s, g = new_server('localhost', port, password='')
         return s, g

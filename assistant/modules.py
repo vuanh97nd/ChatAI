@@ -16,6 +16,9 @@ from .locking import execution_lock
 from .storage import now
 
 MODULES = {
+    "plaxis": {"label":"Plaxis Remote Scripting", "packages":["plxscripting>=1,<2"],
+               "imports":["plxscripting"], "models":[],
+               "note":"Cài plxscripting vào Python của ChatAI để chạy Plaxis trực tiếp. Cần Plaxis và Remote Scripting Server trên máy; cài thư viện không thay thế phần mềm Plaxis."},
     "office": {"label": "Word / PowerPoint", "packages": ["python-docx>=1.1,<2", "python-pptx>=1,<2", "pandas>=2.2,<3", "openpyxl>=3.1.5,<4"],
                "imports": ["docx", "pptx", "pandas", "openpyxl"], "models": [],
                "note": "Đọc DOCX/PPTX, tạo Word/slide và sửa text Word sau duyệt. Bản cài gọn tải thư viện Excel XLSX khi bật Office. Không hỗ trợ DOC/PPT cũ, macro, OCR."},
@@ -341,8 +344,11 @@ class ModuleManager:
         """Prefer the bundled console interpreter so background pip logs are captured on Windows."""
         bundled = self.root / "runtime" / "python" / "python.exe"
         marker = self.root / "runtime" / "python" / "chat-ai-runtime.json"
-        if bundled.is_file() and marker.is_file():
+        if bundled.is_file() and marker.is_file() and Path(sys.executable).resolve().parent==bundled.resolve().parent:
             return str(bundled)
+        current=Path(sys.executable)
+        if current.name.lower()=='pythonw.exe' and current.with_name('python.exe').is_file():
+            return str(current.with_name('python.exe'))
         return sys.executable
 
     def pull(self, jid, model):
