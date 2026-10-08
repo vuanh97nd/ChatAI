@@ -120,7 +120,11 @@ def validate_call(name, args, schemas=None):
             if not isinstance(value, list) or not 1 <= len(value) <= 3 or not all(isinstance(x, str) for x in value):
                 raise ValueError("prompts phải là danh sách 1–3 chuỗi.")
         elif key != "value" and not isinstance(value, str):
-            if name=='video_from_images' and key=='image_paths':
+            prop_type = params["properties"].get(key, {}).get("type")
+            if prop_type == "number":
+                if not isinstance(value, (int, float)):
+                    raise ValueError(f"{key} phải là số.")
+            elif name=='video_from_images' and key=='image_paths':
                 if not isinstance(value,list) or not 1<=len(value)<=8 or any(not isinstance(path,str) for path in value):
                     raise ValueError('image_paths phải có 1–8 đường dẫn ảnh.')
             elif name in {'image_resize','video_from_images'} and key in {'width','height','seconds_per_image'}:
