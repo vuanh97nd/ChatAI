@@ -3,14 +3,14 @@
 Giữ nguyên giao diện/model. Không tải thư viện, không gọi thêm model để chọn thẻ, không thay đổi quyền web theo nút. Đây là hướng dẫn và điều phối bằng code, không huấn luyện trọng số hoặc biến phản hồi 👎 thành tri thức tự động.
 
 File mới đầy đủ:
-- assistant/experience.py: 32 thẻ, chọn tối đa 2 thẻ/1100 ký tự theo nhãn và từ khóa. Mỗi thẻ có dấu hiệu, dữ kiện cần, bước xử lý, lỗi tránh, ví dụ và điều kiện dừng.
+- assistant/experience.py: 33 thẻ, mỗi thẻ có dấu hiệu, dữ kiện cần, bước xử lý, lỗi tránh, ví dụ và điều kiện dừng.
 - tests/test_experience.py: kiểm thử thẻ, lưu trạng thái, kết quả thật, chặn lặp lỗi và quyền trao đổi.
 - EXPERIENCE.md: hướng dẫn này.
 File sửa đầy đủ: assistant/agent.py.
 
-Khi có thẻ phù hợp, thay phần ví dụ chung bằng thẻ; không dồn cả hai bộ vào cùng prompt. Trò chuyện ngắn không chọn thẻ. Không tăng số lượt gọi model cho chat thường.
+Không chèn thẻ kinh nghiệm chung vào prompt chat. Riêng thẻ GeoSlope cho hồ sơ Km 134+300 chỉ được chèn khi ngữ cảnh có GeoSlope/SLOPE/W cùng `SLTT.xlsx`, `BTH (2)` hoặc lý trình tương ứng; không tăng số lượt gọi model. Người dùng xác nhận hàng 13 là Co VST, hàng 4 là c DST và hàng 6 là φ DST. Ưu tiên Co hàng 13 như Su với φ=0; nếu có Co VST thì không dùng c DST. Lớp 1c dùng Co VST E13=15.10 kN/m²; c DST=4.86 kN/m² không dùng cho mô hình này. Lớp 1a tạm giữ thông số GeoStudio (γ=16.1, Co/Su=14.7, UndrainedPhiZero).
 
-Nhóm thẻ: khởi động Windows, môi trường Python/pip/venv, Ollama, tốc độ/GPU/tải model, traceback/test/sửa code/SQL, Excel/công thức/Office/PDF scan, nhận dạng tiêu chuẩn/tài liệu chưa đủ/nguồn mâu thuẫn/tin tức/thời tiết/lỗi web, tính phần trăm/đơn vị/ngày giờ/thống kê, dịch/email/kế hoạch/tình huống cần chính xác cao/ký ức/giải thích.
+Nhóm thẻ: khởi động Windows, môi trường Python/pip/venv, Ollama, tốc độ/GPU/tải model, traceback/test/sửa code/SQL, Excel/công thức/Office/PDF scan, GeoSlope/SLOPE/W, nhận dạng tiêu chuẩn/tài liệu chưa đủ/nguồn mâu thuẫn/tin tức/thời tiết/lỗi web, tính phần trăm/đơn vị/ngày giờ/thống kê, dịch/email/kế hoạch/tình huống cần chính xác cao/ký ức/giải thích.
 
 Theo dõi task_progress trong state SQLite của từng cuộc hội thoại. Chỉ ghi kết quả công cụ thực với dấu vân tay tham số; không nhận lời AI nói “đã làm” là bằng chứng. Đưa tối đa 4 bước gần đây vào ngữ cảnh để tránh hỏi lại và lặp cách xử lý. Lỗi được giới hạn độ dài, che một số mẫu khóa truy cập; không lưu thêm nguyên tham số vào sổ bước. Lịch sử/audit trước đây vẫn hoạt động như cũ.
 

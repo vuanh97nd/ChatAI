@@ -85,7 +85,7 @@ class GeoslopeInputTest(unittest.TestCase):
         with self.assertRaises(FileExistsError):self.tool.commit(plan)
 
     def test_whitelist_and_geoslope_online_tool_routing(self):
-        with self.assertRaises(PermissionError):self.tool.prepare('geoslope_inspect',{'path':'/etc/hosts'})
+        with self.assertRaises(PermissionError):self.tool.prepare('geoslope_inspect',{'path':str(Path(__file__).resolve())})
         agent=OnlineAutomation(Mock(),{},Mock(),'c',Mock(),Mock(),geoslope_inspector=self.tool)
         names={s['function']['name'] for s in agent.schemas}
         self.assertIn('geoslope_inspect',names);self.assertIn('geoslope_profile',names)

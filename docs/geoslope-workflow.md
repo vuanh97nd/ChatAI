@@ -9,6 +9,18 @@ Người dùng gửi bảng tổng hợp xử lý, bảng chỉ tiêu tính toá
 3. **DXF là nguồn hình dạng.** Phân biệt đường tự nhiên, thiết kế, ranh giới và bản vẽ phụ. Kiểm tra handle, layer, đơn vị và phép chuyển tọa độ; không mặc định header INSUNITS luôn đúng. Không đổi hình dạng thực thành mái dốc hình thang chỉ để dùng công cụ có sẵn.
 4. **GSZ được gọi là kết quả mẫu là nguồn đối chiếu cấu trúc/cách trình bày.** Không ghi đè mẫu, sao chép thư mục kết quả vào dự án mới hoặc lấy thông số khác Excel làm dữ liệu mới. Không điều chỉnh đầu vào để ép Fs bằng mẫu.
 
+### Ghi nhận tạm thời cho hồ sơ Km 134+300
+
+Theo chỉ dẫn của người dùng trong hồ sơ này, tạm ưu tiên các giá trị số trong `SLTT.xlsx`, sheet `BTH (2)`, làm nguồn vật liệu cho những lớp có tên tương ứng, kể cả khi thông số lưu trong GSZ mẫu khác. Giữ nguyên địa chỉ ô và đơn vị khai báo; không áp dụng lựa chọn này cho dự án khác.
+
+Mặt cắt Km 134+300 trong `THXL LK-BL KM133-138.xlsx`, sheet `THXL`, hàng 14 có các lớp `1a` (O14: 4.5 m), `1c` (P14: 3 m), `3` (U14: 5.5 m), hố khoan tham chiếu `CH134-1` (G14). Bảng `BTH (2)` không có lớp 1a. Theo chỉ dẫn mới nhất, tạm giữ 1a theo vật liệu đang lưu trong GeoStudio: gamma 16.1 kN/m3, Co/Su 14.7 kN/m2, `UndrainedPhiZero`, φ=0; chưa thay bằng mẫu thí nghiệm. Với 1c, dùng Co VST hàng 13 (E13=15.10 kN/m2) và `UndrainedPhiZero`, φ=0. Giá trị 4.86 kN/m2 là c DST hàng 4, không dùng thay Co khi đã có VST.
+
+Người dùng xác nhận: Co ở hàng 13 BTH là VST; hàng 4 là c DST (nhãn Co hiện tại bị nhầm; người dùng sẽ tự sửa workbook), hàng 6 là φ DST. Ưu tiên Co VST như Su với `UndrainedPhiZero`, φ=0; nếu không có Co VST thì dùng c/φ DST. Theo cập nhật hiện tại, 1c dùng E13=15.10 kN/m² làm Co; c DST 4.86 kN/m² không thay thế Co VST. Tạm lấy vật liệu 1a từ GeoStudio hiện có. Lớp 3 tiếp tục lấy Co VST từ I13=51.25 kN/m². Đất đắp D13 trống nên dùng D4=25.8 kN/m² và D6=17.1°; vùng `TD+CT` dùng cùng bộ DST của đất đắp.
+
+Người dùng xác nhận đơn vị dung trọng `kN/m2` trong BTH là nhầm; với bài này hiểu các giá trị dung trọng BTH là `kN/m3`. Các giá trị thí nghiệm lớp 1a (E6/G6/F6) không dùng cho run hiện tại vì người dùng yêu cầu tạm dùng thông số phần mềm.
+
+Các kết quả solve trước trong lịch sử đã bị thay bởi cập nhật mới nhất. Tạm giữ lớp 1a theo GeoStudio hiện có (γ=16.1 kN/m³, Co/Su=14.7 kN/m², `UndrainedPhiZero`, φ=0). Người dùng xác nhận hàng 13 là Co VST, hàng 4 là c DST; do đó 1c dùng Co VST E13=15.10 kN/m² (`UndrainedPhiZero`, φ=0), không dùng c DST 4.86 kN/m² khi đã có Co VST. Run ở `SolveRuns_UserUpdate_1aSoftware_1cCo486` đã gán nhầm 4.86 thành Co và không dùng làm kết quả. Run sửa đúng đã hoàn tất trong `SolveRuns_UserUpdate_1aSoftware_1cVSTCo`: DTD+CT Fs nhỏ nhất = 1.1297373567 (4,096 mặt trượt hữu hạn, slip 430); TXL Fs nhỏ nhất = 0.4745786443 (29,791 mặt trượt hữu hạn, slip 14071). Đây là kết quả đọc từ CSV trong GSZ mới; log GeoCmd và `Solve-inputs.json` nằm cùng thư mục. Không ghi đè các run trước hoặc workbook gốc.
+
 Nếu bảng đổi tên sheet/cột hoặc dùng ô gộp, tìm theo nhãn, liệt kê sheet và đọc tiếp vùng ô. `geoslope_inspect` nhận diện một số kiểu BTH/SLTT; kết quả nhận diện không đầy đủ không có nghĩa file không có dữ liệu. Dùng `sheet` và `cell_range` để kiểm tra trực tiếp. Không hứa mọi định dạng đều tự nhận diện được.
 
 ## Công cụ hiện có
@@ -39,13 +51,13 @@ Giữ mọi điểm gãy. Đây là dịch xuống theo phương đứng, **khô
 
 ## Ý nghĩa Co/Su trong SLTT của người dùng
 
-Người dùng xác nhận **Co trong SLTT.xlsx là Su**. Giữ ý nghĩa này trong bài đang làm; không đọc nó thành c′ chỉ vì cột tên “Lực dính”. Với mô hình không thoát nước φ=0:
+Người dùng xác nhận **Co trong SLTT.xlsx là Su** và với bài Km 134+300 yêu cầu dùng `phi=0`. Không đọc Co thành c′ chỉ vì cột tên “Lực dính”. Với mô hình không thoát nước φ=0:
 
 - `SlopeModel = UndrainedPhiZero`;
 - `StressStrain/Cohesion = Su`;
-- không gán Su vào `CohesionPrime`, không cộng φ khác để tăng sức chống cắt.
+- không gán Su vào `CohesionPrime`, không cộng φ khác để tăng sức chống cắt khi đã có Co VST.
 
-Hàng góc ma sát được giữ làm dữ liệu nguồn, không tự dùng trong mô hình Su. Bài thoát nước khác cần c′ và φ′ được xác định đúng. Không áp ý nghĩa Co=Su sang mọi file của mọi người dùng. Đất đắp và các lớp khác phải được gán theo giả thiết phân tích đã thống nhất, không suy đoán từ tên đất.
+Với lớp không có Co VST trong BTH, dùng c hàng 4 và φ hàng 6 từ DST theo chỉ dẫn riêng của người dùng; nếu số liệu/đơn vị đó chưa rõ thì hỏi. Bài thoát nước khác cần c′ và φ′ được xác định đúng. Không áp ý nghĩa Co=Su hoặc lựa chọn φ=0 sang mọi file của mọi người dùng. Không tự lấy thông số từ GSZ cũ.
 
 ## Dựng và tính trong GeoStudio thực
 
