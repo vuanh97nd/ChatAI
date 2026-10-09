@@ -228,6 +228,40 @@ def _automation_round_limit(state, has_plaxis_remote=False):
     return 8
 
 
+_PLAXIS_READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
+               'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults'}
+PLAXIS_READ_STALL_LIMIT=8
+
+
+def _plaxis_read_stall(state, name, args):
+    """Refuse a read-only PLAXIS batch once reads alone have run too long.
+
+    A model that keeps re-checking state it already holds never fails, so the
+    repeated-failure guard never fires; it simply spends every planning round
+    on reads and ends the turn without building anything. Any batch that
+    changes the model resets the count.
+    """
+    if name!='plaxis_commands':return None
+    try:
+        raw=args.get('commands')
+        rows=json.loads(raw) if isinstance(raw,str) else raw
+        commands={row.get('command') for row in rows}
+    except Exception:
+        return None
+    if not commands or not commands<=_PLAXIS_READS:
+        state['plaxis_read_streak']=0
+        return None
+    streak=state.get('plaxis_read_streak',0)
+    if streak>=PLAXIS_READ_STALL_LIMIT:
+        state['plaxis_read_streak']=PLAXIS_READ_STALL_LIMIT//2
+        return (f'Đã có {streak} lượt plaxis_commands liên tiếp chỉ đọc/tra cứu mà không thay đổi mô hình. '
+                'Trạng thái đã được đọc đủ trong các kết quả trên; không đọc lại. Lượt này phải gọi lệnh tạo hoặc sửa '
+                'cho bước kế tiếp còn thiếu của bài (ví dụ n2nanchor, embeddedbeamrow, lineload, setmaterial, mesh, '
+                'phase, calculate), hoặc trả lời người dùng nếu thực sự thiếu dữ kiện kỹ thuật.')
+    state['plaxis_read_streak']=streak+1
+    return None
+
+
 def search_call(prompt, cfg):
     """Route an explicit Chrome search without relying on a model to call tools."""
     if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
@@ -492,7 +526,7 @@ class OnlineAutomation:
             not topic_changed and
             re.fullmatch(r'\s*(?:ok|có|đồng ý|tiếp tục(?:\s+nhé)?|làm(?:\s+nhé)?|a|1)\s*[.!]?\s*',prompt,re.I))
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
-                     online_automation=True,automation_rounds=0,preparation_repairs=0,plaxis_repairs=0,plaxis_general_mode=continue_general)
+                     online_automation=True,automation_rounds=0,preparation_repairs=0,plaxis_repairs=0,plaxis_read_streak=0,plaxis_general_mode=continue_general)
         state['greeting_reply']=(known_error_reply(prompt,state['messages'][:-1]) or greeting_reply(prompt)) if image is None else None
         if state['greeting_reply']:
             self.save(state)
@@ -596,6 +630,13 @@ class OnlineAutomation:
                     yield {'type':'status','text':'Đang chuyển bài 3D sang API tổng quát; giữ nguyên bài toán…'}
                 yield {'type':'app_activity','text':'Đang thực hiện: '+name}
                 validate_call(name,args,self.schemas)
+                stalled=_plaxis_read_stall(state,name,args)
+                if stalled:
+                    state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(
+                        {'ok':False,'not_executed':True,'read_only_stall':True,'error':stalled},ensure_ascii=False)})
+                    state['queue']=[];self.save(state)
+                    yield {'type':'status','text':'AI đọc trạng thái lặp lại; yêu cầu chuyển sang bước dựng tiếp theo…'}
+                    continue
                 repeated=None
                 try:
                     repeated=repeated_failure(state,call)
@@ -603,7 +644,15 @@ class OnlineAutomation:
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
-                    if not repeated and state.get('preparation_repairs',0)<2 and task_record(state)['phase']!='discussion':
+                    # A PLAXIS tutorial runs for dozens of tool calls, so two
+                    # malformed-argument repairs across the whole turn end the
+                    # task on a trivial mistake; give that path more room while
+                    # the repeated-failure guard still blocks real loops.
+                    repair_limit=8 if name.startswith('plaxis_') else 2
+                    # The repeated call itself is still never executed; on the
+                    # PLAXIS path the model is told so and must change approach,
+                    # instead of the whole tutorial ending on one bad signature.
+                    if (not repeated or name.startswith('plaxis_')) and state.get('preparation_repairs',0)<repair_limit and task_record(state)['phase']!='discussion':
                         state['preparation_repairs']=state.get('preparation_repairs',0)+1
                         state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(
                             {'ok':False,'preparation_failed':True,'not_executed':True,'error':str(exc)[:1000]},ensure_ascii=False)})
