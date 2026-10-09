@@ -15,7 +15,7 @@ GEMINI_MODEL = 'Gemini API'
 GROQ_MODEL = 'Groq API'
 REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_FLASH_MODEL:'deepseek_flash', DEEPSEEK_PRO_MODEL:'deepseek_pro', DEEPSEEK_R1_MODEL:'deepseek_r1', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
 PROVIDER_NAMES = {v:k for k,v in REMOTE_MODELS.items()}
-_DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash'}
+_DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner'}
 CUSTOM_PROVIDER_TYPES={}
 SWITCH_MESSAGE = 'Chọn AI phù hợp với tác vụ bạn muốn thực hiện.'
 
@@ -90,7 +90,7 @@ API_ENDPOINTS = {'nvidia':'https://integrate.api.nvidia.com/v1/chat/completions'
                  'deepseek':_DS_API,'deepseek_flash':_DS_API,'deepseek_pro':_DS_API,'deepseek_r1':_DS_API,
                  'gemini':'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                  'groq':'https://api.groq.com/openai/v1/chat/completions'}
-API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
+API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-reasoner','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b'}
 
 
 def _protect_key(value, decrypt=False):
@@ -143,9 +143,12 @@ class ApiDocumentClient:
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def _build_payload(self,model,messages,options,stream):
         payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':stream,
-                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),4096),
+                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),8192),
                  'temperature':options.get('temperature',.2)}
-        if self.provider=='gemini':payload['reasoning_effort']='low';payload['max_tokens']+=1024
+        if self.provider=='gemini':
+            payload['max_tokens']+=1024
+            # Chỉ ép 'low' cho tổng hợp tài liệu (cần nhanh); chat thường để model tự suy luận.
+            if model=='document-small':payload['reasoning_effort']='low'
         return payload
     def _api_error(self,error):
         hints={401:'API key không hợp lệ.',403:'API key chưa có quyền dùng model.',404:'Model không tồn tại hoặc chưa được cấp quyền.',429:'Hết hạn mức hoặc dịch vụ đang giới hạn yêu cầu.'}
