@@ -62,8 +62,7 @@ class BillingDialog(QDialog):
         layout=QVBoxLayout(self)
         title=QLabel('Số dư và thanh toán');title.setStyleSheet('font-size: 20px; font-weight: 600;')
         layout.addWidget(title)
-        self.plan_note=QLabel('Cloud AI, NVIDIA và AI trên máy miễn phí. DeepSeek: 4.000 đ/triệu token.\n'
-                    'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó 100.000 đ/30 ngày.\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.');self.plan_note.setWordWrap(True);layout.addWidget(self.plan_note)
+        self.plan_note=QLabel('Đang tải bảng giá từ server…');self.plan_note.setWordWrap(True);layout.addWidget(self.plan_note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs)
         wallet=QWidget();wl=QVBoxLayout(wallet);self.tabs.addTab(wallet,'Ví token')
         self.summary=QLabel('Đang tải số dư…');self.summary.setWordWrap(True);wl.addWidget(self.summary)
@@ -73,7 +72,7 @@ class BillingDialog(QDialog):
         row=QHBoxLayout();self.amount=QComboBox()
         for value in [20000,50000,100000,200000,500000]:self.amount.addItem(money(value),value)
         row.addWidget(self.amount);self.topup=QPushButton('Nạp token bằng QR');self.topup.clicked.connect(lambda:self.create_order('topup'));row.addWidget(self.topup)
-        self.renew=QPushButton('Gia hạn 30 ngày · 100.000 đ');self.renew.clicked.connect(lambda:self.create_order('service'));wl.addLayout(row);wl.addWidget(self.renew)
+        self.renew=QPushButton('Đang tải phí duy trì…');self.renew.setEnabled(False);self.renew.clicked.connect(lambda:self.create_order('service'));wl.addLayout(row);wl.addWidget(self.renew)
         self.qr=QLabel();self.qr.setAlignment(Qt.AlignCenter);wl.addWidget(self.qr)
         self.payment_info=QLabel('QR sẽ tự xác nhận khi ngân hàng gửi giao dịch. Không cần gửi ảnh chuyển khoản.');self.payment_info.setWordWrap(True);self.payment_info.setTextFormat(Qt.PlainText);wl.addWidget(self.payment_info);wl.addStretch()
         self.orders=self.table(['Thời gian','Loại','Số tiền','Trạng thái','Nội dung / người nạp'])
@@ -138,7 +137,14 @@ class BillingDialog(QDialog):
         if getattr(self,'load_config_next',False):
             self.load_config_next=False;self.send('/api/admin/billing/config/get')
 
-    def failed(self,text):self.status.setText(text)
+    def failed(self,text):
+        self.status.setText(text)
+        if self.summary.text()=='Đang tải số dư…':
+            self.summary.setText('Chưa tải được số dư. Bấm Làm mới để thử lại.')
+            self.month_summary.setText('Chưa tải được thống kê token.')
+        if not getattr(self,'pricing_loaded',False):
+            self.plan_note.setText('Chưa tải được bảng giá từ server; chưa thể xác định phí duy trì.')
+            self.renew.setText('Chưa tải được phí duy trì');self.renew.setEnabled(False)
 
     def show_month_usage(self):
         month=self.usage_month.currentData()
@@ -175,7 +181,9 @@ class BillingDialog(QDialog):
         self.status.setText(result.get('message','Đã cập nhật.'))
         fee=result.get('service_fee',result.get('config',{}).get('service_fee'))
         price=result.get('token_price',result.get('price_per_million',result.get('config',{}).get('token_price')))
-        if fee is not None:self.service_fee=fee
+        if fee is not None:
+            self.service_fee=fee;self.pricing_loaded=True
+            if fee==0:self.renew.setEnabled(False)
         if price is not None:self.token_price=price
         if fee is not None or price is not None:
             if self.is_admin:

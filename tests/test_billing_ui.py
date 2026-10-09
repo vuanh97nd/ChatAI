@@ -8,6 +8,19 @@ from assistant.billing_ui import BillingDialog,money
 
 
 class BillingUITests(unittest.TestCase):
+    def test_unknown_price_never_shows_default_and_zero_fee_disables_renewal(self):
+        dialog=self.dialog()
+        try:
+            self.assertNotIn('100.000',dialog.plan_note.text())
+            self.assertFalse(dialog.renew.isEnabled())
+            dialog.failed('Server unavailable')
+            self.assertNotIn('100.000',dialog.plan_note.text())
+            dialog.received('/api/billing/status',{'service_fee':0,'price_per_million':4000})
+            self.assertIn('Miễn phí duy trì',dialog.plan_note.text())
+            self.assertEqual(dialog.renew.text(),'Miễn phí duy trì')
+            self.assertFalse(dialog.renew.isEnabled())
+        finally:dialog.close()
+
     def test_month_summary_switches_month_without_using_recent_request_list(self):
         dialog=self.dialog()
         try:
