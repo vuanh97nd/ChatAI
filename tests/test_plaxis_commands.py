@@ -155,3 +155,19 @@ class PlaxisCommandTests(unittest.TestCase):
         state={'messages':[{'role':'assistant','tool_calls':[{'function':{'name':'plaxis_run_problem','arguments':{'version':'2d'}}}]},
                            {'role':'assistant','tool_calls':[{'function':{'name':'plaxis_commands','arguments':{'version':'3d'}}}]}]}
         self.assertIsNone(_plaxis_history_call('chạy lại',{'windows_apps_enabled':True},state,Mock(),Mock()))
+
+    def test_verify_model_checks_actual_properties_and_does_not_claim_full_solution(self):
+        g=SimpleNamespace(Soils=['Soil_1','Soil_2'],Project=SimpleNamespace(ModelType=SimpleNamespace(value=0)))
+        rows=commands_from_json(json.dumps([{'command':'verify_model','args':[json.dumps([
+            {'ref':'g.Soils','expected':2,'kind':'count'},
+            {'ref':'g.Project.ModelType','expected':0,'tolerance':0}])]}]))
+        result=execute_commands(Mock(),g,rows)
+        self.assertTrue(result['ok']);self.assertTrue(result['model_verified'])
+        self.assertNotIn('results_verified',result)
+        g.Soils.append('Unexpected')
+        result=execute_commands(Mock(),g,rows)
+        self.assertFalse(result['ok']);self.assertEqual(result['failed_command'],'verify_model')
+
+    def test_verify_model_rejects_expression_and_invalid_tolerance(self):
+        for check in [{'ref':'g.Soils[0].__class__()','expected':0}, {'ref':'g.Soils','expected':1,'tolerance':-1}]:
+            with self.assertRaises(ValueError):commands_from_json(json.dumps([{'command':'verify_model','args':[json.dumps([check])]}]))

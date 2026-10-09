@@ -54,6 +54,12 @@ class Store:
                 );
                 CREATE TABLE IF NOT EXISTS document_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
                 CREATE TABLE IF NOT EXISTS procedure_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
+                CREATE INDEX IF NOT EXISTS procedure_memory_owner_updated ON procedure_memory(owner,updated DESC);
+                CREATE INDEX IF NOT EXISTS procedure_memory_owner_tool ON procedure_memory(owner,json_extract(data,'$.tool'));
+                CREATE TABLE IF NOT EXISTS procedure_accounts(owner TEXT PRIMARY KEY,server TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS procedure_sync(server TEXT NOT NULL,owner TEXT NOT NULL,cursor INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(server,owner));
+                CREATE TABLE IF NOT EXISTS procedure_upload_sources(server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,scope TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(server,owner,id,scope));
+                CREATE TABLE IF NOT EXISTS procedure_uploads(server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,scope TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(server,owner,id,scope));
                 CREATE TABLE IF NOT EXISTS history_deletions (id TEXT PRIMARY KEY, owner TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS history_sync (server TEXT NOT NULL,owner TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(server,owner,id));
                 CREATE TABLE IF NOT EXISTS audit (

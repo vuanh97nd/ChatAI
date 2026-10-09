@@ -4,7 +4,7 @@ import json
 import uuid
 from .storage import dumps, now
 from .document_memory import clean_records
-from .procedure_memory import clean_records as clean_procedures
+from .procedure_memory import clean_records as clean_procedures,clean_progress
 from .plaxis_confirmation import active_problem
 
 
@@ -16,6 +16,8 @@ def dialogue(state):
             'online_automation':state.get('online_automation') is True,
             'document_memory':clean_records(state.get('document_memory',[])),
             'procedure_memory':clean_procedures(state.get('procedure_memory',[])),
+            'procedure_progress':clean_progress(state.get('procedure_progress',{})),
+            'procedure_environment':str(state.get('procedure_environment') or 'unknown')[:160],
             'plaxis_active_problem':active_problem(state)}
 
 

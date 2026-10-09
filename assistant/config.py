@@ -19,6 +19,8 @@ def load_config():
 
 def validate_config(cfg):
     cfg = dict(cfg)
+    cfg.setdefault('procedure_training_enabled',False)
+    if type(cfg['procedure_training_enabled']) is not bool:raise ValueError('Chế độ đào tạo AI phải là bật/tắt.')
     cfg.setdefault('ai_tools_auto_execute',False)
     if type(cfg['ai_tools_auto_execute']) is not bool:raise ValueError('Quyền tự thực hiện công cụ phải là bật/tắt.')
     from .windows_apps import validate_settings

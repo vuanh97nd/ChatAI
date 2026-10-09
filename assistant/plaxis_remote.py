@@ -319,7 +319,10 @@ class PlaxisRemoteApp:
             port=(_INPUT_PORT if plan['target']=='input' else _OUTPUT_PORT)[plan['version']]
             try:server,g=_connect(port,'PLAXIS '+plan['target'])
             except RuntimeError as exc:return {'ok':False,'not_executed':True,'error':str(exc)}
-            return execute_commands(server,g,rows,self.on_status)
+            result=execute_commands(server,g,rows,self.on_status)
+            from .procedure_environment import plaxis_environment
+            result['environment']=plaxis_environment(plan['version'],port)
+            return result
         result = run_plaxis_problem(
             plan['script'],
             version=plan['version'],
@@ -357,9 +360,13 @@ class PlaxisRemoteApp:
             lines.append('Output Plaxis:')
             lines.append(textwrap.indent(result['output'], '  '))
 
+        from .procedure_environment import plaxis_environment
         return {
             'ok': True,
             'executed': True,
+            'environment':plaxis_environment(plan['version'],_INPUT_PORT[plan['version']]),
+            'results_verified':bool(result.get('phase_diagnostics')) and all(row['status']==1 for row in result.get('phase_diagnostics',[])),
+            'phase_diagnostics':result.get('phase_diagnostics',[]),
             'max_settlement_mm': res.get('max_settlement_mm'),
             'max_horizontal_displacement_mm': res.get('max_horizontal_displacement_mm'),
             'safety_factor': res.get('safety_factor'),

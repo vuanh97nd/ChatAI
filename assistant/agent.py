@@ -93,8 +93,9 @@ class Agent:
                     raise ValueError('Ảnh cần PNG hoặc JPEG hợp lệ.')
             message['images']=list(images)
         state["messages"].append(message)
-        state.update(running=True, rounds=0, model=model, code_attempts=0, tools_enabled=bool(self.schemas), routing=None, research_prepared=False, memory_prepared=False, rag_prepared=False, rag_results=None, document_prepared=False, prepared_documents=[], document_intent=None, followups=[], review_status=None, model_error=None, web_results=None, memory_write_status=None, web_search_requested=False, collaboration=None, expert_mode=bool(expert_mode), expert_override=expert_override, orchestration=None, expert_fallback_used=False, video_source_paths=[], media_prompt_en=None)
+        state.update(running=True, procedure_guarded=[], rounds=0, model=model, code_attempts=0, tools_enabled=bool(self.schemas), routing=None, research_prepared=False, memory_prepared=False, rag_prepared=False, rag_results=None, document_prepared=False, prepared_documents=[], document_intent=None, followups=[], review_status=None, model_error=None, web_results=None, memory_write_status=None, web_search_requested=False, collaboration=None, expert_mode=bool(expert_mode), expert_override=expert_override, orchestration=None, expert_fallback_used=False, video_source_paths=[], media_prompt_en=None)
         state['online_automation']=False
+        state['procedure_advice']=[]
         from .online_automation import search_call, application_call
         call=search_call(prompt,self.cfg) or application_call(prompt,self.cfg)
         state['initial_browser_call']=call if call and any(s['function']['name']==call['function']['name'] for s in self.schemas) else None
@@ -109,7 +110,7 @@ class Agent:
 
     def tool_result(self, state, call, result):
         from .procedure_memory import ProcedureMemory
-        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result)
+        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
         if call['function']['name'] in {'image_generate', 'video_generate','image_resize','video_from_images'} and (result.get('ok') or result.get('denied')):
             state['media_done'] = True
         plan=state.get('collaboration')
@@ -350,6 +351,9 @@ class Agent:
                 yield {"type": "status", "text": "Đang tính bằng Python…" if name == "calculate" else f"Tool: {name}"}
                 try:
                     validate_call(name, args, self.schemas)
+                    from .procedure_memory import ProcedureMemory
+                    known=ProcedureMemory(self.store).preflight(state.get('account_username',''),state,call)
+                    if known:raise RuntimeError(known)
                     repeated=repeated_failure(state,call)
                     if repeated:raise RuntimeError(repeated)
                     self.store.audit(self.cid, "tool_call", {"name": name, "args": args})
@@ -482,7 +486,7 @@ class Agent:
                 workflow=task_record(state)
                 from .procedure_memory import ProcedureMemory
                 procedure_query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
-                instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query)
+                instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query,state=state)
                 state["task_progress"]=workflow
                 experience_query='\n'.join(
                     m.get('content','') for m in state['messages'][-12:]

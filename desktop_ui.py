@@ -300,6 +300,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     account_enrichment_finished = Signal(object,object)
     login_restore_finished = Signal(object)
     support_badge_finished = Signal(object)
+    procedure_sync_finished = Signal(object)
     history_sync_finished = Signal(object)
     session_verified = Signal(object)
     def __init__(self, context=None):
@@ -312,10 +313,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.chat_messages, self.html_cache = [], {}
         self.sent_prompt = None
         self.server_session=None; self.personal_memories=[]
+        self.procedure_sync_loading=False
+        self.procedure_sync_finished.connect(self.apply_procedure_sync)
         self.history_sync_loading=False
         self.history_sync_finished.connect(self.apply_history_sync)
         self.history_sync_timer=QTimer(self);self.history_sync_timer.setInterval(15000)
         self.history_sync_timer.timeout.connect(self.sync_history)
+        self.history_sync_timer.timeout.connect(self.sync_procedures)
         self.history_sync_timer.start()
         self.login_restore_finished.connect(self.apply_restored_login)
         self.restore_login_loading=False
@@ -748,6 +752,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         elif callback:
             if not getattr(self,'exit_when_idle',False):callback(worker.result)
         if not worker.failure:self.sync_history()
+        self.sync_procedures()
         if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
@@ -2424,6 +2429,40 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.open_path(Path(result['path']).parent)
         self.update_task(task,done)
 
+    def sync_procedures(self):
+        if not self.server_session or self.procedure_sync_loading:return
+        self.procedure_sync_loading=True;session=dict(self.server_session)
+        from threading import Thread
+        def task():
+            try:
+                from assistant.procedure_sync import ProcedureSync
+                count=ProcedureSync(self.store,session).cycle()
+                result={'owner':session['username'],'server':session['endpoint'],'count':count}
+            except Exception as error:result={'owner':session['username'],'server':session['endpoint'],'error':str(error)}
+            finally:session.clear()
+            try:self.procedure_sync_finished.emit(result)
+            except RuntimeError:pass
+        Thread(target=task,daemon=True,name='ChatAI-lesson-sync').start()
+
+    def apply_procedure_sync(self,result):
+        self.procedure_sync_loading=False
+        if not self.server_session or self.server_session['username']!=result['owner'] or self.server_session['endpoint']!=result['server']:return
+        if result.get('error'):
+            self.account_status.setToolTip('Bài học đang lưu trên máy; chờ đồng bộ server: '+result['error'])
+        else:self.account_status.setToolTip('Bộ nhớ cách làm đã đồng bộ; có thể dùng bài học đào tạo chung của admin.')
+
+    def open_training_memory(self):
+        if not admin_session(self.server_session):return
+        from assistant.training_ui import TrainingDialog
+        TrainingDialog(self).exec()
+
+    def set_training_mode(self,enabled):
+        if not admin_session(self.server_session):return
+        self.cfg['procedure_training_enabled']=bool(enabled)
+        from assistant.config import save_config
+        self.cfg=save_config(self.cfg)
+        self.status.setText('Đào tạo dùng chung: bật. Bài học mới sẽ được lọc thông tin riêng và lưu lên server.' if enabled else 'Đào tạo dùng chung: tắt. Bài học mới được giữ riêng.')
+
     def sync_history(self):
         if not self.server_session or self.history_sync_loading or self.busy():return
         self.history_sync_loading=True
@@ -2492,6 +2531,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if hasattr(self,'api_key_group'):self.api_key_group.setVisible(admin_session(self.server_session))
         self.settings_server.setText(session['endpoint'])
         self.chat_login.setText('Tài khoản: '+session['username'])
+        self.sync_procedures()
         self.account_status.setText('Đã đăng nhập: '+session['username'])
         self.trial.adopt(session['username'])
         current=self.store.load(self.cid)
@@ -2539,6 +2579,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         result['_custom_ai']=self.cfg.get('custom_ai',[])
         self.install_custom_ai(result.get('_custom_ai',[]))
         self.refresh_account_ui()
+        self.sync_procedures()
         self.load_account_enrichment(dict(self.server_session))
         self.sync_history()
 
@@ -3230,6 +3271,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 menu.addAction('Quản lý người dùng',self.open_user_admin)
                 menu.addAction('Cấu hình email',self.open_email_settings)
                 menu.addAction('Quản lý thông báo',self.open_notifications)
+                menu.addAction('Bộ nhớ đào tạo AI',self.open_training_memory)
+                training=menu.addAction('Đào tạo AI · chia sẻ bài học mới')
+                training.setCheckable(True);training.setChecked(self.cfg.get('procedure_training_enabled',False));training.toggled.connect(self.set_training_mode)
             menu.addAction('Thông báo',self.open_notifications)
             menu.addAction('Số dư và thanh toán',self.open_billing)
             menu.addAction('Hồ sơ',self.open_profile)

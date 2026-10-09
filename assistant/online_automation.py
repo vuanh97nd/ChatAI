@@ -229,7 +229,7 @@ def _automation_round_limit(state, has_plaxis_remote=False):
 
 
 _PLAXIS_READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
-               'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults'}
+               'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults','verify_model'}
 PLAXIS_READ_STALL_LIMIT=20
 
 
@@ -526,7 +526,7 @@ class OnlineAutomation:
             not topic_changed and
             re.fullmatch(r'\s*(?:ok|có|đồng ý|tiếp tục(?:\s+nhé)?|làm(?:\s+nhé)?|a|1)\s*[.!]?\s*',prompt,re.I))
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
-                     online_automation=True,automation_rounds=0,preparation_repairs=0,plaxis_repairs=0,plaxis_read_streak=0,plaxis_general_mode=continue_general)
+                     online_automation=True,automation_rounds=0,procedure_guarded=[],procedure_advice=[],preparation_repairs=0,plaxis_repairs=0,plaxis_read_streak=0,plaxis_general_mode=continue_general)
         state['greeting_reply']=(known_error_reply(prompt,state['messages'][:-1]) or greeting_reply(prompt)) if image is None else None
         if state['greeting_reply']:
             self.save(state)
@@ -593,7 +593,7 @@ class OnlineAutomation:
             from .document_memory import DocumentMemory
             DocumentMemory(self.store).remember(state.get('account_username',''),[result])
         from .procedure_memory import ProcedureMemory
-        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result)
+        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
         self.store.audit(self.cid,'online_automation_result',{'name':name,'ok':result.get('ok',False)})
         state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(result,ensure_ascii=False)})
         state['queue']=[];state['pending']=None
@@ -639,11 +639,17 @@ class OnlineAutomation:
                     continue
                 repeated=None
                 try:
+                    from .procedure_memory import ProcedureMemory
+                    known=ProcedureMemory(self.store).preflight(state.get('account_username',''),state,call)
+                    if known:raise RuntimeError(known)
                     repeated=repeated_failure(state,call)
                     if repeated:raise RuntimeError(repeated)
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
+                    if task_record(state)['phase']!='discussion':
+                        from .procedure_memory import ProcedureMemory
+                        ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,{'ok':False,'preparation_failed':True,'not_executed':True,'error':str(exc)},training=self.cfg.get('procedure_training_enabled',False))
                     # A PLAXIS tutorial runs for dozens of tool calls, so two
                     # malformed-argument repairs across the whole turn end the
                     # task on a trivial mistake; give that path more room while
@@ -735,7 +741,7 @@ class OnlineAutomation:
             question=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
             instruction+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'])
             from .procedure_memory import ProcedureMemory
-            instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),question)
+            instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state)
             if state.get('plaxis_general_mode'):
                 instruction+='\nĐã chuyển bài đang làm sang API tổng quát. Dùng plaxis_commands và kết quả API vừa nhận để tiếp tục; không gọi lại mẫu cố định hoặc yêu cầu chọn lại cách làm. Chỉ hỏi dữ kiện kỹ thuật thực sự thiếu. Dữ kiện đã giữ: '+json.dumps(state.get('plaxis_active_problem',{}),ensure_ascii=False)
                 instruction+='\nPLAXIS: xem lại kết quả plaxis_commands trước khi gọi tiếp. Không lặp lệnh đọc đã thành công, không dò lại collection/property đã kiểm tra, không thử indexing hoặc tên thuộc tính suy đoán. Nếu API xác nhận thuộc tính read-only, giữ giá trị tự tính và chuyển sang bước kế tiếp. Nếu không còn tiến triển bằng lệnh hợp lệ, dừng và hỏi đúng dữ kiện còn thiếu; không dùng hết giới hạn bằng các phép dò.'

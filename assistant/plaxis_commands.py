@@ -73,6 +73,9 @@ def commands_from_json(raw):
         for v in args:value(v)
         if 'result' in row and (not isinstance(row['result'],str) or not _NAME.fullmatch(row['result']) or row['result']=='g'):
             raise ValueError('result cần tên tham chiếu hợp lệ, khác g.')
+        if cmd=='verify_model':
+            if len(args)!=1:raise ValueError('verify_model cần một chuỗi JSON.')
+            model_checks(args[0])
         if cmd=='new_project' and args:raise ValueError('new_project không nhận tham số.')
         if cmd=='read':
             ref=_read_ref(args[0]) if len(args)==1 else None
@@ -272,6 +275,21 @@ def _signature(listing,name):
     return f'Không có lệnh {name} trên đối tượng gốc g; tra bằng commands trên đối tượng con.'
 
 
+def model_checks(raw):
+    if not isinstance(raw,str) or len(raw)>30000:raise ValueError('verify_model cần chuỗi JSON các phép kiểm tra.')
+    checks=json.loads(raw)
+    if not isinstance(checks,list) or not 1<=len(checks)<=100:raise ValueError('verify_model cần 1–100 phép kiểm tra.')
+    for check in checks:
+        if not isinstance(check,dict) or set(check)-{'ref','expected','kind','tolerance'}:raise ValueError('Phép kiểm tra chỉ có ref, expected, kind, tolerance.')
+        if _read_ref(check.get('ref')) is None:raise ValueError('ref kiểm tra không hợp lệ.')
+        expected=check.get('expected')
+        if type(expected) not in (str,int,float,bool) or isinstance(expected,float) and not math.isfinite(expected):raise ValueError('expected phải là số, chuỗi hoặc boolean.')
+        if check.get('kind','value') not in ('value','count'):raise ValueError('kind chỉ nhận value hoặc count.')
+        tolerance=check.get('tolerance',1e-6)
+        if type(tolerance) not in (int,float) or not math.isfinite(tolerance) or tolerance<0:raise ValueError('tolerance phải là số hữu hạn không âm.')
+    return checks
+
+
 def execute_commands(server,g,rows,on_status=None):
     from .windows_apps import _STOP,wait_automation
     aliases={'g':g};results=[];started=False
@@ -300,6 +318,22 @@ def execute_commands(server,g,rows,on_status=None):
                 except Exception:raw=result
                 explained=_explain_log(ref,raw)
                 if explained is not raw:result=explained
+            elif row['command']=='verify_model':
+                checks=model_checks(args[0]);verified=[]
+                for check in checks:
+                    observed=resolve(_read_ref(check['ref']))
+                    if check.get('kind')=='count':actual=len(observed)
+                    else:
+                        try:actual=observed.value
+                        except Exception:actual=observed
+                        actual=plain(actual)
+                    expected=check['expected']
+                    match=(type(actual) in (int,float) and type(expected) in (int,float) and math.isfinite(actual) and abs(actual-expected)<=check.get('tolerance',1e-6)) or (type(actual)==type(expected) and actual==expected)
+                    verified.append({'ref':check['ref'],'expected':expected,'actual':actual,'match':match})
+                result={'verified':all(c['match'] for c in verified),'checks':verified,'scope':'Chỉ kiểm tra các thuộc tính liệt kê; không xác nhận toàn bộ mô hình.'}
+                if not result['verified']:
+                    return {'ok':False,'results':results,'failed_step':index+1,'failed_command':'verify_model','not_executed':not results,
+                            'error':'Mô hình chưa khớp điều kiện kiểm tra: '+json.dumps(verified,ensure_ascii=False)[:2000]}
             elif row['command']=='summarize':
                 numbers=[]
                 for v in args[0]:
@@ -347,6 +381,7 @@ def execute_commands(server,g,rows,on_status=None):
     answer={'ok':True,'results':results,
             'note':'Các lệnh đã trả kết quả. Hãy chạy tiếp bước kế tiếp của bài; chỉ kết luận mô hình đúng tài liệu '
                    'hoặc tính toán hội tụ sau khi đọc trạng thái pha và kết quả Output. Kết quả lệnh chưa phải bằng chứng hội tụ.'}
+    answer['model_verified']=any(r['command']=='verify_model' and r['value'].get('verified') for r in results)
     if any(row['command'] in _GEOMETRY for row in rows):
         detached=_outside_soil(g)
         if detached:answer['warning']=detached

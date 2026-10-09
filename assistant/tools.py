@@ -323,6 +323,7 @@ EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_commands',
     'Dữ liệu trả về có thể rút gọn và được đánh dấu truncated. Dùng summarize với ref tới kết quả getresults trong cùng lượt để lấy count/min/max/max_abs trên toàn bộ mảng, không lấy cực trị từ phần xem trước. '
     'new_project gọi server.new, chỉ dùng khi được yêu cầu tạo mô hình mới; không tự xóa mô hình đang làm. '
     'Không nhận Python/shell hoặc lệnh đọc/ghi tệp. Khi lỗi, dừng và báo số bước/đã bắt đầu hay chưa; không chạy lại cả lượt có thể đã sửa mô hình. '
+    'Đối chiếu mô hình bằng verify_model: args là một chuỗi JSON [{"ref":"g.Soils","expected":6,"kind":"count"}]. Expected lấy từ đề bài; tên và enum lấy từ API, không đoán. Chỉ xác nhận các thuộc tính kiểm tra, không coi là toàn mô hình đúng. '
     'Kết quả lệnh không chứng minh hội tụ; đọc trạng thái pha/Input và kết quả Output trước khi kết luận. Không bịa thông số còn thiếu từ manual.',
     {'version':TEXT,'commands':TEXT,'target':TEXT},['version','commands'])))
 EXTRA_TOOLS.append(('plaxis_remote', schema('plaxis_run_problem',

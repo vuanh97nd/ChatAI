@@ -999,6 +999,9 @@ export async function conversationAPI(path,body,actor,db) {
    for(const p of procedures){try{const args=JSON.parse(p.arguments);if(!args||Array.isArray(args)||typeof args!=='object')return fail('Tham số trong bộ nhớ cách làm không hợp lệ.');}catch{return fail('Tham số trong bộ nhớ cách làm không hợp lệ.');}}
    clean.procedure_memory=procedures.map(p=>({id:p.id,tool:p.tool.slice(0,100),task:p.task.slice(0,1500),arguments:p.arguments,evidence:p.evidence.slice(0,1200),updated:p.updated.slice(0,50),outcome:p.outcome}));
    if(new TextEncoder().encode(JSON.stringify(clean.procedure_memory)).length>180000)return fail('Bộ nhớ cách làm quá lớn.',413);
+   const checkpoint=state.procedure_progress;
+   clean.procedure_progress=checkpoint&&typeof checkpoint==='object'&&Array.isArray(checkpoint.steps)?{task:String(checkpoint.task||'').slice(0,1500),environment:String(checkpoint.environment||'unknown').slice(0,160),needs_live_check:true,steps:checkpoint.steps.slice(-200).filter(r=>r&&typeof r==='object').map(r=>({tool:String(r.tool||'').slice(0,100),command:String(r.command||'').slice(0,100),identity:String(r.identity||'').slice(0,160),operation:String(r.operation||'').slice(0,300),environment:String(r.environment||'unknown').slice(0,160),lesson_id:/^[a-f0-9]{64}$/.test(r.lesson_id||'')?r.lesson_id:'',status:['applied','observed','failed','uncertain'].includes(r.status)?r.status:'uncertain',evidence:String(r.evidence||'').slice(0,1200)}))}:{};
+   clean.procedure_environment=String(state.procedure_environment||'unknown').slice(0,160);
    const task=state.plaxis_active_problem;
    clean.plaxis_active_problem=task&&['2d','3d'].includes(task.version)&&typeof task.problem==='string'&&new TextEncoder().encode(task.problem).length<=50000&&typeof task.project_name==='string'&&task.project_name.length>=1&&task.project_name.length<=100?{version:task.version,problem:task.problem,project_name:task.project_name}:null;
    const raw=JSON.stringify(clean);
@@ -1316,6 +1319,11 @@ export default {
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
    await ensureRuntimeSchema(env.DB);
+   if(path.startsWith('/api/lessons/')||path.startsWith('/api/admin/lessons/')){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để dùng bộ nhớ.',401));
+    return respond(await lessonsAPI(env,actor,path,body));
+   }
    if(path.startsWith('/api/notifications/')||path.startsWith('/api/admin/notifications/')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -2249,4 +2257,69 @@ async function notificationAPI(env,actor,path,body){
   return reply({success:true,message:'Đã gửi thông báo.'});
  }
  return fail('Không tìm thấy chức năng.',404);
+}
+
+const lessonSchemaPromises=new WeakMap();
+async function lessonSchema(db){
+ if(!lessonSchemaPromises.has(db))lessonSchemaPromises.set(db,db.batch([
+  db.prepare('CREATE TABLE IF NOT EXISTS ai_lessons(seq INTEGER PRIMARY KEY AUTOINCREMENT,owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,deleted INTEGER NOT NULL DEFAULT 0,UNIQUE(owner,id))'),
+  db.prepare('CREATE INDEX IF NOT EXISTS ai_lessons_owner_seq ON ai_lessons(owner,seq)')
+ ]).catch(error=>{lessonSchemaPromises.delete(db);throw error;}));
+ await lessonSchemaPromises.get(db);
+}
+function lessonScrub(value,shared=false,depth=0){
+ if(depth>12)throw new Error('Tham số lồng quá sâu.');
+ if(Array.isArray(value))return value.map(v=>lessonScrub(v,shared,depth+1));
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!(/password|secret|token|api.?key|credential|authorization|cookie|^key$|^session$|^control$|^images?$/i.test(k))&&!(shared&&/path|file|project_name|owner|username|email/i.test(k))).map(([k,v])=>[k,lessonScrub(v,shared,depth+1)]));
+ if(typeof value==='string'){
+  if(/^[\s]*[\[{]/.test(value)){try{return JSON.stringify(lessonScrub(JSON.parse(value),shared,depth+1));}catch(error){if(error.message==='Tham số lồng quá sâu.')throw error;}}
+  if(shared&&/(?:[A-Za-z]:[\\/]|\/(?:home|Users|workspace|tmp)\/|https?:\/\/|[\w.+-]+@[\w.-]+\.)/.test(value))return '[thông tin riêng đã bỏ]';
+  return value.replace(/(password|token|secret|api[_ -]?key|authorization)\s*[:=]\s*\S+/ig,'$1=[ẩn]');
+ }
+ return value;
+}
+function lessonRecord(item,shared){
+ if(!item||!/^[a-f0-9]{64}$/.test(item.id)||!['success','failed'].includes(item.outcome)||['tool','task','arguments','evidence','updated'].some(k=>typeof item[k]!=='string')||item.arguments.length>12000||!Number.isFinite(Date.parse(item.updated)))throw new Error('Bài học không hợp lệ.');
+ const args=JSON.parse(item.arguments);if(!args||typeof args!=='object'||Array.isArray(args))throw new Error('Tham số bài học phải là object.');
+ const record={schema_version:item.schema_version===2?2:1,id:item.id,tool:item.tool.slice(0,100),task:shared?'Đào tạo cú pháp và cách sửa lỗi: '+item.tool.slice(0,100):item.task.slice(0,1500),
+  arguments:JSON.stringify(lessonScrub(args,shared)),evidence:lessonScrub(item.evidence.slice(0,1200),shared),updated:item.updated.slice(0,50),outcome:item.outcome,
+  level:['command','model','results'].includes(item.level)?item.level:'command',environment:lessonScrub(String(item.environment||'unknown').slice(0,160),shared),
+  error_key:/^[a-f0-9]{64}$/.test(item.error_key||'')?item.error_key:'',training:item.training===true,
+  resolves:Array.isArray(item.resolves)?item.resolves.filter(x=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x)).slice(0,40):[]};
+ if(JSON.stringify(record).length>18000)throw new Error('Một bài học quá lớn.');return record;
+}
+async function lessonsAPI(env,actor,path,body){
+ const db=env.DB;await lessonSchema(db);
+ if(path==='/api/lessons/put'){
+  if(!['private','shared'].includes(body.scope))return fail('Phạm vi bộ nhớ không hợp lệ.');
+  const shared=body.scope==='shared';if(shared&&!administrator(actor))return fail('Chỉ admin được đào tạo bộ nhớ dùng chung.',403);
+  if(!Array.isArray(body.records)||!body.records.length||body.records.length>10)return fail('Mỗi đợt đồng bộ cần 1–10 bản ghi; không giới hạn tổng bản ghi.');
+  let records;try{records=body.records.map(r=>lessonRecord(r,shared));}catch(error){return fail(error.message);}
+  const owner=shared?'@shared':actor.username;
+  const statements=records.map(r=>db.prepare(`INSERT INTO ai_lessons(owner,id,data) VALUES(?,?,?) ON CONFLICT(owner,id) DO UPDATE SET data=excluded.data,deleted=0,seq=(SELECT COALESCE(MAX(seq),0)+1 FROM ai_lessons) WHERE ai_lessons.data<>excluded.data OR ai_lessons.deleted=1`).bind(owner,r.id,JSON.stringify(r)));
+  if(shared)statements.push(adminEvent(db,actor,'@shared','lesson_training',{ids:records.map(r=>r.id)}));
+  await db.batch(statements);
+  return reply({success:true,saved:records.length});
+ }
+ if(path==='/api/lessons/list'){
+  const cursor=body.cursor??0;if(!Number.isSafeInteger(cursor)||cursor<0)return fail('Cursor không hợp lệ.');
+  const rows=await db.prepare("SELECT seq,owner,data,deleted FROM ai_lessons WHERE seq>? AND (owner=? OR owner='@shared') ORDER BY seq LIMIT 50").bind(cursor,actor.username).all();
+  const items=(rows.results||[]).map(r=>({seq:r.seq,scope:r.owner==='@shared'?'shared':'private',deleted:r.deleted===1,record:JSON.parse(r.data)}));
+  return reply({success:true,items,cursor:items.length?items.at(-1).seq:cursor,has_more:items.length===50});
+ }
+ if(path==='/api/lessons/search'){
+  const words=typeof body.query==='string'?body.query.trim().split(/\s+/).filter(Boolean).slice(0,8):[];
+  if(!words.length)return fail('Nhập nội dung cần tra bộ nhớ.');
+  const conditions=words.map(()=>"data LIKE ? ESCAPE '\\'").join(' OR ');
+  const wordsEscaped=words.map(w=>'%'+w.replace(/[\\%_]/g,'\\$&')+'%');
+  const rows=await db.prepare("SELECT owner,data FROM ai_lessons WHERE deleted=0 AND (owner=? OR owner='@shared') AND ("+conditions+") ORDER BY seq DESC LIMIT 20").bind(actor.username,...wordsEscaped).all();
+  return reply({success:true,items:(rows.results||[]).map(r=>({scope:r.owner==='@shared'?'shared':'private',record:JSON.parse(r.data)}))});
+ }
+ if(path==='/api/admin/lessons/withdraw'){
+  if(!administrator(actor))return fail('Chỉ admin được thu hồi bài học chung.',403);
+  if(!/^[a-f0-9]{64}$/.test(body.id||''))return fail('Mã bài học không hợp lệ.');
+  await db.prepare("UPDATE ai_lessons SET deleted=1,seq=(SELECT COALESCE(MAX(seq),0)+1 FROM ai_lessons) WHERE owner='@shared' AND id=? AND deleted=0").bind(body.id).run();
+  return reply({success:true,message:'Đã thu hồi bài học dùng chung.'});
+ }
+ return fail('Không tìm thấy chức năng bộ nhớ.',404);
 }
