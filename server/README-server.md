@@ -83,7 +83,7 @@ API tài khoản nhận POST JSON. Xác thực hiện dùng `username` + `key` t
 | API | Phương thức | Nội dung |
 |---|---|---|
 | /api/health, /api/update | GET | Trạng thái, bản cập nhật |
-| /api/register | POST | username,password,fullname; email tùy chọn |
+| /api/register | POST | username,password,fullname,email bắt buộc |
 | /api/login | POST | username,key,device_id |
 | /api/logout | POST | username,key |
 | /api/change_password | POST | username,old_key,new_key |

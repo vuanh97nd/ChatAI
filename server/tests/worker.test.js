@@ -40,8 +40,8 @@ test('stream refuses tool requests before calling AI',async()=>{
 test('generic document extraction preserves explicit missing fields',()=>{
  const contract=extractionContract('document');assert.equal(contract.key,'records');assert.ok(contract.schema.properties.records.items.required.includes('missing'));
 });
-test('signup accepts the three required fields without email',async()=>{
- const r=await worker.fetch(req('/api/register',{fullname:'Nguyễn Văn An',username:'nguyenvanan',password:'test-password-123'}),env(),{});
+test('signup accepts required fields including email',async()=>{
+ const r=await worker.fetch(req('/api/register',{fullname:'Nguyễn Văn An',username:'nguyenvanan',password:'test-password-123',email:'an@example.org'}),env(),{});
  assert.equal(r.status,201);assert.equal((await r.json()).success,true);
 });
 test('signup rejects missing full name',async()=>{
@@ -82,4 +82,11 @@ test('memory write requires explicit confirmation',async()=>{
  const {e,values}=memoryEnvironment();
  const r=await worker.fetch(req('/api/memory/personal/put',{username:'alice',key:'test-memory-password',title:'x',text:'y'}),e,{});
  assert.equal(r.status,400);assert.equal(values.size,0);
+});
+
+test('signup rejects missing or malformed email',async()=>{
+ for(const email of ['', 'invalid', 'a<b@example.org']){
+  const r=await worker.fetch(req('/api/register',{fullname:'Test',username:'newuser',password:'test-password-123',email}),env(),{});
+  assert.equal(r.status,400);
+ }
 });

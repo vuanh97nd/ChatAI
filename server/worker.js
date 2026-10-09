@@ -348,8 +348,8 @@ const referenceWorker = {async fetch(request,env){
   // 1. ĐĂNG KÝ
   if(path==='/api/register'&&method==='POST'){
    if(String(env.OPEN_REGISTRATION||'true')==='false')return fail('Đăng ký hiện tạm đóng.',403);
-   const username=String(body.username||'').trim(),password=String(body.key||body.password||'').trim(),fullname=String(body.fullname||'').trim(),email=String(body.email||'').trim();
-   if(!validUser(username)||password.length<8||password.length>128||!fullname||fullname.length>120||email.length>254||(email&&! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))return fail('Cần Họ và tên (tối đa120 ký tự), Tên đăng nhập 3–40 ký tự chữ/số/_.- và Mật khẩu 8–128 ký tự. Email là tùy chọn.');
+   const username=String(body.username||'').trim(),password=String(body.key||body.password||'').trim(),fullname=String(body.fullname||'').trim(),email=normalizedEmail(body.email||'');
+   if(!validUser(username)||password.length<8||password.length>128||!fullname||fullname.length>120||!validEmail(email))return fail('Cần Họ và tên (tối đa120 ký tự), Tên đăng nhập 3–40 ký tự chữ/số/_.- và Mật khẩu 8–128 ký tự. Email hợp lệ là bắt buộc.');
    if(email&&!await emailAvailable(db,normalizedEmail(email),username))return fail('Email đã được sử dụng bởi tài khoản khác.',409);
    const salt=b64(crypto.getRandomValues(new Uint8Array(16)));
    const trialExpiry=new Date(Date.now()+30*86400000).toISOString().slice(0,10);

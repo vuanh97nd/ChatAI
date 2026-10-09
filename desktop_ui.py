@@ -2766,10 +2766,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
             QMessageBox.warning(self,'Chat AI','Nhập URL gốc HTTPS của server Chat AI.'); return
         dialog=QDialog(self); dialog.setWindowTitle('Tạo tài khoản Chat AI'); dialog.resize(440,280)
-        form=QFormLayout(dialog); fullname=QLineEdit(); username=QLineEdit(); password=QLineEdit()
+        form=QFormLayout(dialog); fullname=QLineEdit(); username=QLineEdit(); password=QLineEdit(); email=QLineEdit()
         password.setEchoMode(QLineEdit.EchoMode.Password)
         fullname.setMaxLength(120); username.setMaxLength(40); password.setMaxLength(128)
-        form.addRow('Họ và tên:',fullname); form.addRow('Tên đăng nhập:',username); form.addRow('Mật khẩu:',password)
+        email.setMaxLength(254); email.setPlaceholderText('Email bắt buộc')
+        form.addRow('Họ và tên:',fullname); form.addRow('Email:',email); form.addRow('Tên đăng nhập:',username); form.addRow('Mật khẩu:',password)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Tạo tài khoản')
         buttons.rejected.connect(dialog.reject)
@@ -2778,7 +2779,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             name,user,pwd=fullname.text().strip(),username.text().strip(),password.text().strip()
             if not name or not re.fullmatch(r'[A-Za-z0-9_.-]{3,40}',user) or user.lower()=='admin' or not 8<=len(pwd)<=128:
                 QMessageBox.warning(dialog,'Đăng ký','Nhập họ tên, tên đăng nhập 3–40 ký tự và mật khẩu ít nhất8 ký tự.'); return
-            data.update(fullname=name,username=user,password=pwd); dialog.accept()
+            address=email.text().strip().lower()
+            if not re.fullmatch(r'[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+',address):
+                QMessageBox.warning(dialog,'Đăng ký','Vui lòng nhập email hợp lệ để tạo tài khoản.'); return
+            data.update(fullname=name,username=user,password=pwd,email=address); dialog.accept()
         buttons.accepted.connect(accept); form.addRow(buttons)
         if dialog.exec()!=QDialog.DialogCode.Accepted: return
         def task(emit):
