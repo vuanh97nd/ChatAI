@@ -2541,7 +2541,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.sync_history()
 
     def login_dialog(self):
-        if self.busy():return
+        if self.server_session:
+            self.refresh_account_ui()
+            self.status.setText('Đã đăng nhập: '+self.server_session['username'])
+            return
+        if getattr(self,'login_dialog_open',False) or self.busy():return
         endpoint=self.settings_server.text().strip().rstrip('/')
         if not endpoint:
             self.tabs.setCurrentIndex(3);self.settings_server.setFocus()
@@ -2553,7 +2557,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         forgot=QPushButton('Quên mật khẩu');forgot.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.forgot_password_dialog)));form.addRow(forgot)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
-        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        self.login_dialog_open=True
+        try:accepted=dialog.exec()==QDialog.DialogCode.Accepted
+        finally:self.login_dialog_open=False
+        if not accepted or self.server_session:return
         if not username.text().strip() or not password.text().strip():return
         self.account_remember.setChecked(remember.isChecked())
         self.perform_login({'endpoint':endpoint,'username':username.text().strip(),'key':password.text().strip()},remember.isChecked())
