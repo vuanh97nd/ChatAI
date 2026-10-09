@@ -8,11 +8,22 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request,urlopen
 from urllib.error import HTTPError,URLError
+from http.client import HTTPException
 from .config import ROOT
 
 class AccountAPIError(RuntimeError):
     def __init__(self,message,status,retry_after=None,code=None):
         super().__init__(message);self.status=status;self.retry_after=retry_after;self.code=code
+
+
+class AccountConnectionError(RuntimeError):
+    """The connection dropped before the server answered.
+
+    urllib wraps failures while sending a request in URLError, but a socket
+    closed while waiting for the response surfaces as http.client's
+    RemoteDisconnected or a ConnectionResetError. Callers whose request has no
+    side effect, such as asking the model, may retry this one safely.
+    """
 
 
 def request_account(endpoint,path,body,timeout=12):
@@ -43,6 +54,8 @@ def request_account(endpoint,path,body,timeout=12):
             if body.get(key):message=str(message).replace(str(body[key]),'[ẨN]')
         raise AccountAPIError(str(message),error.code,detail.get('retry_after') or error.headers.get('Retry-After'),detail.get('code')) from None
     except (URLError,TimeoutError):raise RuntimeError('Không kết nối được server Chat AI.') from None
+    except (HTTPException,ConnectionError):
+        raise AccountConnectionError('Kết nối tới server Chat AI bị ngắt trước khi có phản hồi.') from None
     if not result.get('success'):raise RuntimeError('Server chưa xác nhận yêu cầu.')
     return result
 

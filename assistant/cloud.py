@@ -2,6 +2,7 @@
 import json
 import secrets
 from urllib.request import Request, urlopen
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
@@ -70,6 +71,8 @@ def cloud_events(endpoint, body, opener=urlopen):
         raise CloudError(detail.get('message', 'Server HTTP ' + str(error.code)), detail.get('code', '')) from None
     except (URLError, TimeoutError):
         raise CloudError('Không kết nối được AI trên server. Bạn có thể chọn mô hình trên máy.') from None
+    except (HTTPException, ConnectionError):
+        raise CloudError('Kết nối tới AI trên server bị ngắt giữa chừng. Hãy gửi lại câu hỏi.') from None
 
 
 class CloudDocumentClient:
@@ -356,6 +359,7 @@ class ServerApiClient:
                 message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
             raise CloudError(message,detail.get('code','')) from None
         except (URLError,TimeoutError):raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
+        except (HTTPException,ConnectionError):raise CloudError('Kết nối tới AI bị ngắt giữa chừng. Hãy gửi lại câu hỏi.') from None
         finally:record('ai.request_total',time.monotonic()-started)
 
     def chat(self,model,messages,**kwargs):
@@ -367,16 +371,24 @@ class ServerApiClient:
             'username':self.session['username'],'key':self.session['key'],'provider':self.provider,
             'messages':messages,'small':model=='document-small','format':kwargs.get('format'),
             'max_tokens':options.get('num_predict',1600),'temperature':options.get('temperature',.2)}
-        from .accounts import AccountAPIError
+        from .accounts import AccountAPIError,AccountConnectionError
         import random,time
         from threading import Event
         cancel=self.cancel_event or Event()
-        for attempt in range(max(2,self.retry_limit)):
+        attempts=max(2,self.retry_limit)
+        for attempt in range(attempts):
             if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
             try:
                 request=lambda:request_account(self.session['endpoint'],'/api/provider/model',body,timeout=self.timeout)
                 result=cancellable_request(request,cancel,self.on_status) if self.cancel_event is not None else request()
                 break
+            except AccountConnectionError:
+                # Asking the model changes nothing on the server, so a dropped
+                # connection is retried rather than ending a long tool workflow.
+                if attempt==attempts-1:raise CloudError('Kết nối tới AI trực tuyến bị ngắt nhiều lần. Hãy kiểm tra mạng rồi bấm Tiếp tục.') from None
+                delay=2*(attempt+1)
+                if self.on_status:self.on_status(f'Kết nối AI bị ngắt; thử lại sau {delay} giây ({attempt+1}/{attempts-1})…')
+                if cancel.wait(delay):raise CloudError('Đã dừng yêu cầu.')
             except AccountAPIError as error:
                 if error.status==502 and error.code in ('EMPTY_AI_RESPONSE','AI_OUTPUT_LIMIT') and attempt==0:
                     body['repair_response']=True
