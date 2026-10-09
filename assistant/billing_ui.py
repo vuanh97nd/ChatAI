@@ -71,6 +71,7 @@ class BillingDialog(QDialog):
         self.month_summary=QLabel('Đang tải thống kê token…');self.month_summary.setWordWrap(True);wl.addWidget(self.month_summary)
         row=QHBoxLayout();self.amount=QComboBox()
         for value in [20000,50000,100000,200000,500000]:self.amount.addItem(money(value),value)
+        self.amount.currentIndexChanged.connect(self.amount_changed)
         row.addWidget(self.amount);self.topup=QPushButton('Nạp token bằng QR');self.topup.clicked.connect(lambda:self.create_order('topup'));row.addWidget(self.topup)
         self.renew=QPushButton('Đang tải phí duy trì…');self.renew.setEnabled(False);self.renew.clicked.connect(lambda:self.create_order('service'));wl.addLayout(row);wl.addWidget(self.renew)
         self.qr=QLabel();self.qr.setAlignment(Qt.AlignCenter);wl.addWidget(self.qr)
@@ -159,6 +160,12 @@ class BillingDialog(QDialog):
 
     def poll(self):
         if self.current_order:self.send('/api/billing/status')
+
+    def amount_changed(self):
+        if self.current_order and self.current_order.get('kind')=='topup':
+            self.timer.stop();self.current_order=None;self.qr.clear()
+            self.payment_info.setText('Đang tạo QR theo mệnh giá mới…')
+            self.create_order('topup')
 
     def create_order(self,kind):
         self.send('/api/billing/order',{'kind':kind,'amount':self.amount.currentData() if kind=='topup' else self.service_fee,'request_id':str(uuid.uuid4())})

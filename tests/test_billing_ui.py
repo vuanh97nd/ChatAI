@@ -8,6 +8,18 @@ from assistant.billing_ui import BillingDialog,money
 
 
 class BillingUITests(unittest.TestCase):
+    def test_change_denomination_replaces_topup_qr(self):
+        dialog=self.dialog()
+        try:
+            dialog.current_order={'kind':'topup','amount':50000}
+            with patch.object(dialog,'send',return_value=True) as send:
+                dialog.amount.setCurrentIndex(dialog.amount.findData(100000))
+                self.assertEqual(send.call_args[0][0],'/api/billing/order')
+                self.assertEqual(send.call_args[0][1]['amount'],100000)
+                self.assertIsNone(dialog.current_order)
+                self.assertIn('Đang tạo QR',dialog.payment_info.text())
+        finally:dialog.close()
+
     def test_unknown_price_never_shows_default_and_zero_fee_disables_renewal(self):
         dialog=self.dialog()
         try:

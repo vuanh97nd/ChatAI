@@ -1316,6 +1316,13 @@ export default {
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
    await ensureRuntimeSchema(env.DB);
+   if(path.startsWith('/api/notifications/')||path.startsWith('/api/admin/notifications/')){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const actor=await auth(env,body.username,body.key);
+    if(!actor)return respond(fail('Đăng nhập lại để tiếp tục.',401));
+    if(path.startsWith('/api/admin/')&&!administrator(actor))return respond(fail('Chỉ dành cho admin.',403));
+    return respond(await notificationAPI(env,actor,path,body));
+   }
    if(path.startsWith('/api/email/')||path.startsWith('/api/admin/email/config/')||path==='/api/admin/email/test'){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const authenticated=path.startsWith('/api/admin/')||path==='/api/email/verification/request';
@@ -2215,4 +2222,31 @@ async function emailAPI(env,actor,path,body,request){
 function emailActionPage(reset){
  const nonce=b64(crypto.getRandomValues(new Uint8Array(16))),title=reset?'Đặt lại mật khẩu ChatAI':'Xác minh email ChatAI';
  return new Response(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style nonce="${nonce}">body{font:16px system-ui;background:#202020;color:#eee;margin:0}main{max-width:480px;margin:10vh auto;padding:24px;background:#303030;border-radius:16px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border-radius:8px}button{cursor:pointer}p{white-space:pre-wrap}</style><main><h1>${title}</h1>${reset?'<input id="password" type="password" autocomplete="new-password" placeholder="Mật khẩu mới (8–128 ký tự)" minlength="8" maxlength="128"><input id="confirm" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu">':''}<button id="submit">${reset?'Đổi mật khẩu':'Xác minh email'}</button><p id="status"></p></main><script nonce="${nonce}">const token=new URLSearchParams(location.hash.slice(1)).get('token');history.replaceState(null,'',location.pathname);const button=document.getElementById('submit'),status=document.getElementById('status');button.onclick=async()=>{const body={token};${reset?"body.password=document.getElementById('password').value;if(body.password!==document.getElementById('confirm').value){status.textContent='Mật khẩu nhập lại chưa khớp.';return;}":''}button.disabled=true;status.textContent='Đang xử lý…';try{const r=await fetch('${reset?'/api/email/password/reset':'/api/email/verify'}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();status.textContent=data.message;button.disabled=data.success===true;}catch{status.textContent='Chưa kết nối được server. Thử lại.';button.disabled=false;}};</script></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`}});
+}
+
+async function notificationAPI(env,actor,path,body){
+ const db=env.DB;
+ await db.batch([
+ db.prepare('CREATE TABLE IF NOT EXISTS app_notifications(id TEXT PRIMARY KEY,title TEXT NOT NULL,text TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL)'),
+ db.prepare('CREATE TABLE IF NOT EXISTS app_notification_reads(owner TEXT NOT NULL,id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(owner,id))')]);
+ if(path==='/api/notifications/list'){
+  const rows=await db.prepare("SELECT n.*,r.read_at FROM app_notifications n LEFT JOIN app_notification_reads r ON r.id=n.id AND r.owner=? WHERE n.target='*' OR n.target=? ORDER BY n.created DESC LIMIT 200").bind(actor.username,actor.username).all();
+  const unread=await db.prepare("SELECT COUNT(*) AS total FROM app_notifications n WHERE (n.target='*' OR n.target=?) AND NOT EXISTS(SELECT 1 FROM app_notification_reads r WHERE r.id=n.id AND r.owner=?)").bind(actor.username,actor.username).first();
+  return reply({success:true,notifications:rows.results||[],unread:unread.total});
+ }
+ if(path==='/api/notifications/read'){
+  await db.prepare("INSERT OR IGNORE INTO app_notification_reads(owner,id,read_at) SELECT ?,id,? FROM app_notifications WHERE id=? AND (target='*' OR target=?)").bind(actor.username,Date.now(),String(body.id||''),actor.username).run();
+  return reply({success:true});
+ }
+ if(path==='/api/admin/notifications/send'){
+  const title=String(body.title||'').trim(),text=String(body.text||'').trim(),target=String(body.target||'*').trim();
+  if(!title||title.length>160||!text||text.length>10000)return fail('Nhập tiêu đề và nội dung hợp lệ.');
+  if(target!=='*'&&!await db.prepare('SELECT username FROM users WHERE username=?').bind(target).first())return fail('Không tìm thấy người nhận.',404);
+  const id=String(body.id||'');if(!/^[a-f0-9-]{36}$/.test(id))return fail('Mã thông báo không hợp lệ.');
+  const old=await db.prepare('SELECT * FROM app_notifications WHERE id=?').bind(id).first();
+  if(old&&(old.title!==title||old.text!==text||old.target!==target))return fail('Mã thông báo đã được sử dụng.',409);
+  await db.prepare('INSERT OR IGNORE INTO app_notifications(id,title,text,target,created) VALUES(?,?,?,?,?)').bind(id,title,text,target,Date.now()).run();
+  return reply({success:true,message:'Đã gửi thông báo.'});
+ }
+ return fail('Không tìm thấy chức năng.',404);
 }

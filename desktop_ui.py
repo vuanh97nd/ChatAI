@@ -394,6 +394,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.profile_button.clicked.connect(self.account_menu)
         self.profile_avatar=QLabel();profile.insertWidget(0,self.profile_avatar)
         profile.addWidget(self.profile_button, 1)
+        self.notification_button=QPushButton('🔔');self.notification_button.setToolTip('Thông báo');self.notification_button.clicked.connect(self.open_notifications);profile.addWidget(self.notification_button)
         self.settings_button = SettingsButton(self)
         self.settings_button.setToolTip('Cài đặt Chat AI'); self.settings_button.clicked.connect(lambda:self.open_settings_section(None))
         profile.addWidget(self.settings_button); side.addLayout(profile)
@@ -3211,6 +3212,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if admin_session(self.server_session):
                 menu.addAction('Quản lý người dùng',self.open_user_admin)
                 menu.addAction('Cấu hình email',self.open_email_settings)
+                menu.addAction('Quản lý thông báo',self.open_notifications)
+            menu.addAction('Thông báo',self.open_notifications)
             menu.addAction('Số dư và thanh toán',self.open_billing)
             menu.addAction('Hồ sơ',self.open_profile)
             menu.addAction('Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
@@ -3223,6 +3226,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             menu.addAction('Đăng nhập',self.login_dialog)
             menu.addAction('Tạo tài khoản',self.register_dialog)
         menu.exec(self.profile_button.mapToGlobal(self.profile_button.rect().topLeft()))
+
+    def open_notifications(self):
+        if not self.server_session:
+            self.login_dialog();return
+        from assistant.notification_ui import NotificationDialog
+        NotificationDialog(self.server_session,self).exec()
 
     def open_email_settings(self):
         if not admin_session(self.server_session):return
