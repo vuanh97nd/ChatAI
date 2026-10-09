@@ -8,6 +8,21 @@ from assistant.billing_ui import BillingDialog,money
 
 
 class BillingUITests(unittest.TestCase):
+    def test_month_summary_switches_month_without_using_recent_request_list(self):
+        dialog=self.dialog()
+        try:
+            dialog.received('/api/billing/status',{'monthly_usage':[
+                {'month':'2026-10','tokens':2500000,'fee_vnd':10000,'unknown_requests':1},
+                {'month':'2026-09','tokens':100,'fee_vnd':0,'unknown_requests':0}],
+                'current_month':'2026-10','usage_updated_at':1791504000000})
+            self.assertIn('2.500.000 token',dialog.month_summary.text())
+            self.assertIn('10.000 đ',dialog.month_summary.text())
+            self.assertIn('1 lượt',dialog.month_summary.text())
+            dialog.usage_month.setCurrentIndex(1)
+            self.assertIn('100 token',dialog.month_summary.text())
+            self.assertIn('0 đ',dialog.month_summary.text())
+        finally:dialog.close()
+
     @classmethod
     def setUpClass(cls):cls.app=QApplication.instance() or QApplication([])
 

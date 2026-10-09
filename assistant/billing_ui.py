@@ -67,6 +67,9 @@ class BillingDialog(QDialog):
         self.tabs=QTabWidget();layout.addWidget(self.tabs)
         wallet=QWidget();wl=QVBoxLayout(wallet);self.tabs.addTab(wallet,'Ví token')
         self.summary=QLabel('Đang tải số dư…');self.summary.setWordWrap(True);wl.addWidget(self.summary)
+        self.month_data={};self.usage_month=QComboBox();self.usage_month.currentIndexChanged.connect(self.show_month_usage)
+        wl.addWidget(QLabel('Token sử dụng theo tháng · giờ Việt Nam'));wl.addWidget(self.usage_month)
+        self.month_summary=QLabel('Đang tải thống kê token…');self.month_summary.setWordWrap(True);wl.addWidget(self.month_summary)
         row=QHBoxLayout();self.amount=QComboBox()
         for value in [20000,50000,100000,200000,500000]:self.amount.addItem(money(value),value)
         row.addWidget(self.amount);self.topup=QPushButton('Nạp token bằng QR');self.topup.clicked.connect(lambda:self.create_order('topup'));row.addWidget(self.topup)
@@ -137,6 +140,14 @@ class BillingDialog(QDialog):
 
     def failed(self,text):self.status.setText(text)
 
+    def show_month_usage(self):
+        month=self.usage_month.currentData()
+        if not month:return
+        data=self.month_data[month]
+        tokens=f"{int(data['tokens']):,}".replace(',','.')
+        note=f" · {data['unknown_requests']} lượt chưa có số liệu token" if data['unknown_requests'] else ''
+        self.month_summary.setText(f"{tokens} token · Phí token: {money(data['fee_vnd'])}{note}\nCập nhật: {self.month_updated}\nChỉ thống kê token API trả về; AI local chưa thống kê.")
+
     def refresh(self):
         if self.send('/api/billing/status') and self.is_admin:self.load_config_next=True
 
@@ -193,6 +204,16 @@ class BillingDialog(QDialog):
                 if self.current_order and o['id']==self.current_order['id'] and state!='pending':
                     self.payment_info.setText('Đã nhận tiền, cập nhật ví / thời hạn duy trì.' if state=='paid' else 'QR đã hết hạn. Hãy tạo yêu cầu mới.');self.timer.stop();self.current_order=None
             self.fill(self.orders,rows)
+        if 'monthly_usage' in result:
+            selected=self.usage_month.currentData() or result['current_month']
+            self.month_data={m['month']:m for m in result['monthly_usage']}
+            self.month_data.setdefault(result['current_month'],{'tokens':0,'fee_vnd':0,'unknown_requests':0})
+            self.month_updated=date_label(result['usage_updated_at'])
+            self.usage_month.blockSignals(True);self.usage_month.clear()
+            for month in sorted(self.month_data,reverse=True):
+                self.usage_month.addItem(month[5:]+'/'+month[:4],month)
+            index=self.usage_month.findData(selected);self.usage_month.setCurrentIndex(max(0,index))
+            self.usage_month.blockSignals(False);self.show_month_usage()
         if 'usage' in result:
             states={'charged':'Đã tính phí','reserved':'Đang xử lý','pending_review':'Chờ đối soát','released':'Không tính phí','reconciled':'Đã đối soát','free':'Miễn phí','free_unknown_usage':'Miễn phí · thiếu usage'}
             self.fill(self.usage,[[date_label(u['created']),u['tokens'] if u['tokens'] is not None else '—',money(u['charged']/1000),states.get(u['state'],u['state']),u['id']] for u in result['usage']])

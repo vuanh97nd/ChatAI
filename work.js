@@ -2073,7 +2073,12 @@ async function billingAPI(env,actor,path,body,request){
  if(path==='/api/billing/status'||path==='/api/admin/billing/status'){
   const orders=await db.prepare('SELECT o.*,r.actor,r.note FROM billing_orders o LEFT JOIN billing_receipts r ON r.order_id=o.id WHERE o.owner=? ORDER BY o.created DESC LIMIT 50').bind(target).all();
   const usage=await db.prepare('SELECT u.id,u.tokens,u.charged,u.state,u.created,COALESCE(p.price,4000) AS price_per_million FROM billing_usage u LEFT JOIN billing_usage_prices p ON p.id=u.id WHERE u.owner=? ORDER BY u.created DESC LIMIT 50').bind(target).all();
-  return reply({success:true,enabled:config.enabled===true,wallet,orders:orders.results||[],usage:usage.results||[],price_per_million:billingTokenPrice(config),service_fee:billingServiceFee(config),trial_days:30,denominations:BILLING_DENOMINATIONS});
+  const monthly=await db.prepare(`SELECT strftime('%Y-%m',created/1000,'unixepoch','+7 hours') AS month,
+   COALESCE(SUM(tokens),0) AS tokens,COALESCE(SUM(charged),0)/1000.0 AS fee_vnd,
+   SUM(CASE WHEN tokens IS NULL AND state<>'released' THEN 1 ELSE 0 END) AS unknown_requests
+   FROM billing_usage WHERE owner=? GROUP BY month ORDER BY month DESC`).bind(target).all();
+  const current_month=new Date(Date.now()+7*3600000).toISOString().slice(0,7);
+  return reply({success:true,enabled:config.enabled===true,wallet,monthly_usage:monthly.results||[],current_month,usage_updated_at:Date.now(),orders:orders.results||[],usage:usage.results||[],price_per_million:billingTokenPrice(config),service_fee:billingServiceFee(config),trial_days:30,denominations:BILLING_DENOMINATIONS});
  }
  if(path==='/api/billing/order'){
   if(administrator(actor))return billingError('Tài khoản admin được miễn phí.');
