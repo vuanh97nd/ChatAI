@@ -246,7 +246,7 @@ async function auth(env,username,key,allowPassword=false){
    expiry='Vĩnh viễn';
   }
  }
- if(!['Vĩnh viễn','Vô hạn'].includes(expiry)&&new Date().toISOString().slice(0,10)>expiry)return null;
+ if(!['Vĩnh viễn','Vô hạn'].includes(expiry)&&new Date().toISOString().slice(0,10)>expiry&&!await billingEnabled(env))return null;
  return {...user,role:'user',is_system:false,account_type:'user',tier:user.tier||'trial',expires_at:expiry};
 }
 
@@ -1326,12 +1326,23 @@ export default {
    }
    await ensureSchema(env.DB);
    await ensureAdminSchema(env.DB);
+   if(path.startsWith('/api/billing/')||path.startsWith('/api/admin/billing/')){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const actor=path==='/api/billing/webhook'?null:await auth(env,body.username,body.key);
+    if(path!=='/api/billing/webhook'&&!actor)return respond(fail('Đăng nhập lại để thanh toán.',401));
+    if(!await throttle(env.DB,actor?.username||request.headers.get('CF-Connecting-IP')||'webhook','billing',120))return respond(fail('Vui lòng chờ.',429));
+    return respond(await billingAPI(env,actor,path,body,request));
+   }
+   if(['/api/chat/stream','/api/chat/ai','/api/ai/consult'].includes(path)&&(body.provider==='openai'||String(body.provider||'cloudflare').startsWith('deepseek')&&await billingEnabled(env))){
+    const actor=await auth(env,body.username,body.key);
+    if(!administrator(actor))return respond(billingError('Chọn DeepSeek trực tuyến để dùng ví token. Luồng này chưa hỗ trợ đối soát token.',402,'PAID_PROVIDER_REQUIRED'));
+   }
    if(path.startsWith('/api/admin/providers/')||(path==='/api/provider/model'||path==='/api/provider/catalog')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để dùng AI trực tuyến.',401));
     if(path.startsWith('/api/admin/')&&!administrator(actor))return respond(fail('Chỉ quản trị viên được cấu hình key.',403));
     if(!await throttle(env.DB,actor.username,'provider',30))return respond(fail('Vui lòng đợi một chút.',429));
-    try{return respond(await providerAPI(env,path,body));}
+    try{return respond(await billingProvider(env,actor,path,body));}
     catch(error){
      const id=crypto.randomUUID();console.error('provider_failure',id,error.name,error.providerStage||'unknown');
      const hints={schema:'Không tạo được bảng lưu API trong D1. Kiểm tra binding DB.',crypto:'Không khởi tạo được mã hóa key trên server. Kiểm tra secret ADMIN_KEY và runtime Worker.',decrypt:'Không đọc được key đã lưu. Nhập lại key và bấm Lưu key API.',storage:'Không lưu được key vào D1. Kiểm tra quyền và trạng thái database.'};
@@ -1619,7 +1630,7 @@ async function writeProviderConfig(env,provider,value){
  try{await env.DB.prepare('INSERT INTO provider_credentials(provider,encrypted_value,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at').bind(provider,encrypted,new Date().toISOString()).run();}catch{throw providerFailure('storage');}
 }
 async function providerAPI(env,path,body){
- const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','groq'];
+ const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','groq','openai'];
  await initializeProviderStore(env);
  if(path.endsWith('/deepseek-presets')){
   const shared=await readProviderConfig(env,'deepseek');
@@ -1696,10 +1707,10 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  if(!key)key=String(env[provider.toUpperCase()+'_API_KEY']||'');
  if(!key)return fail('Quản trị viên chưa cấu hình key cho AI này.',503);
  if(path.endsWith('/models')){
-  if(!['nvidia','deepseek','groq'].includes(provider))return fail('Danh sách tự động hiện hỗ trợ NVIDIA, DeepSeek và Groq.');
+  if(!['nvidia','deepseek','groq','openai'].includes(provider))return fail('Danh sách tự động hiện hỗ trợ NVIDIA, DeepSeek và Groq.');
   const cancel=new AbortController(),timer=setTimeout(()=>cancel.abort(),20000);
   try{
-   const modelsUrl={nvidia:'https://integrate.api.nvidia.com/v1/models',deepseek:'https://api.deepseek.com/models',groq:'https://api.groq.com/openai/v1/models'}[provider];
+   const modelsUrl={nvidia:'https://integrate.api.nvidia.com/v1/models',deepseek:'https://api.deepseek.com/models',groq:'https://api.groq.com/openai/v1/models',openai:'https://api.openai.com/v1/models'}[provider];
    const response=await fetch(modelsUrl,{headers:{Authorization:'Bearer '+key},signal:cancel.signal});
    if(!response.ok){await response.body?.cancel();return fail('Không lấy được danh sách AI: HTTP '+response.status+'.',502);}
   const result=await response.json();
@@ -1728,7 +1739,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
  const maxTokens=testing?1024:Math.max(64,Math.min(body.format?8192:4096,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
- const models={nvidia:env.NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',groq:env.GROQ_MODEL||'openai/gpt-oss-120b'};
+ const models={nvidia:env.NVIDIA_MODEL||'nvidia/nemotron-3-super-120b-a12b',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',groq:env.GROQ_MODEL||'openai/gpt-oss-120b',openai:env.OPENAI_MODEL||'gpt-4.1-mini'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/nemotron-3-super-120b-a12b';
  let selectedModel=testing&&body.model?String(body.model):configuredModel||models[provider];
  // Image requests use Flash vision and inherit the existing DeepSeek key.
@@ -1755,14 +1766,16 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    payload={contents:messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:geminiParts(m.content)})),generationConfig:{temperature,maxOutputTokens:maxTokens}};
    const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');if(system)payload.systemInstruction={parts:[{text:system}]};
   }else{
-   url={nvidia:'https://integrate.api.nvidia.com/v1/chat/completions',deepseek:'https://api.deepseek.com/chat/completions',groq:'https://api.groq.com/openai/v1/chat/completions'}[provider];headers.Authorization='Bearer '+key;
+   url={nvidia:'https://integrate.api.nvidia.com/v1/chat/completions',deepseek:'https://api.deepseek.com/chat/completions',groq:'https://api.groq.com/openai/v1/chat/completions',openai:'https://api.openai.com/v1/chat/completions'}[provider];headers.Authorization='Bearer '+key;
    let requestMessages=messages;
    if(provider==='nvidia'&&selectedModel==='nvidia/llama-3.1-nemotron-ultra-253b-v1'){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
     requestMessages=[{role:'system',content:'detailed thinking off'+(instructions?'\n'+instructions:'')},...messages.filter(m=>m.role!=='system')];
    }
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
-   if(provider==='deepseek'&&body.format)payload.response_format={type:'json_object'};
+   if(provider==='openai'&&/^(?:gpt-5|o[134](?:-|$))/.test(selectedModel)){payload.max_completion_tokens=payload.max_tokens;delete payload.max_tokens;delete payload.temperature;}
+   if(payload.stream)payload.stream_options={include_usage:true};
+   if(['deepseek','openai'].includes(provider)&&body.format)payload.response_format={type:'json_object'};
    if(provider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&body.repair_response!==true&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
@@ -1802,10 +1815,10 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    const limited=finish==='length'||finish==='MAX_TOKENS';
    const reasoningOnly=Boolean(result.choices?.[0]?.message?.reasoning_content);
    if(testing)return reply({success:true,message:'API phản hồi HTTP 200 nhưng chưa có câu trả lời'+(limited?' vì hết giới hạn token.':reasoningOnly?'; chỉ nhận được phần suy luận.':'.')+' Chưa xác nhận AI hoạt động đầy đủ. Hãy chọn mã AI từ danh sách dịch vụ rồi kiểm tra lại.'});
-   return reply({success:false,code:finish==='content_filter'||finish==='SAFETY'?'AI_CONTENT_FILTER':limited?'AI_OUTPUT_LIMIT':'EMPTY_AI_RESPONSE',message:limited?'AI đã dùng hết giới hạn token trước khi trả lời.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng.'},502);
+   return reply({success:false,usage:result.usage,code:finish==='content_filter'||finish==='SAFETY'?'AI_CONTENT_FILTER':limited?'AI_OUTPUT_LIMIT':'EMPTY_AI_RESPONSE',message:limited?'AI đã dùng hết giới hạn token trước khi trả lời.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng.'},502);
   }
-  return reply({success:true,answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
- }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return fail((provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:''),503);}finally{if(!streaming)clearTimeout(timer);}
+  return reply({success:true,usage:result.usage,answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
+ }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return reply({success:false,code:'UPSTREAM_CONNECTION_ERROR',message:(provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:'')},503);}finally{if(!streaming)clearTimeout(timer);}
 }
 
 async function cloudDocumentModel(env,body){
@@ -1914,4 +1927,206 @@ async function libraryAPI(env,actor,path,body){
   return reply({success:true,id:body.id,deleted:true});
  }
  return fail('Route not found.',404);
+}
+
+// Prepaid billing: integer milli-VND, authoritative usage, atomic D1 ledger.
+const BILLING_DENOMINATIONS=[20000,50000,100000,200000,500000];
+const BILLING_MONTH=30*86400000;
+const billingSchemaJobs=new WeakMap();
+async function billingSchema(db){
+ if(billingSchemaJobs.has(db))return billingSchemaJobs.get(db);
+ const job=db.batch([
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_wallets(owner TEXT PRIMARY KEY,balance INTEGER NOT NULL DEFAULT 0,held INTEGER NOT NULL DEFAULT 0,trial_until INTEGER NOT NULL,service_until INTEGER NOT NULL DEFAULT 0)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_orders(id TEXT PRIMARY KEY,owner TEXT NOT NULL,kind TEXT NOT NULL,amount INTEGER NOT NULL,memo TEXT UNIQUE NOT NULL,status TEXT NOT NULL DEFAULT \'pending\',created INTEGER NOT NULL,expires INTEGER NOT NULL)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_receipts(id TEXT PRIMARY KEY,order_id TEXT UNIQUE NOT NULL,actor TEXT NOT NULL,credited INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,note TEXT NOT NULL DEFAULT \'\')'),
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_usage(id TEXT PRIMARY KEY,owner TEXT NOT NULL,reserved INTEGER NOT NULL,tokens INTEGER,charged INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL,created INTEGER NOT NULL)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS billing_orders_owner ON billing_orders(owner,created)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS billing_usage_owner ON billing_usage(owner,created)')
+ ]);
+ billingSchemaJobs.set(db,job);
+ try{await job;}catch(error){billingSchemaJobs.delete(db);throw error;}
+}
+async function billingConfig(env){
+ await initializeProviderStore(env);
+ const saved=await readProviderConfig(env,'billing_sepay');
+ let config={};try{config=JSON.parse(saved.model||'{}');}catch{}
+ return {...config,secret:saved.key||''};
+}
+async function billingEnabled(env){return (await billingConfig(env)).enabled===true;}
+async function billingWallet(env,actor){
+ await billingSchema(env.DB);
+ const registration=Date.parse(actor.created_at||actor.updated_at||'');
+ const start=Number.isFinite(registration)?Math.min(registration,Date.now()):Date.now();
+ await env.DB.prepare('INSERT OR IGNORE INTO billing_wallets(owner,trial_until) VALUES(?,?)').bind(actor.username,start+BILLING_MONTH).run();
+ await env.DB.prepare("UPDATE billing_usage SET state='pending_review' WHERE owner=? AND state='reserved' AND created<?").bind(actor.username,Date.now()-180000).run();
+ const w=await env.DB.prepare('SELECT * FROM billing_wallets WHERE owner=?').bind(actor.username).first();
+ return {...w,balance_vnd:w.balance/1000,held_vnd:w.held/1000,available_vnd:(w.balance-w.held)/1000,exempt:administrator(actor),service_active:administrator(actor)||Math.max(w.trial_until,w.service_until)>Date.now()};
+}
+function billingError(message,status=400,code='BILLING_ERROR'){return reply({success:false,message,code},status);}
+async function billingCredit(env,order,receipt,actor,note){
+ const db=env.DB,now=Date.now();
+ // All statements run in one D1 transaction. credited prevents webhook replays.
+ await db.batch([
+  db.prepare("INSERT OR IGNORE INTO billing_receipts(id,order_id,actor,created,note) SELECT ?,id,?,?,? FROM billing_orders WHERE id=? AND status='pending' AND expires>?").bind(receipt,actor,now,note,order.id,now),
+  db.prepare("UPDATE billing_wallets SET balance=balance+? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_receipts WHERE id=? AND order_id=? AND credited=0) AND ?='topup'").bind(order.amount*1000,order.owner,receipt,order.id,order.kind),
+  db.prepare("UPDATE billing_wallets SET service_until=max(service_until,trial_until,?)+? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_receipts WHERE id=? AND order_id=? AND credited=0) AND ?='service'").bind(now,BILLING_MONTH,order.owner,receipt,order.id,order.kind),
+  db.prepare("UPDATE billing_orders SET status='paid' WHERE id=? AND EXISTS(SELECT 1 FROM billing_receipts WHERE id=? AND order_id=? AND credited=0)").bind(order.id,receipt,order.id),
+  db.prepare('UPDATE billing_receipts SET credited=1 WHERE id=? AND order_id=? AND credited=0').bind(receipt,order.id)
+ ]);
+}
+async function billingAPI(env,actor,path,body,request){
+ await billingSchema(env.DB);
+ const config=await billingConfig(env),db=env.DB;
+ const admin=path.startsWith('/api/admin/billing/');
+ if(admin&&!administrator(actor))return billingError('Chỉ admin được quản lý thanh toán.',403);
+ if(path==='/api/billing/webhook'){
+  if(!config.enabled||!config.secret||!same(request.headers.get('Authorization')||'','Apikey '+config.secret))return billingError('Webhook không được xác thực.',401);
+  if(body.transferType!=='in')return reply({success:true,matched:false});
+  if(String(body.accountNumber||'').replace(/\s/g,'')!==config.account)return billingError('Sai tài khoản nhận.',400);
+  if(!['string','number'].includes(typeof body.id)||!/^[A-Za-z0-9_-]{1,80}$/.test(String(body.id)))return billingError('Mã giao dịch không hợp lệ.');
+  const memos=String(body.content||'').toUpperCase().match(/\bCA[A-F0-9]{20}\b/g)||[];
+  if(memos.length!==1)return reply({success:true,matched:false});
+  const order=await db.prepare('SELECT * FROM billing_orders WHERE memo=?').bind(memos[0]).first();
+  if(!order||order.expires<Date.now()||order.amount!==Number(body.transferAmount))return reply({success:true,matched:false});
+  await billingCredit(env,order,'sepay:'+body.id,'sepay','Chuyển khoản QR đã xác thực');
+  const paid=await db.prepare('SELECT status FROM billing_orders WHERE id=?').bind(order.id).first();
+  return reply({success:true,matched:paid.status==='paid'});
+ }
+ if(path==='/api/admin/billing/config/get')return reply({success:true,config:{enabled:config.enabled===true,bank:config.bank||'',account:config.account||'',name:config.name||'',secret_configured:Boolean(config.secret),webhook_url:new URL('/api/billing/webhook',request.url).href}});
+ if(path==='/api/admin/billing/config/save'){
+  const c=body.config||{};
+  if(typeof c.enabled!=='boolean'||typeof c.bank!=='string'||!/^[A-Za-z0-9]{2,30}$/.test(c.bank)||typeof c.account!=='string'||!/^\d{6,30}$/.test(c.account)||typeof c.name!=='string'||!c.name.trim()||c.name.length>100)return billingError('Nhập ngân hàng, số tài khoản và tên người nhận hợp lệ.');
+  const secret=typeof c.secret==='string'&&c.secret.trim()?c.secret.trim():config.secret;
+  if(c.enabled&&(!secret||secret.length<16||secret.length>256))return billingError('Cần khóa xác thực webhook SePay ít nhất 16 ký tự trước khi bật.');
+  await writeProviderConfig(env,'billing_sepay',{key:secret,model:JSON.stringify({enabled:c.enabled,bank:c.bank,account:c.account,name:c.name.trim()})});
+  await adminEvent(db,actor,'billing','payment_config',{enabled:c.enabled,bank:c.bank,account_last4:c.account.slice(-4)}).run();
+  return reply({success:true,message:'Đã lưu cấu hình thanh toán. Khóa được mã hóa trên server.'});
+ }
+ if(path==='/api/admin/billing/reconcile'){
+  if(typeof body.id!=='string'||typeof body.note!=='string'||!body.note.trim()||body.note.length>300||!Number.isSafeInteger(body.tokens)||body.tokens<0||body.tokens>10000000)return billingError('Nhập mã lượt, số token đã xác minh và lý do đối soát.');
+  const row=await db.prepare("SELECT * FROM billing_usage WHERE id=? AND state='pending_review'").bind(body.id).first();
+  if(!row)return billingError('Lượt không còn chờ đối soát.',409);
+  await db.batch([
+   db.prepare("UPDATE billing_wallets SET held=held-?,balance=balance-? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='pending_review')").bind(row.reserved,body.tokens*4,row.owner,row.id),
+   db.prepare("UPDATE billing_usage SET state='reconciled',tokens=?,charged=? WHERE id=? AND state='pending_review'").bind(body.tokens,body.tokens*4,row.id),
+   adminEvent(db,actor,row.owner,'billing_reconcile',{id:row.id,tokens:body.tokens,note:body.note.trim()})
+  ]);
+  return reply({success:true,message:'Đã đối soát lượt và giải phóng tiền giữ chỗ.'});
+ }
+ if(path==='/api/admin/billing/credit'){
+  if(!validUser(body.target)||!Number.isSafeInteger(body.amount)||body.amount<1000||body.amount>5000000||typeof body.note!=='string'||!body.note.trim()||body.note.length>300||!/^[-a-f0-9]{36}$/.test(body.request_id||''))return billingError('Chọn người dùng, số tiền 1.000–5.000.000 đ và lý do nạp.');
+  const user=await db.prepare('SELECT * FROM users WHERE username=?').bind(body.target).first();
+  if(!user||user.account_status==='deleted')return billingError('Không tìm thấy tài khoản.',404);
+  await billingWallet(env,user);
+  const id='manual:'+body.request_id;
+  const existing=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
+  if(existing&&(existing.owner!==body.target||existing.amount!==body.amount))return billingError('Mã nạp đã được dùng cho giao dịch khác.',409);
+  await db.prepare("INSERT OR IGNORE INTO billing_orders(id,owner,kind,amount,memo,created,expires) VALUES(?,?,'topup',?,?,?,?)").bind(id,body.target,body.amount,id,Date.now(),Date.now()+BILLING_MONTH).run();
+  const order=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
+  await billingCredit(env,order,id,actor.username,body.note.trim());
+  return reply({success:true,wallet:await billingWallet(env,user),message:'Đã nạp thủ công; lưu người thực hiện và lý do.'});
+ }
+ const target=admin?body.target:actor.username;
+ const user=admin?await db.prepare('SELECT * FROM users WHERE username=?').bind(target).first():actor;
+ if(!user)return billingError('Không tìm thấy người dùng.',404);
+ const wallet=await billingWallet(env,user);
+ if(path==='/api/billing/status'||path==='/api/admin/billing/status'){
+  const orders=await db.prepare('SELECT o.*,r.actor,r.note FROM billing_orders o LEFT JOIN billing_receipts r ON r.order_id=o.id WHERE o.owner=? ORDER BY o.created DESC LIMIT 50').bind(target).all();
+  const usage=await db.prepare('SELECT id,tokens,charged,state,created FROM billing_usage WHERE owner=? ORDER BY created DESC LIMIT 50').bind(target).all();
+  return reply({success:true,enabled:config.enabled===true,wallet,orders:orders.results||[],usage:usage.results||[],price_per_million:4000,service_fee:100000,trial_days:30,denominations:BILLING_DENOMINATIONS});
+ }
+ if(path==='/api/billing/order'){
+  if(administrator(actor))return billingError('Tài khoản admin được miễn phí.');
+  if(!config.enabled)return billingError('Admin chưa bật thanh toán tự động.',503);
+  if(!['topup','service'].includes(body.kind)||(body.kind==='topup'?!BILLING_DENOMINATIONS.includes(body.amount):body.amount!==100000)||!/^[-a-f0-9]{36}$/.test(body.request_id||''))return billingError('Mệnh giá hoặc loại thanh toán không hợp lệ.');
+  const id=body.request_id,old=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
+  if(old&&(old.owner!==actor.username||old.kind!==body.kind||old.amount!==body.amount))return billingError('Mã yêu cầu đã được dùng.',409);
+  const memo='CA'+crypto.randomUUID().replaceAll('-','').slice(0,20).toUpperCase();
+  await db.prepare('INSERT OR IGNORE INTO billing_orders(id,owner,kind,amount,memo,created,expires) VALUES(?,?,?,?,?,?,?)').bind(id,actor.username,body.kind,body.amount,memo,Date.now(),Date.now()+30*60000).run();
+  const order=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
+  const qr=new URL('https://img.vietqr.io/image/'+encodeURIComponent(config.bank)+'-'+config.account+'-compact2.png');
+  qr.searchParams.set('amount',order.amount);qr.searchParams.set('addInfo',order.memo);qr.searchParams.set('accountName',config.name);
+  return reply({success:true,order,qr_url:qr.href,bank:config.bank,account:config.account,name:config.name});
+ }
+ return billingError('Không có chức năng thanh toán này.',404);
+}
+async function billingProvider(env,actor,path,body){
+ const actualProvider=String(body.provider||'').startsWith('ai_')?(await readProviderConfig(env,body.provider)).provider:body.provider;
+ if(path==='/api/provider/model'&&actualProvider==='openai'&&!administrator(actor))return billingError('OpenAI chưa có bảng giá. Hiện dùng DeepSeek, Cloud AI hoặc NVIDIA.',402,'OPENAI_PRICING_UNSET');
+ const enabled=await billingEnabled(env);
+ if(!enabled||path!=='/api/provider/model')return providerAPI(env,path,body);
+ if(administrator(actor)||body.provider==='nvidia')return billingFreeProvider(env,actor,path,body);
+ if(String(body.provider||'').startsWith('ai_')){const custom=await readProviderConfig(env,body.provider);if(custom.provider==='nvidia')return billingFreeProvider(env,actor,path,body);}
+ const wallet=await billingWallet(env,actor);
+ if(!wallet.service_active)return billingError('Hết 30 ngày dùng thử. Gia hạn phí duy trì 100.000 đ/30 ngày trong Số dư và thanh toán.',402,'SERVICE_EXPIRED');
+ if(!String(body.provider||'').startsWith('deepseek')&&!String(body.provider||'').startsWith('ai_'))return billingError('Thanh toán token hiện hỗ trợ DeepSeek. Chọn DeepSeek để dùng ví.',400);
+ if(String(body.provider||'').startsWith('ai_')){
+  const custom=await readProviderConfig(env,body.provider);if(custom.provider!=='deepseek')return billingError('Chọn cấu hình DeepSeek để dùng ví.',400);
+ }
+ // Reserve a conservative input byte bound plus image and output budgets.
+ if(!Array.isArray(body.messages)||!body.messages.length||body.messages.length>40)return billingError('Tin nhắn không hợp lệ.');
+ const input=JSON.stringify(body.messages),images=(input.match(/image_url/g)||[]).length;
+ if(input.length>1800000)return billingError('Ngữ cảnh quá lớn.');
+ const reserved=(new TextEncoder().encode(input).length+images*65536+40*128+8192)*4;
+ const id=crypto.randomUUID(),db=env.DB;
+ await db.batch([
+  db.prepare("INSERT INTO billing_usage(id,owner,reserved,state,created) SELECT ?,?,?, 'reserved',? FROM billing_wallets WHERE owner=? AND balance-held>=?").bind(id,actor.username,reserved,Date.now(),actor.username,reserved),
+  db.prepare("UPDATE billing_wallets SET held=held+? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='reserved')").bind(reserved,actor.username,id)
+ ]);
+ if(!await db.prepare('SELECT id FROM billing_usage WHERE id=?').bind(id).first())return billingError('Số dư token chưa đủ cho lượt này. Nạp token trong Số dư và thanh toán.',402,'TOKEN_BALANCE_LOW');
+ const release=async(tokens,state)=>{
+  const charged=tokens===null?0:tokens*4;
+  await db.batch([
+   db.prepare("UPDATE billing_wallets SET held=held-?,balance=balance-? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='reserved')").bind(reserved,charged,actor.username,id),
+   db.prepare("UPDATE billing_usage SET state=?,tokens=?,charged=? WHERE id=? AND state='reserved'").bind(state,tokens,charged,id)
+  ]);
+ };
+ // Buffer upstream JSON so canceled desktop streams cannot discard usage events.
+ let response,result;
+ try{response=await providerAPI(env,path,{...body,stream:false});result=await response.clone().json();}
+ catch{await db.prepare("UPDATE billing_usage SET state='pending_review' WHERE id=?").bind(id).run();return billingError('Lượt AI đang chờ đối soát do lỗi kết nối.',503,'BILLING_USAGE_PENDING');}
+ const tokens=result.usage?.total_tokens;
+ if(Number.isSafeInteger(tokens)&&tokens>=0&&tokens<=reserved/4){await release(tokens,'charged');}
+ else if(!response.ok&&result.code!=='EMPTY_AI_RESPONSE'&&result.code!=='AI_OUTPUT_LIMIT'&&result.code!=='UPSTREAM_CONNECTION_ERROR'){await release(null,'released');}
+ else{
+  await db.prepare("UPDATE billing_usage SET state='pending_review' WHERE id=?").bind(id).run();
+  return billingError('Dịch vụ chưa trả số token đáng tin cậy. Lượt này đang chờ admin đối soát, không thu ước lượng.',503,'BILLING_USAGE_PENDING');
+ }
+ if(body.stream===true&&response.ok){
+  const chunk={choices:[{delta:{content:result.answer},finish_reason:null}],usage:result.usage};
+  return new Response('data: '+JSON.stringify(chunk)+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache'}});
+ }
+ return response;
+}
+
+async function billingFreeProvider(env,actor,path,body){
+ const response=await providerAPI(env,path,body);
+ if(path!=='/api/provider/model')return response;
+ await billingSchema(env.DB);
+ const id=crypto.randomUUID(),created=Date.now();let recorded=false;
+ const record=async usage=>{
+  if(recorded)return;recorded=true;
+  const count=usage?.total_tokens;
+  const tokens=Number.isSafeInteger(count)&&count>=0?count:null;
+  await env.DB.prepare('INSERT INTO billing_usage(id,owner,reserved,tokens,charged,state,created) VALUES(?,?,0,?,0,?,?)').bind(id,actor.username,tokens,tokens===null?'free_unknown_usage':'free',created).run();
+ };
+ if(!response.headers.get('Content-Type')?.includes('text/event-stream')){
+  const result=await response.clone().json();await record(result.usage);return response;
+ }
+ const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+ const stream=new ReadableStream({
+  async pull(out){
+   try{
+    const {value,done}=await reader.read();
+    if(done){await record(null);out.close();return;}
+    buffer+=decoder.decode(value,{stream:true});
+    const lines=buffer.split('\n');buffer=lines.pop();
+    for(const line of lines){if(line.startsWith('data: ')){try{const event=JSON.parse(line.slice(6));if(event.usage)await record(event.usage);}catch{}}}
+    if(buffer.length>1000000)throw new Error('Oversized event');
+    out.enqueue(value);
+   }catch{await record(null);await reader.cancel().catch(()=>{});out.error(new Error('Provider stream interrupted'));}
+  },
+  async cancel(){await record(null);await reader.cancel().catch(()=>{});}
+ });
+ return new Response(stream,{status:response.status,headers:response.headers});
 }
