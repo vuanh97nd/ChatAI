@@ -4,7 +4,26 @@ import math
 import re
 
 _NAME=re.compile(r'[A-Za-z][A-Za-z0-9_]*\Z')
+_INDEXED=re.compile(r'([A-Za-z][A-Za-z0-9_.]*)\[(\d{1,5})\]\Z')
 _BLOCKED={'open','save','saveas','import','export','run','exec','execute','system','apply','evaluate','python','runscript','runpython'}
+
+
+def _read_ref(arg):
+    """Accept the shapes models write a read target in, or return None.
+
+    Besides the canonical {'ref': ...}, a bare 'g.Phases' and an inline
+    'g.Soils[2]' both name a target unambiguously, so they are translated
+    rather than rejected.
+    """
+    if isinstance(arg,dict):return arg
+    if not isinstance(arg,str):return None
+    match=_INDEXED.fullmatch(arg)
+    if match:
+        name,index=match.group(1),int(match.group(2))
+        if all(_NAME.fullmatch(p) for p in name.split('.')):return {'ref':name,'index':index}
+        return None
+    if all(_NAME.fullmatch(p) for p in arg.split('.')):return {'ref':arg}
+    return None
 
 
 def commands_from_json(raw):
@@ -33,8 +52,17 @@ def commands_from_json(raw):
         if 'result' in row and (not isinstance(row['result'],str) or not _NAME.fullmatch(row['result']) or row['result']=='g'):
             raise ValueError('result cần tên tham chiếu hợp lệ, khác g.')
         if cmd=='new_project' and args:raise ValueError('new_project không nhận tham số.')
-        if cmd=='read' and (len(args)!=1 or not isinstance(args[0],dict)):raise ValueError('read cần một ref tới đối tượng/property.')
+        if cmd=='read':
+            ref=_read_ref(args[0]) if len(args)==1 else None
+            if ref is None:
+                raise ValueError('read cần đúng một ref, ví dụ {"command":"read","args":[{"ref":"g.Phases"}]}.')
+            args=[ref];row['args']=args
         if cmd=='summarize' and len(args)!=1:raise ValueError('summarize cần một mảng số hoặc ref tới kết quả getresults.')
+        if cmd=='soilcontour':
+            if len(args)!=4 or any(type(a) not in (int,float) for a in args):
+                raise ValueError('soilcontour cần 4 số: xmin, ymin, xmax, ymax.')
+            if args[0]>=args[2] or args[1]>=args[3]:
+                raise ValueError('soilcontour cần xmin<xmax và ymin<ymax.')
     return rows
 
 
@@ -77,6 +105,12 @@ def execute_commands(server,g,rows,on_status=None):
                     numbers.append(number)
                 if not numbers:raise ValueError('Chưa có giá trị số để tổng hợp.')
                 result={'count':len(numbers),'min':min(numbers),'max':max(numbers),'max_abs':max(abs(x) for x in numbers)}
+            elif row['command']=='soilcontour':
+                # initializerectangular lives on g.SoilContour, and command names may
+                # not contain dots; without this the soil stays at its 12x8 default
+                # and any geometry beyond it is detached from the soil body.
+                started=True
+                result=g.SoilContour.initializerectangular(*args)
             else:
                 method=server.new if row['command']=='new_project' else getattr(g,row['command'])
                 started=True
@@ -85,6 +119,12 @@ def execute_commands(server,g,rows,on_status=None):
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             results.append({'step':index+1,'command':row['command'],'value':plain(result),'truncated':truncated})
         except Exception as exc:
+            if row['command']=='read':
+                # Reads observe state without changing it, so a bad one must not
+                # discard the model-building steps batched alongside it.
+                results.append({'step':index+1,'command':'read','value':None,'error':str(exc)[:500],
+                                'note':'Bước đọc lỗi, không ảnh hưởng mô hình; các bước sau vẫn chạy.'})
+                continue
             return {'ok':False,'results':results,'failed_step':index+1,'failed_command':row['command'],
                     'error':str(exc)[:2000],'command_started':started,'uncertain':started,
                     'not_executed':not results and not started,

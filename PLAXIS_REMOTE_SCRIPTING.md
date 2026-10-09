@@ -24,7 +24,9 @@ pip install plxscripting
 
 ## Quy trình làm việc tổng quát với PLAXIS
 
-Với bài toán không có mẫu dựng sẵn, ChatAI dùng `plaxis_commands` để đọc API và điều khiển dự án đang mở. Các lượt làm việc tổng quát được giới hạn ở 12 vòng lập kế hoạch để tránh một yêu cầu chạy không kiểm soát; nếu bài còn dang dở, kiểm tra trạng thái đã xác minh rồi gửi yêu cầu tiếp tục.
+Với bài toán không có mẫu dựng sẵn, ChatAI dùng `plaxis_commands` để đọc API và điều khiển dự án đang mở. Các lượt làm việc tổng quát được giới hạn ở 64 vòng lập kế hoạch — đủ cho một bài tutorial đầy đủ (vật liệu, hình học, neo, các phase, mesh, tính toán, đọc Output); vòng lặp lỗi được chặn riêng bằng phát hiện lặp thất bại, không phải bằng hạn mức này. Nếu bài còn dang dở, kiểm tra trạng thái đã xác minh rồi gửi yêu cầu tiếp tục.
+
+Mô hình 2D bắt buộc đặt khung đất trước khi tạo borehole, bằng lệnh `soilcontour` với `[xmin, ymin, xmax, ymax]`. Khung mặc định chỉ 12×8: lớp đất bị cắt theo khung và hình học nằm ngoài khung sẽ tách rời khối đất, khiến các phase không hội tụ. Lệnh `soillayer` nhận **độ dày** và xếp xuống dưới từ `y=0`, nên mặt đất luôn ở cao độ 0 — hãy dịch tọa độ trong manual cho phù hợp.
 
 Để giảm độ trễ, AI được hướng dẫn gom các lần đọc liên quan và mỗi nhóm thay đổi nhỏ vào một lần gọi công cụ. Sau khi một lệnh thay đổi thành công, không được chạy lại chỉ vì lượt đọc xác minh sau đó lỗi. Đối tượng mới cần được xác nhận bằng kết quả đọc trạng thái thực; việc tạo hình học lặp lại, đặc biệt extrude nhiều lần từ cùng một mặt, cần xác minh không chồng lấn và đúng tài liệu trước khi tiếp tục.
 

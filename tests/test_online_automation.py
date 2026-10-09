@@ -6,7 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from assistant.browser import public_url, steps_from_json, BrowserTools
-from assistant.online_automation import OnlineAutomation, search_call, requested_automation
+from assistant.online_automation import (
+    GEOSLOPE_AUTOMATION_ROUND_LIMIT,
+    PLAXIS_AUTOMATION_ROUND_LIMIT,
+    OnlineAutomation,
+    _automation_round_limit,
+    search_call,
+    requested_automation,
+)
 from assistant.storage import Store
 from assistant.windows_apps import resume_automation,stop_automation
 
@@ -87,6 +94,17 @@ class OnlineAutomationTest(unittest.TestCase):
         client=SimpleNamespace(model='deepseek',chat=chat)
         self.agent=OnlineAutomation(client,self.cfg,self.store,self.cid,tools,tools)
     def tearDown(self):self.tmp.cleanup()
+    def test_geoslope_limit_takes_precedence_when_plaxis_remote_is_available(self):
+        state={'messages':[{'role':'user','content':'Tiếp tục chạy GeoStudio trên bản sao.'},
+                           {'role':'user','content':'tiếp tục'}]}
+        self.assertEqual(_automation_round_limit(state,has_plaxis_remote=True),
+                         GEOSLOPE_AUTOMATION_ROUND_LIMIT)
+
+    def test_plaxis_limit_remains_bounded_for_plaxis_tasks(self):
+        state={'messages':[{'role':'user','content':'Tiếp tục dựng bài PLAXIS 3D.'}]}
+        self.assertEqual(_automation_round_limit(state,has_plaxis_remote=True),
+                         PLAXIS_AUTOMATION_ROUND_LIMIT)
+
     def test_one_time_permission_executes_without_step_dialog(self):
         self.cfg.update(windows_apps_enabled=True,windows_apps_auto_execute=True)
         self.agent.windows.check=lambda:dict(self.cfg)
@@ -290,6 +308,7 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertIn('không hỏi xác nhận bắt đầu',self.requests[-1][0]['content'])
         self.assertIn('Kỷ luật PLAXIS',self.requests[-1][0]['content'])
         self.assertIn('không lặp lại',self.requests[-1][0]['content'])
+        self.assertIn('không dò lại collection/property đã kiểm tra',self.requests[-1][0]['content'])
         registry=self.requests[-1][0]['content'].split('Công cụ: ',1)[1].split('\n',1)[0]
         self.assertNotIn('"name": "plaxis_run_problem"',registry)
 
@@ -330,7 +349,7 @@ class OnlineAutomationTest(unittest.TestCase):
         events=list(agent.run(self.state))
         self.assertFalse(self.state['running'])
         self.assertEqual(len(self.requests),calls)
-        self.assertIn('12 bước lập kế hoạch',events[-1]['text'])
+        self.assertIn(f'{PLAXIS_AUTOMATION_ROUND_LIMIT} bước lập kế hoạch',events[-1]['text'])
 
     def test_redundant_confirmation_after_ok_is_replanned_before_display(self):
         self.cfg['windows_apps_auto_execute']=True
