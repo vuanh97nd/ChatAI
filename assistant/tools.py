@@ -162,7 +162,8 @@ WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
 WRITES.add('geoslope_create')
 EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
-    'Tạo file GeoSlope/W (.gsz) phân tích ổn định mái dốc. '
+    'Bộ sinh mô hình mái dốc đơn giản cũ, chưa xác minh tương thích GeoStudio 2025.1.1; không dùng thay luồng BTH + DXF thực. '
+    'Với BTH/DXF/GSZ mẫu, dùng geoslope_inspect và geoslope_profile trước, rồi dựng và kiểm tra trong ứng dụng thực. '
     'project_name: tên dự án (1–100 ký tự). '
     'problem: chuỗi JSON mô tả bài toán gồm slope (height, angle, crest_width, toe_width), '
     'materials (name, cohesion, phi, unit_weight, model), layers (material_index, top_y, bottom_y), '
@@ -171,6 +172,25 @@ EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
     'auto_open: true để tự động mở file .gsz bằng GeoStudio sau khi tạo.',
     {'project_name': TEXT, 'problem': TEXT, 'auto_open': {'type': 'boolean'}},
     ['project_name', 'problem'])))
+
+EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_inspect',
+    'Đọc dữ liệu SLOPE/W từ XLSX, DXF, GSZ trong whitelist, không sửa file hay chạy Solve. '
+    'Đọc bảng tổng hợp xử lý trước: XLSX trả section_tables gồm tên mặt cắt, địa tầng, bề dày và địa chỉ ô; material_tables chứa chỉ tiêu. '
+    'Đổi tên sheet/cột vẫn đọc theo nhãn; nếu chưa nhận diện được, dùng sheet+cell_range để đọc trực tiếp tối đa 5000 ô cả công thức/cache. Không lấy Fs trong BTH làm kết quả vừa tính. '
+    'DXF trả layer, handle, điểm/bulge, INSUNITS; layer/handle lọc đối tượng, start/limit phân trang. Xác minh tỷ lệ và đúng mặt cắt. '
+    'GSZ trả phân tích, vật liệu đang dùng, vùng, nước/tải/miền tìm trượt và Fs lưu sẵn từ toàn bộ CSV. GSZ người dùng gọi là kết quả mẫu chỉ dùng đối chiếu cấu trúc; không sao chép kết quả cũ hoặc thông số khác Excel. '
+    'Luồng: BTH mặt cắt → địa tầng/bề dày → bảng chỉ tiêu → DXF hình học → đối chiếu GSZ mẫu → mô hình mới → Solve thực → đọc kết quả mới. '
+    'Không gán thông số mặc định cho lớp thiếu, không tự chọn phương án xử lý khác, không khẳng định đã tính khi chỉ đọc GSZ.',
+    {'path':TEXT,'sheet':TEXT,'cell_range':TEXT,'layer':TEXT,'handle':TEXT,
+     'start':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':100}},['path'])))
+WRITES.add('geoslope_profile')
+EXTRA_TOOLS.append(('geoslope_app',schema('geoslope_profile',
+    'Tạo DXF địa tầng mới từ đường tự nhiên và bề dày đứng trong BTH. Đọc BTH, chỉ tiêu, DXF bằng geoslope_inspect trước. '
+    'path là DXF nguồn; handle là đường tự nhiên LWPOLYLINE hở đã xác minh đúng mặt cắt, không bulge; units=m phải được kiểm tra. '
+    'layers là chuỗi JSON [{"code":"1a","thickness":4.5,"source":"THXL!O14"},...], thứ tự từ trên xuống. '
+    'Giữ X, dịch Y xuống theo bề dày cộng dồn; không offset vuông góc. Có ranh giới thực thì không thay bằng song song. '
+    'Không sửa DXF gốc, không gán vật liệu mặc định hoặc chạy Solve; kết quả chỉ là bản vẽ địa tầng chuẩn bị mô hình, không phải kết quả ổn định.',
+    {'path':TEXT,'handle':TEXT,'layers':TEXT,'units':TEXT},['path','handle','layers','units'])))
 
 EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
     'Đọc file dự án SoilFirm Pro (.json, format saspro-python-1) và trả về dữ liệu địa chất, '

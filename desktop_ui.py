@@ -849,8 +849,23 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     from pptx import Presentation
                     content='\n'.join(shape.text for slide in Presentation(p).slides for shape in slide.shapes if shape.has_text_frame)
                 elif ext=='.xlsx':
-                    import pandas as pd
-                    book=pd.ExcelFile(p);content='\n'.join('Sheet '+name+'\n'+book.parse(name,nrows=40).to_csv(index=False) for name in book.sheet_names[:5]);book.close()
+                    from assistant.geoslope_inspect import inspect_workbook
+                    summary=inspect_workbook(p)
+                    if summary['material_tables'] or summary['section_tables']:
+                        import json
+                        summary['section_tables']=[{'sheet':t['sheet'],'sections':[
+                            {'section':s['section'],'row':s['row'],'layers':s['layers']} for s in t['sections']],
+                            'truncated':t['truncated']} for t in summary['section_tables']]
+                        content='Bảng tổng hợp/chỉ tiêu địa kỹ thuật (địa chỉ ô nguồn; không tính lại công thức):\n'+json.dumps(summary,ensure_ascii=False,default=str)
+                    else:
+                        import pandas as pd
+                        book=pd.ExcelFile(p);content='\n'.join('Sheet '+name+'\n'+book.parse(name,nrows=40).to_csv(index=False) for name in book.sheet_names[:5]);book.close()
+                elif ext=='.gsz':
+                    from assistant.geoslope_inspect import inspect_gsz
+                    import json
+                    summary=inspect_gsz(p)
+                    content='GeoStudio GSZ đã lưu; chưa chạy Solve mới. Dùng geoslope_inspect để đối chiếu đầy đủ.\n'+json.dumps(
+                        {k:v for k,v in summary.items() if k not in {'geometries','stability_xml','coordinates_xml'}},ensure_ascii=False)
                 elif ext=='.dxf':
                     # Parse ASCII DXF as inert group-code/value pairs; never execute CAD data.
                     raw=p.read_bytes()
@@ -1895,12 +1910,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 from assistant.cad_tracdoc import CadTracDocApp
                 from assistant.plaxis_app import PlaxisApp
                 from assistant.plaxis_remote import PlaxisRemoteApp
+                from assistant.geoslope_inspect import GeoslopeInspect
                 _plaxis_app=PlaxisApp(files,audit)
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
                     PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
                     CdmLayoutApp(windows,files,audit),CadTracDocApp(windows,files,audit),
-                    plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app,on_status=lambda text:emit({'type':'status','text':text})))
+                    plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app,on_status=lambda text:emit({'type':'status','text':text})),
+                    geoslope_inspector=GeoslopeInspect(files))
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:

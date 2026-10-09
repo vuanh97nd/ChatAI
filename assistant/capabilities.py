@@ -83,6 +83,9 @@ class Capabilities:
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        if name=='geoslope_profile':
+            from .geoslope_inspect import GeoslopeInspect
+            return GeoslopeInspect(self.files).prepare(name,args)
         if name=='source_edit':return self.source_tools.prepare_edit(**args)
         if name=='source_restore':return self.source_tools.prepare_restore(**args)
         if name=='road_analyze':return self.road_pipeline.prepare_analyze(name,args)
@@ -148,6 +151,9 @@ class Capabilities:
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
         if action in ('plaxis_run_problem','plaxis_commands'):return self.plaxis_remote.commit(plan)
         if action=='geoslope_create':return self.geoslope_app.commit(plan)
+        if action=='geoslope_profile':
+            from .geoslope_inspect import GeoslopeInspect
+            return GeoslopeInspect(self.files).commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)
         if action in ('cad_cdm_layout','cad_cdm_regions','cad_cdm_fill_boundary'):return self.cdm_layout.commit(plan)
         if action=='cad_tracdoc_stations':return self.tracdoc_app.commit(plan)
@@ -179,6 +185,10 @@ class Capabilities:
         return self.rag.commit(plan)
 
     def read(self, name, args):
+        if name=='geoslope_inspect':
+            from .geoslope_inspect import GeoslopeInspect
+            inspector=GeoslopeInspect(self.files)
+            return inspector.commit(inspector.prepare(name,args))
         if name=="document_read":
             from .documents import read_document_range,pdf_vision_ocr
             return read_document_range(self.files,**args,
