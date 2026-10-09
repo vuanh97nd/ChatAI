@@ -161,6 +161,7 @@ EXTRA_TOOLS.append(('cad_app',schema('cad_create_open',
 WRITES.add('cad3d_create_open')
 EXTRA_TOOLS.append(('cad3d_app',schema('cad3d_create_open','Tạo DXF 3D dạng lưới kín và mở AutoCAD acad.exe, không hỗ trợ LT. Không phải ACIS solid/DWG, chưa bo cạnh. units: mm/cm/m/inch. shape là chuỗi JSON: {"type":"box","origin":[0,0,0],"width":100,"depth":80,"height":30}; hoặc {"type":"cylinder","origin":[0,0,0],"radius":50,"height":20}; hoặc {"type":"flange","origin":[0,0,0],"outer_radius":120,"inner_radius":40,"height":20,"hole_radius":9,"hole_count":8,"bolt_radius":90}. Tâm trụ/mặt bích là origin ở đáy; lỗ bu-lông chia đều, lỗ đầu trên hướng +X; các lỗ xuyên chiều cao. Hỏi thông số/đơn vị thiếu, không đoán; báo rõ không hỗ trợ bo cạnh. Đường tròn xấp xỉ 64 cạnh.',{'app':TEXT,'units':TEXT,'shape':TEXT},['app','units','shape'])))
 WRITES.add('geoslope_create')
+WRITES.add('geoslope_solve')
 EXTRA_TOOLS.append(('geoslope_app', schema('geoslope_create',
     'Bộ sinh mô hình mái dốc đơn giản cũ, chưa xác minh tương thích GeoStudio 2025.1.1; không dùng thay luồng BTH + DXF thực. '
     'Với BTH/DXF/GSZ mẫu, dùng geoslope_inspect và geoslope_profile trước, rồi dựng và kiểm tra trong ứng dụng thực. '
@@ -191,6 +192,26 @@ EXTRA_TOOLS.append(('geoslope_app',schema('geoslope_profile',
     'Giữ X, dịch Y xuống theo bề dày cộng dồn; không offset vuông góc. Có ranh giới thực thì không thay bằng song song. '
     'Không sửa DXF gốc, không gán vật liệu mặc định hoặc chạy Solve; kết quả chỉ là bản vẽ địa tầng chuẩn bị mô hình, không phải kết quả ổn định.',
     {'path':TEXT,'handle':TEXT,'layers':TEXT,'units':TEXT},['path','handle','layers','units'])))
+EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_solve',
+    'Chạy Solve thực bằng GeoCmd trên một bản sao MỚI của file .gsz SLOPE/W đã có trong whitelist. '
+    'Không sửa đầu vào mô hình, không thay vật liệu/hình học và không dùng Fs đã lưu làm kết quả mới. '
+    'Chỉ gọi sau khi đã đọc GSZ và xác nhận chính file đó đã chứa đúng hình học, vật liệu, tải, nước và phân tích người dùng yêu cầu. '
+    'Luôn tạo thư mục GeoSlope-Solve riêng trong whitelist, giữ nguyên nguồn, chờ GeoCmd hoàn tất, xác minh log và CSV mới; trả Fs nhỏ nhất theo analysis. '
+    'Nếu GeoCmd không có, Solve lỗi, kết quả không mới hoặc nguồn thay đổi thì báo lỗi, không khẳng định đã tính. '
+    'Tool này chỉ chạy mô hình .gsz đã dựng sẵn; không chuyển Excel/DXF thành mô hình và không chỉnh sửa đầu vào. '
+    'Để áp chỉ tiêu Excel vào vật liệu, gọi geoslope_materials trước rồi Solve file output.',
+    {'path':TEXT},['path'])))
+WRITES.add('geoslope_materials')
+EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_materials',
+    'Ghi chỉ tiêu vật liệu từ BTH/bảng chỉ tiêu vào một BẢN SAO MỚI của file .gsz SLOPE/W trong whitelist; file nguồn giữ nguyên. '
+    'Đọc GSZ bằng geoslope_inspect trước để lấy đúng tên vật liệu và biết vật liệu nào đang gán cho vùng. '
+    'materials là chuỗi JSON: [{"name":"Lop 1c","model":"UndrainedPhiZero","unit_weight":16.5,"cohesion":15.1,'
+    '"source":{"unit_weight":"SLTT.xlsx!BTH (2)!E3","cohesion":"SLTT.xlsx!BTH (2)!E13"}}, '
+    '{"name":"Dat dap","model":"MohrCoulomb","unit_weight":19,"cohesion_prime":25.8,"phi_prime":17.1,"source":{...}}]. '
+    'UndrainedPhiZero: cohesion là Su (kN/m2), phi=0. MohrCoulomb: cohesion_prime là c hiệu quả (kN/m2), phi_prime là góc ma sát (độ). unit_weight kN/m3. '
+    'Mỗi thông số bắt buộc có nguồn trong source; không điền mặc định, không lấy thông số từ GSZ khác thay Excel. '
+    'Không sửa hình học, gán vùng, nước, tải hay miền trượt; xóa kết quả cũ trong bản sao. Sau đó gọi geoslope_solve với path là output.',
+    {'path':TEXT,'materials':TEXT},['path','materials'])))
 
 EXTRA_TOOLS.append(('soilfirm_app', schema('soilfirm_read',
     'Đọc file dự án SoilFirm Pro (.json, format saspro-python-1) và trả về dữ liệu địa chất, '
@@ -274,6 +295,11 @@ EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_commands',
     'result chỉ tồn tại trong cùng lượt, lượt sau dùng tên đối tượng PLAXIS thực đã nhận từ kết quả. '
     'Gốc tham chiếu là g, không phải g_i/g_o. Nếu mất alias bh, đọc g.Boreholes rồi lấy phần tử bằng index hoặc tên đối tượng thực; không hỏi người dùng tên biến. info nhận đối tượng, không nhận method như g.SoilModel.borehole; tra commands trên đối tượng cha và đối chiếu tài liệu. '
     'read đọc property/đối tượng: {"command":"read","args":[{"ref":"g.Phases"}]}. '
+    'BẮT BUỘC với mô hình 2D: trước khi tạo borehole/soillayer phải đặt khung đất bằng '
+    '{"command":"soilcontour","args":[xmin,ymin,xmax,ymax]} (gọi g.SoilContour.initializerectangular). '
+    'Mặc định khung chỉ 12x8; lớp đất bị cắt theo khung và mọi hình học ngoài khung tách rời khỏi đất, '
+    'khiến pha không hội tụ (lỗi 101/111). soillayer nhận ĐỘ DÀY và xếp xuống dưới từ y=0, nên mặt đất luôn ở y=0: '
+    'hãy dịch tọa độ manual sao cho mặt đất bằng 0 (ví dụ mặt đất 30 m thì trừ 30 ở mọi y). '
     'Dữ liệu trả về có thể rút gọn và được đánh dấu truncated. Dùng summarize với ref tới kết quả getresults trong cùng lượt để lấy count/min/max/max_abs trên toàn bộ mảng, không lấy cực trị từ phần xem trước. '
     'new_project gọi server.new, chỉ dùng khi được yêu cầu tạo mô hình mới; không tự xóa mô hình đang làm. '
     'Không nhận Python/shell hoặc lệnh đọc/ghi tệp. Khi lỗi, dừng và báo số bước/đã bắt đầu hay chưa; không chạy lại cả lượt có thể đã sửa mô hình. '

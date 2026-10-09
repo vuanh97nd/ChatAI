@@ -223,10 +223,19 @@ def _soil_lines(layers, version):
     return '\n'.join(lines)
 
 
-def _stratigraphy_lines(layers, version):
-    """Create positive-thickness strata and assign each material before meshing."""
-    lines=['g.gotosoil()', 'bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)',
-           'bh.Head = 0']
+def _stratigraphy_lines(layers, version, xmin=None, xmax=None, ymax=0.0):
+    """Create the soil contour, positive-thickness strata, and assign materials.
+
+    The contour must enclose every geometry point the model later creates; PLAXIS
+    defaults to a small 12x8 rectangle, so geometry outside it is silently
+    detached from the soil and the staged phases then fail to converge.
+    """
+    lines=['g.gotosoil()']
+    if version=='2d' and xmin is not None and xmax is not None:
+        ymin = -sum(l['thickness'] for l in layers)
+        lines.append(f'g.SoilContour.initializerectangular({xmin!r}, {ymin!r}, {xmax!r}, {ymax!r})')
+    lines.append('bh = g.borehole(0)' if version=='2d' else 'bh = g.borehole(0, 0)')
+    lines.append('bh.Head = 0')
     for i,layer in enumerate(layers):
         lines.append(f'g.soillayer({layer["thickness"]!r})')
         lines.append(f'g.setmaterial(g.Soillayers[{i}].Soil, soil{i+1})')
@@ -242,7 +251,11 @@ def _generate_slope_stability(problem, version, port, project_name):
 
     import math
     base = height / math.tan(math.radians(angle))
-    total_width = base + height * 2
+    # Toe set one slope-height from the left edge, crest followed by flat upper
+    # ground, so the failure surface can develop without touching a boundary.
+    x_toe = height
+    x_crest = x_toe + base
+    total_width = x_crest + height * 2
 
     lines = [_script_header(version, port)]
     lines.append(f'# Bài toán: Ổn định mái dốc - {project_name}')
@@ -254,11 +267,13 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
 
-    lines.append('# Địa tầng và gán vật liệu đất')
-    lines.append(_stratigraphy_lines(layers, version))
+    lines.append('# Địa tầng nền (phẳng) và gán vật liệu đất')
+    lines.append(_stratigraphy_lines(layers, version, xmin=0.0, xmax=total_width, ymax=height))
     lines.append('')
-    lines.append('# Mái dốc dạng polyline')
-    lines.append(f'slope = g.line(({-base:.2f}, 0), (0, 0), (0, {height:.2f}), ({total_width:.2f}, {height:.2f}))')
+    lines.append('# Thân mái dốc: khối đất trên cao trình 0, mặt dốc từ chân lên đỉnh')
+    lines.append(f'slope_poly, slope_soil = g.polygon(({x_toe:.3f}, 0), ({x_crest:.3f}, {height:.3f}), '
+                 f'({total_width:.3f}, {height:.3f}), ({total_width:.3f}, 0))')
+    lines.append('g.setmaterial(slope_soil, soil1)')
     lines.append('')
     lines.append('# Lưới phần tử')
     lines.append('g.gotomesh()')
@@ -266,7 +281,11 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('')
     lines.append('# Tính toán')
     lines.append('g.gotostages()')
-    lines.append('phase1 = g.phase(g.InitialPhase)')
+    lines.append('# Mặt đất nghiêng nên dùng Gravity loading thay cho K0 để tạo ứng suất ban đầu.')
+    lines.append('phase0 = g.InitialPhase')
+    lines.append('phase0.DeformCalcType = "Gravity loading"')
+    lines.append('')
+    lines.append('phase1 = g.phase(phase0)')
     lines.append('phase1.Identification = "On dinh mai doc - Safety (c-phi reduction)"')
     lines.append('# PLAXIS tính bằng FEM/Safety; Bishop/Fellenius là phương pháp cân bằng giới hạn khác.')
     lines.append('phase1.DeformCalcType = "Safety"')
@@ -274,7 +293,8 @@ def _generate_slope_stability(problem, version, port, project_name):
     lines.append('')
     lines.append('g.calculate()')
     lines.append('g.view(phase1)')
-    lines.append('print("Da gui lenh phan tich on dinh mai doc bang PLAXIS Safety (c-phi reduction).")')
+    lines.append('print("Hoan thanh phan tich on dinh mai doc (Safety / c-phi reduction).")')
+    lines.append('print("SF = %.3f" % float(str(phase1.Reached.SumMsf)))')
     return '\n'.join(lines)
 
 
@@ -296,11 +316,13 @@ def _generate_foundation_settlement(problem, version, port, project_name):
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
     lines.append('# Hình học mô hình (đối xứng trục, nửa mô hình)')
-    lines.append(_stratigraphy_lines(layers, version))
+    lines.append(_stratigraphy_lines(layers, version, xmin=0.0, xmax=half_model))
     lines.append('')
     lines.append(f'# Móng (tải tập trung phân bố đều trên bề mặt rộng {B} m)')
-    lines.append(f'g.lineload(0, -{D}, {B / 2:.3f}, -{D})')
-    lines.append(f'g.lineload_1.qy_start = -{load / B:.2f}')
+    lines.append(f'footing_result = g.lineload((0, -{D}), ({B / 2:.3f}, -{D}))')
+    lines.append(f'footing_line = footing_result[2]')
+    lines.append(f'footing_load = footing_result[-1]')
+    lines.append(f'footing_load.qy_start = -{load / B:.2f}')
     lines.append('')
     lines.append('g.gotomesh()')
     lines.append('g.mesh(0.05)')
@@ -309,6 +331,7 @@ def _generate_foundation_settlement(problem, version, port, project_name):
     lines.append('phase1 = g.phase(g.InitialPhase)')
     lines.append('phase1.Identification = "Phan tich lun mong nong"')
     lines.append('phase1.ShouldCalculate = True')
+    lines.append('g.activate(footing_line, phase1)')
     lines.append('')
     lines.append('g.calculate()')
     lines.append('g.view(phase1)')
@@ -330,23 +353,27 @@ def _generate_retaining_wall(problem, version, port, project_name):
     lines.append('')
     lines.append('# Vật liệu đất')
     lines.append(_soil_lines(layers, version))
-    lines.append(_stratigraphy_lines(layers, version))
+    lines.append(_stratigraphy_lines(layers, version, xmin=0.0, xmax=t + H * 2))
     lines.append('# Vật liệu tường (bê tông cốt thép)')
     lines.append('wall_mat = g.platemat()')
+    lines.append('wall_mat.setproperties("MaterialType", "Elastic")')
     lines.append('wall_mat.setproperties("Identification", "Tuong BTCT")')
-    lines.append('wall_mat.setproperties("EA", 2.1e7)')
+    lines.append('wall_mat.setproperties("EA1", 2.1e7)')
     lines.append('wall_mat.setproperties("EI", 155000)')
     lines.append('wall_mat.setproperties("w", 5.0)')
-    lines.append('wall_mat.setproperties("nu", 0.15)')
+    lines.append('wall_mat.setproperties("StructNu", 0.15)')
     lines.append('')
     lines.append(f'# Tường chắn đứng từ (0,0) đến (0, -{H:.2f})')
-    lines.append(f'wall = g.plate((0, 0), (0, -{H:.2f}))')
-    lines.append(f'wall.setmaterial(wall_mat)')
+    lines.append(f'wall_result = g.plate((0, 0), (0, -{H:.2f}))')
+    lines.append(f'wall_plate = wall_result[-1]')
+    lines.append(f'wall_plate.setmaterial(wall_mat)')
     lines.append('')
     if q > 0:
         lines.append(f'# Tải trọng phân bố trên mặt đất sau tường')
-        lines.append(f'g.uniformload({t:.3f}, 0, {t + H * 2:.3f}, 0)')
-        lines.append(f'g.uniformload_1.qy_start = -{q:.2f}')
+        lines.append(f'surcharge_result = g.lineload(({t:.3f}, 0), ({t + H * 2:.3f}, 0))')
+        lines.append(f'surcharge_line = surcharge_result[2]')
+        lines.append(f'surcharge_load = surcharge_result[-1]')
+        lines.append(f'surcharge_load.qy_start = -{q:.2f}')
         lines.append('')
     lines.append('# Lưới phần tử')
     lines.append('g.gotomesh()')
@@ -356,6 +383,8 @@ def _generate_retaining_wall(problem, version, port, project_name):
     lines.append('phase1 = g.phase(g.InitialPhase)')
     lines.append('phase1.Identification = "Phan tich tuong chan dat"')
     lines.append('phase1.ShouldCalculate = True')
+    if q > 0:
+        lines.append('g.activate(surcharge_line, phase1)')
     lines.append('')
     lines.append('g.calculate()')
     lines.append('g.view(phase1)')
@@ -392,35 +421,54 @@ def _generate_excavation_pit(problem, version, port, project_name):
 
     lines.append('# Vật liệu tường vây (bê tông cốt thép)')
     lines.append('wall_mat = g.platemat()')
+    lines.append('wall_mat.setproperties("MaterialType", "Elastic")')
     lines.append('wall_mat.setproperties("Identification", "Tuong vay BTCT")')
     EA = 3.0e7 * t
     EI = 3.0e7 * (t ** 3) / 12.0
-    lines.append(f'wall_mat.setproperties("EA", {EA:.3e})')
+    lines.append(f'wall_mat.setproperties("EA1", {EA:.3e})')
     lines.append(f'wall_mat.setproperties("EI", {EI:.3e})')
     lines.append(f'wall_mat.setproperties("w", {25.0 * t:.2f})')
-    lines.append('wall_mat.setproperties("nu", 0.15)')
+    lines.append('wall_mat.setproperties("StructNu", 0.15)')
     lines.append('')
 
     lines.append('# Hình học: mô hình nửa đối xứng (trục đối xứng tại x=0)')
-    lines.append(_stratigraphy_lines(layers, version))
+    lines.append(_stratigraphy_lines(layers, version, xmin=0.0, xmax=model_width))
     lines.append('')
 
     if wt is not None:
-        lines.append(f'# Mực nước ngầm (groundwater level) tại y = -{wt:.2f} m')
-        lines.append(f'g.setwaterlevel(0, -{wt:.2f}, {model_width:.2f}, -{wt:.2f})')
+        lines.append(f'# Mực nước ngầm tại y = -{wt:.2f} m (đặt qua Borehole Head)')
+        lines.append(f'bh.Head = -{wt:.2f}')
         lines.append('')
 
-    lines.append('# Tường vây bên phải (x = W/2)')
+    lines.append('# Tường vây (x = W/2)')
     half_W = W / 2
-    lines.append(f'wall = g.plate(({half_W:.3f}, 0), ({half_W:.3f}, -{total_wall_height:.3f}))')
-    lines.append('wall.setmaterial(wall_mat)')
+    lines.append(f'wall_result = g.plate(({half_W:.3f}, 0), ({half_W:.3f}, -{total_wall_height:.3f}))')
+    lines.append('wall_line = wall_result[2]')
+    lines.append('wall_plate = wall_result[-1]')
+    lines.append('wall_plate.setmaterial(wall_mat)')
     lines.append('')
 
     if q > 0:
         lines.append('# Tải trọng mặt đất sau tường')
-        lines.append(f'g.uniformload({half_W + t:.3f}, 0, {model_width:.3f}, 0)')
-        lines.append(f'g.uniformload_1.qy_start = -{q:.2f}')
+        lines.append(f'surcharge_result = g.lineload(({half_W + t:.3f}, 0), ({model_width:.3f}, 0))')
+        lines.append(f'surcharge_line = surcharge_result[2]')
+        lines.append(f'surcharge_load = surcharge_result[-1]')
+        lines.append(f'surcharge_load.qy_start = -{q:.2f}')
         lines.append('')
+
+    lines.append(f'# Vùng đào (polygon, nửa đối xứng: x=0 đến x=W/2)')
+    lines.append(f'excavation_result = g.polygon((0, 0), ({half_W:.3f}, 0), ({half_W:.3f}, -{H:.3f}), (0, -{H:.3f}))')
+    lines.append('excavation_poly = excavation_result[0]')
+    lines.append('')
+    lines.append('# Gán lại vật liệu cho tất cả soil clusters (polygon tách thêm cluster mới)')
+    if len(layers) == 1:
+        lines.append('for s_obj in g.Soils: g.setmaterial(s_obj, soil1)')
+    else:
+        lines.append('g.gotosoil()')
+        for i in range(len(layers)):
+            lines.append(f'g.setmaterial(g.Soillayers[{i}].Soil, soil{i + 1})')
+        lines.append('g.gotostructures()')
+    lines.append('')
 
     lines.append('# Lưới phần tử')
     lines.append('g.gotomesh()')
@@ -428,32 +476,27 @@ def _generate_excavation_pit(problem, version, port, project_name):
     lines.append('')
     lines.append('g.gotostages()')
     lines.append('')
-    lines.append('# Giai đoạn 1: Ứng suất ban đầu')
+    lines.append('# Giai đoạn 1: Ứng suất ban đầu (K0)')
     lines.append('phase0 = g.InitialPhase')
     lines.append('')
-    lines.append('# Giai đoạn 2: Thi công tường vây')
+    lines.append(f'# Giai đoạn 2: Đào đất đến độ sâu {H} m')
     lines.append('phase1 = g.phase(phase0)')
-    lines.append('phase1.Identification = "Thi cong tuong vay"')
+    lines.append('phase1.Identification = "Dao dat"')
     lines.append('phase1.ShouldCalculate = True')
-    lines.append('g.activate(wall, phase1)')
+    lines.append('g.deactivate(excavation_poly, phase1)')
+    if q > 0:
+        lines.append('g.activate(surcharge_line, phase1)')
     lines.append('')
-    lines.append(f'# Giai đoạn 3: Đào đất đến độ sâu {H} m')
+    lines.append('# Giai đoạn 3: Kiểm tra ổn định (Phi-c reduction)')
     lines.append('phase2 = g.phase(phase1)')
-    lines.append('phase2.Identification = "Dao dat"')
+    lines.append('phase2.Identification = "Kiem tra on dinh SF"')
     lines.append('phase2.ShouldCalculate = True')
-    lines.append(f'excavation_poly = g.polygon((-{half_W:.3f}, 0), ({half_W:.3f}, 0), ({half_W:.3f}, -{H:.3f}), (-{half_W:.3f}, -{H:.3f}))')
-    lines.append('g.deactivate(excavation_poly.SoilElements, phase2)')
-    lines.append('')
-    lines.append('# Giai đoạn 4: Kiểm tra ổn định (Phi-c reduction)')
-    lines.append('phase3 = g.phase(phase2)')
-    lines.append('phase3.Identification = "Kiem tra on dinh SF"')
-    lines.append('phase3.ShouldCalculate = True')
-    lines.append('phase3.DeformCalcType = "Safety"')
+    lines.append('phase2.DeformCalcType = "Safety"')
     lines.append('')
     lines.append('g.calculate()')
-    lines.append('g.view(phase2)')
+    lines.append('g.view(phase1)')
     lines.append('print("Hoan thanh phan tich ho dao.")')
-    lines.append(f'print(f"SF = {{phase3.ReachedValue.SumMsf:.3f}}")')
+    lines.append('print("SF = %.3f" % float(str(phase2.Reached.SumMsf)))')
     return '\n'.join(lines)
 
 
@@ -609,8 +652,8 @@ def _generate_embankment_stability(problem, version, port, project_name):
     lines.append('g.view(phase1)')
     lines.append('print("Hoan thanh phan tich on dinh bo dap.")')
     lines.append('try:')
-    lines.append('    print(f"SF Drained  = {phase3.ReachedValue.SumMsf:.3f}")')
-    lines.append('    print(f"SF Undrained = {phase4.ReachedValue.SumMsf:.3f}")')
+    lines.append('    print("SF Drained  = %.3f" % float(str(phase3.Reached.SumMsf)))')
+    lines.append('    print("SF Undrained = %.3f" % float(str(phase4.Reached.SumMsf)))')
     lines.append('except Exception as e:')
     lines.append('    print(f"Chua doc duoc SF: {e}")')
     return '\n'.join(lines)
