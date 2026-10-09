@@ -34,6 +34,9 @@ def paint_avatar(label,data,name,size,theme):
 class ProfileMixin:
     def refresh_account_ui(self):
         session=self.server_session or {};logged=bool(session)
+        self.chat_login.setText('Tài khoản: '+session['username'] if logged else 'Đăng nhập')
+        self.chat_register.setVisible(not logged)
+        if hasattr(self,'wallet_button'):self.wallet_button.refresh()
         for button in (self.account_register_button,self.account_login_button,self.account_remember):button.setVisible(not logged)
         for button in (self.account_edit_button,self.account_password_button,self.account_logout_button):button.setVisible(logged)
         self.account_name_label.setVisible(logged);self.account_username_label.setVisible(logged)

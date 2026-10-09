@@ -429,7 +429,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.quick_provider.setCurrentIndex(0 if initial_kind=='online' else 1)
         self.quick_provider.currentIndexChanged.connect(self.quick_ai_changed)
         self.chat_register=self.button(row,'Đăng ký',self.register_dialog)
-        self.chat_login=self.button(row,'Đăng nhập',self.login_dialog)
+        from assistant.wallet_ui import WalletButton
+        self.wallet_button=WalletButton(self);row.addWidget(self.wallet_button)
+        self.chat_login=self.button(row,'Đăng nhập',self.chat_account_action)
         self.chat_mode = QComboBox(); self.chat_mode.addItems(['Chat nhanh', 'Dùng công cụ / Office', 'Tạo hình ảnh', 'Tạo video', 'Tìm kiếm mạng', 'Chuyên gia'])
         self.chat_mode.setCurrentIndex(0); self.chat_mode.setToolTip('Chọn chat, xử lý tài liệu, tạo ảnh hoặc tạo video từ ảnh AI.')
         self.mode_return_index=None
@@ -2540,6 +2542,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.load_account_enrichment(dict(self.server_session))
         self.sync_history()
 
+    def chat_account_action(self):
+        if self.server_session:self.account_menu()
+        else:self.login_dialog()
+
     def login_dialog(self):
         if self.server_session:
             self.refresh_account_ui()
@@ -2797,7 +2803,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.accounts import request_account
             return request_account(endpoint,'/api/register',data,timeout=30)
         def done(result):
-            QMessageBox.information(self,'Chat AI','Đã tạo tài khoản: '+data['username']+'\nKhông lưu mật khẩu vào ứng dụng. AI trên máy vẫn dùng Ollama.')
+            session={'endpoint':endpoint,'username':data['username'],'key':data['password']}
+            data.clear()
+            self.status.setText('Đã tạo tài khoản. Đang đăng nhập…')
+            remember=self.account_remember.isChecked()
+            QTimer.singleShot(0,lambda:self.perform_login(session,remember=remember))
         self.work(task,done)
 
     def apply_font(self):
@@ -3259,11 +3269,13 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         endpoint=self.settings_server.text().strip().rstrip('/')
         self.work(lambda emit:request_account(endpoint,'/api/email/password/request',{'email':email.strip()},timeout=30),lambda result:QMessageBox.information(self,'Quên mật khẩu',result['message']))
 
-    def open_billing(self):
+    def open_billing(self,topup=False):
         if not self.server_session:return
         from assistant.billing_ui import BillingDialog
         dialog=BillingDialog(self.server_session,self)
+        if topup:dialog.tabs.setCurrentIndex(0);dialog.amount.setFocus()
         dialog.exec()
+        self.wallet_button.refresh()
 
     def settings_menu(self):
         menu=QMenu(self)
