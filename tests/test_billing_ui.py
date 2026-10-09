@@ -74,3 +74,45 @@ class BillingUITests(unittest.TestCase):
             if dialog.worker:
                 dialog.worker.wait(3000);self.app.processEvents()
             dialog.close()
+
+    def test_admin_pricing_can_waive_maintenance_and_raise_token_rate(self):
+        admin=self.dialog(True)
+        try:
+            admin.fee_field.setValue(0);admin.token_price_field.setValue(12000)
+            self.assertEqual(admin.fee_field.value(),0)
+            with patch.object(admin,'send') as send:
+                admin.save_config()
+                config=send.call_args[0][1]['config']
+                self.assertEqual(config['service_fee'],0);self.assertEqual(config['token_price'],12000)
+            admin.received('/api/admin/billing/fee/save',{'success':True,'service_fee':0,'token_price':12000})
+            self.assertIn('12.000 đ/triệu token',admin.plan_note.text())
+            self.assertEqual(admin.renew.text(),'Miễn phí duy trì')
+        finally:admin.close()
+        user=self.dialog()
+        try:
+            user.received('/api/billing/status',{'enabled':True,'service_fee':0,'price_per_million':12000,'wallet':{'owner':'alice','balance_vnd':20000,'available_vnd':20000,'held_vnd':0,'trial_until':0,'service_until':0,'service_active':True,'maintenance_waived':True}})
+            self.assertTrue(user.topup.isEnabled());self.assertFalse(user.renew.isEnabled())
+        finally:user.close()
+
+    def test_admin_user_table_shows_recorded_totals_and_waived_maintenance(self):
+        from PySide6.QtWidgets import QWidget,QTabWidget,QPushButton
+        from assistant.admin_ui import AdminMixin
+        class AdminHarness(AdminMixin,QWidget):
+            def __init__(self):
+                super().__init__();self.tabs=QTabWidget(self);self.server_session={'role':'system'}
+            def button(self,layout,label,callback):
+                button=QPushButton(label);button.clicked.connect(callback);layout.addWidget(button)
+            def add_scroll_page(self,page,label):self.tabs.addTab(page,label)
+            def admin_request(self,action,body,callback):
+                callback({'users':[{'fullname':'Alice','username':'alice','account_status':'active','expires_at':'Vĩnh viễn','billing':{'month_tokens':1300,'total_tokens':1800,'month_token_fee':8,'balance_vnd':19992,'pending_count':1,'maintenance_waived':True,'paid_total_tokens':1700,'free_total_tokens':100}}],'total':1})
+        page=AdminHarness()
+        try:
+            page.open_user_admin()
+            self.assertEqual(page.admin_table.columnCount(),14)
+            self.assertEqual(page.admin_table.item(0,8).text(),'1,300')
+            self.assertEqual(page.admin_table.item(0,9).text(),'1,800')
+            self.assertEqual(page.admin_table.item(0,10).text(),'8 đ')
+            self.assertEqual(page.admin_table.item(0,11).text(),'19.992 đ')
+            self.assertEqual(page.admin_table.item(0,12).text(),'Miễn phí')
+            self.assertEqual(page.admin_table.item(0,13).text(),'1')
+        finally:page.close()

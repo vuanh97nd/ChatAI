@@ -56,14 +56,14 @@ class BillingRequest(QThread):
 class BillingDialog(QDialog):
     def __init__(self,session,parent=None):
         super().__init__(parent)
-        self.session=dict(session);self.worker=None;self.current_order=None;self.credit_attempt=None
+        self.session=dict(session);self.worker=None;self.current_order=None;self.credit_attempt=None;self.service_fee=100000;self.token_price=4000
         self.is_admin=session.get('is_system') is True or session.get('username','').lower()=='admin'
         self.setWindowTitle('Số dư và thanh toán');self.resize(760,720)
         layout=QVBoxLayout(self)
         title=QLabel('Số dư và thanh toán');title.setStyleSheet('font-size: 20px; font-weight: 600;')
         layout.addWidget(title)
-        note=QLabel('Cloud AI, NVIDIA và AI local miễn phí. DeepSeek: 4.000 đ/triệu token.\n'
-                    'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó 100.000 đ/30 ngày.\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.');note.setWordWrap(True);layout.addWidget(note)
+        self.plan_note=QLabel('Cloud AI, NVIDIA và AI local miễn phí. DeepSeek: 4.000 đ/triệu token.\n'
+                    'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó 100.000 đ/30 ngày.\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.');self.plan_note.setWordWrap(True);layout.addWidget(self.plan_note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs)
         wallet=QWidget();wl=QVBoxLayout(wallet);self.tabs.addTab(wallet,'Ví token')
         self.summary=QLabel('Đang tải số dư…');self.summary.setWordWrap(True);wl.addWidget(self.summary)
@@ -93,6 +93,12 @@ class BillingDialog(QDialog):
     def build_admin(self):
         panel=QWidget();form=QFormLayout(panel)
         self.enabled=QCheckBox('Bật QR tự động và thu phí DeepSeek');form.addRow(self.enabled)
+        self.fee_field=QSpinBox();self.fee_field.setRange(0,5000000);self.fee_field.setSingleStep(1000);self.fee_field.setValue(self.service_fee);self.fee_field.setSuffix(' đ / 30 ngày')
+        form.addRow('Phí duy trì',self.fee_field)
+        self.token_price_field=QSpinBox();self.token_price_field.setRange(1,10000000);self.token_price_field.setValue(self.token_price);self.token_price_field.setSuffix(' đ / triệu token')
+        form.addRow('Giá token DeepSeek',self.token_price_field)
+        save_fee=QPushButton('Lưu bảng giá');save_fee.clicked.connect(lambda:self.send('/api/admin/billing/fee/save',{'service_fee':self.fee_field.value(),'token_price':self.token_price_field.value()}));form.addRow(save_fee)
+        fee_note=QLabel('Phí duy trì 0 = miễn phí duy trì; vẫn trả phí token. Giá mới chỉ áp dụng cho đơn mới; không thay đổi thời hạn đã thanh toán.');fee_note.setWordWrap(True);form.addRow(fee_note)
         self.bank=QLineEdit();self.bank.setPlaceholderText('Mã VietQR: VCB, BIDV, MB, …')
         self.account=QLineEdit();self.name=QLineEdit();self.secret=QLineEdit();self.secret.setEchoMode(QLineEdit.Password)
         for label,widget in [('Ngân hàng',self.bank),('Số tài khoản',self.account),('Tên người nhận',self.name),('Khóa webhook SePay',self.secret)]:form.addRow(label,widget)
@@ -138,10 +144,10 @@ class BillingDialog(QDialog):
         if self.current_order:self.send('/api/billing/status')
 
     def create_order(self,kind):
-        self.send('/api/billing/order',{'kind':kind,'amount':self.amount.currentData() if kind=='topup' else 100000,'request_id':str(uuid.uuid4())})
+        self.send('/api/billing/order',{'kind':kind,'amount':self.amount.currentData() if kind=='topup' else self.service_fee,'request_id':str(uuid.uuid4())})
 
     def save_config(self):
-        self.send('/api/admin/billing/config/save',{'config':{'enabled':self.enabled.isChecked(),'bank':self.bank.text().strip(),'account':self.account.text().strip(),'name':self.name.text().strip(),'secret':self.secret.text().strip()}})
+        self.send('/api/admin/billing/config/save',{'config':{'enabled':self.enabled.isChecked(),'service_fee':self.fee_field.value(),'token_price':self.token_price_field.value(),'bank':self.bank.text().strip(),'account':self.account.text().strip(),'name':self.name.text().strip(),'secret':self.secret.text().strip()}})
         self.secret.clear()
 
     def view_user(self):self.send('/api/admin/billing/status',{'target':self.target.text().strip()})
@@ -156,15 +162,27 @@ class BillingDialog(QDialog):
 
     def received(self,path,result):
         self.status.setText(result.get('message','Đã cập nhật.'))
+        fee=result.get('service_fee',result.get('config',{}).get('service_fee'))
+        price=result.get('token_price',result.get('price_per_million',result.get('config',{}).get('token_price')))
+        if fee is not None:self.service_fee=fee
+        if price is not None:self.token_price=price
+        if fee is not None or price is not None:
+            if self.is_admin:
+                self.fee_field.setValue(self.service_fee);self.token_price_field.setValue(self.token_price)
+            self.renew.setText('Miễn phí duy trì' if self.service_fee==0 else 'Gia hạn 30 ngày · '+money(self.service_fee))
+            maintenance='Miễn phí duy trì; vẫn cần nạp tiền token.' if self.service_fee==0 else 'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó '+money(self.service_fee)+'/30 ngày.'
+            self.plan_note.setText('Cloud AI, NVIDIA và AI local miễn phí. DeepSeek: '+money(self.token_price)+'/triệu token.\n'+maintenance+'\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.')
         if 'config' in result:
             c=result['config'];self.enabled.setChecked(c['enabled']);self.bank.setText(c['bank']);self.account.setText(c['account']);self.name.setText(c['name']);self.webhook.setText(c['webhook_url'])
             self.secret.setPlaceholderText('Đã lưu khóa · để trống giữ nguyên' if c['secret_configured'] else 'Nhập khóa xác thực webhook')
         if 'wallet' in result:
-            w=result['wallet'];self.summary.setText('Admin miễn phí; không trừ ví.' if w.get('exempt') else
+            w=result['wallet']
+            maintenance='Miễn phí duy trì; không cần gia hạn.' if w.get('maintenance_waived') else (
+                f"Miễn phí duy trì đến {date_label(w['trial_until'])}\nGia hạn đến {date_label(w['service_until'])} · {'Còn hiệu lực' if w['service_active'] else 'Cần gia hạn để dùng DeepSeek'}")
+            self.summary.setText('Admin miễn phí; không trừ ví.' if w.get('exempt') else
                 f"Tài khoản: {w['owner']} · Số dư {money(w['balance_vnd'])} · Khả dụng {money(w['available_vnd'])}\n"
-                f"Giữ chỗ / đối soát: {money(w['held_vnd'])}\nMiễn phí duy trì đến {date_label(w['trial_until'])}\n"
-                f"Gia hạn đến {date_label(w['service_until'])} · {'Còn hiệu lực' if w['service_active'] else 'Cần gia hạn để dùng DeepSeek'}")
-            self.topup.setEnabled(result.get('enabled',False) and not self.is_admin);self.renew.setEnabled(result.get('enabled',False) and not self.is_admin)
+                f"Giữ chỗ / đối soát: {money(w['held_vnd'])}\n"+maintenance)
+            self.topup.setEnabled(result.get('enabled',False) and not self.is_admin);self.renew.setEnabled(result.get('enabled',False) and not self.is_admin and self.service_fee>0)
         if 'orders' in result:
             states={'pending':'Chờ chuyển khoản','paid':'Đã nhận','expired':'Hết hạn'}
             rows=[]

@@ -132,3 +132,69 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
 }
+
+for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
+ test(`${name}: admin prices preserve orders and in-flight rates; totals use Vietnamese months`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'fixture-admin-secret-32-characters',DEEPSEEK_API_KEY:'fixture-deepseek-key'};
+  const original=globalThis.fetch;
+  const call=async(path,body={},user='admin')=>{
+   const response=await worker.fetch(new Request('https://example.org'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,username:user,key:user==='admin'?env.ADMIN_KEY:'fixture-password'})}),env,{});
+   return {status:response.status,data:await response.json()};
+  };
+  try{
+   // Pricing can be configured before the administrator connects a bank.
+   let result=await call('/api/admin/billing/fee/save',{service_fee:80000,token_price:6000});assert.equal(result.status,200);
+   result=await call('/api/admin/billing/config/get');assert.equal(result.data.config.service_fee,80000);assert.equal(result.data.config.token_price,6000);
+   env.DB.raw.prepare("INSERT INTO users(username,key,fullname,tier,expires_at) VALUES('alice','fixture-password','Alice','pro','Vĩnh viễn')").run();
+   assert.equal((await call('/api/admin/billing/fee/save',{service_fee:50000,token_price:1000},'alice')).status,403);
+   assert.equal((await call('/api/admin/billing/fee/save',{service_fee:-1,token_price:5000})).status,400);
+   assert.equal((await call('/api/admin/billing/fee/save',{service_fee:80000,token_price:'5000'})).status,400);
+   await call('/api/admin/billing/config/save',{config:{enabled:true,bank:'VCB',account:'0123456789',name:'TEST',secret:'fixture-webhook-secret-32-characters'}});
+   result=await call('/api/billing/status',{},'alice');assert.equal(result.data.service_fee,80000);assert.equal(result.data.price_per_million,6000);
+   const request_id=crypto.randomUUID();let order=await call('/api/billing/order',{kind:'service',amount:80000,request_id},'alice');assert.equal(order.status,200);
+   await call('/api/admin/billing/fee/save',{service_fee:120000,token_price:6000});
+   const retry=await call('/api/billing/order',{kind:'service',amount:80000,request_id},'alice');assert.equal(retry.status,200);assert.equal(retry.data.order.memo,order.data.order.memo);
+   result=await call('/api/billing/order',{kind:'service',amount:80000,request_id:crypto.randomUUID()},'alice');assert.equal(result.data.code,'SERVICE_PRICE_CHANGED');
+   result=await call('/api/billing/order',{kind:'service',amount:120000,request_id:crypto.randomUUID()},'alice');assert.equal(result.data.order.amount,120000);
+   await call('/api/admin/billing/credit',{target:'alice',amount:20000,note:'Test',request_id:crypto.randomUUID()});
+   const ai={provider:'deepseek_flash',messages:[{role:'user',content:'Hi'}]};
+   globalThis.fetch=async()=>{
+    await call('/api/admin/billing/fee/save',{service_fee:120000,token_price:10000});
+    return Response.json({choices:[{message:{content:'OK'}}],usage:{total_tokens:1000}});
+   };
+   result=await call('/api/provider/model',ai,'alice');assert.equal(result.status,200);
+   result=await call('/api/billing/status',{},'alice');assert.equal(result.data.wallet.balance_vnd,19994);assert.equal(result.data.usage[0].price_per_million,6000);
+   globalThis.fetch=async()=>Response.json({choices:[{message:{content:'OK'}}]});
+   result=await call('/api/provider/model',ai,'alice');assert.equal(result.data.code,'BILLING_USAGE_PENDING');
+   const pending=env.DB.raw.prepare("SELECT id FROM billing_usage WHERE state='pending_review'").get().id;
+   await call('/api/admin/billing/fee/save',{service_fee:120000,token_price:3000});
+   assert.equal((await call('/api/admin/billing/reconcile',{id:pending,tokens:200,note:'Verified provider usage'})).status,200);
+   result=await call('/api/billing/status',{},'alice');assert.equal(result.data.wallet.balance_vnd,19992);
+   const local=new Date(Date.now()+7*3600000),start=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),1)-7*3600000;
+   const add=env.DB.raw.prepare('INSERT INTO billing_usage(id,owner,reserved,tokens,charged,state,created) VALUES(?,?,0,?,?,?,?)');
+   add.run('previous-month','alice',500,2,'charged',start-1);
+   add.run('current-month-free','alice',100,0,'free',start);
+   add.run('unknown-usage','alice',null,0,'free_unknown_usage',Date.now());
+   result=await call('/api/admin/accounts/list',{search:'alice'});assert.equal(result.status,200);
+   const stats=result.data.users[0].billing;
+   assert.equal(stats.total_tokens,1800);assert.equal(stats.month_tokens,1300);assert.equal(stats.month_token_fee,8);
+   assert.equal(stats.paid_total_tokens,1700);assert.equal(stats.free_total_tokens,100);assert.equal(stats.pending_count,1);assert.equal(stats.balance_vnd,19992);
+   assert.equal(stats.month_timezone,'Asia/Ho_Chi_Minh');assert.ok(stats.maintenance_until>Date.now());
+   result=await call('/api/admin/accounts/detail',{target:'alice'});assert.equal(result.data.user.billing.total_tokens,1800);
+   assert.equal((await call('/api/admin/accounts/list',{},'alice')).status,403);
+   const until=env.DB.raw.prepare("SELECT trial_until FROM billing_wallets WHERE owner='alice'").get().trial_until;
+   await call('/api/admin/billing/fee/save',{service_fee:0,token_price:20000});
+   assert.equal(env.DB.raw.prepare("SELECT trial_until FROM billing_wallets WHERE owner='alice'").get().trial_until,until);
+   env.DB.raw.prepare("UPDATE billing_wallets SET trial_until=0,service_until=0 WHERE owner='alice'").run();
+   result=await call('/api/billing/status',{},'alice');assert.equal(result.data.wallet.service_active,true);assert.equal(result.data.wallet.maintenance_waived,true);
+   result=await call('/api/billing/order',{kind:'service',amount:0,request_id:crypto.randomUUID()},'alice');assert.equal(result.data.code,'SERVICE_FEE_WAIVED');
+   globalThis.fetch=async()=>Response.json({choices:[{message:{content:'OK'}}],usage:{total_tokens:123}});
+   assert.equal((await call('/api/provider/model',ai,'alice')).status,200);
+   result=await call('/api/billing/status',{},'alice');assert.equal(result.data.wallet.balance_vnd,19989.54);
+   env.DB.raw.prepare("UPDATE billing_wallets SET balance=0 WHERE owner='alice'").run();
+   result=await call('/api/provider/model',ai,'alice');assert.equal(result.data.code,'TOKEN_BALANCE_LOW');
+   result=await call('/api/admin/accounts/list',{search:'alice'});assert.equal(result.data.users[0].billing.maintenance_waived,true);
+
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
+}

@@ -34,3 +34,11 @@ Khóa webhook được mã hóa AES-GCM trong D1, không trả về client, khô
 GitHub Actions triển khai `work.js` và giữ bindings/secrets hiện có. D1 tự tạo các bảng billing, không cần KV mới. Khởi chạy lại bản mã nguồn desktop sau khi cập nhật; bản EXE cần được build lại để có cửa sổ mới.
 
 Cấu hình mặc định tắt; triển khai mã không tự kết nối SePay hay ngân hàng. Tất cả thu phí do Worker quyết định, client không được tự khai số token hay tự xác nhận tiền vào.
+
+## Bảng giá và bộ đếm dành cho admin
+
+Trong Quản trị thanh toán, chỉnh **Phí duy trì** (0–5.000.000 đ/30 ngày) và **Giá token DeepSeek** (1–10.000.000 đ/triệu token), rồi bấm **Lưu bảng giá**. Có thể lưu giá trước khi cấu hình ngân hàng. Giá mặc định vẫn là 100.000 đ/30 ngày và 4.000 đ/triệu token. Đặt phí duy trì 0 để miễn phí duy trì hoàn toàn; người dùng vẫn cần đủ tiền token, không cần tạo QR gia hạn.
+
+Đơn gia hạn đã tạo giữ nguyên số tiền; client dùng giá cũ cho đơn mới phải làm mới ví. Đơn đã thanh toán giữ nguyên thời hạn. Mỗi lượt AI lưu đơn giá tại thời điểm bắt đầu, kể cả lượt chờ đối soát. Chi phí lưu theo milli-đồng và làm tròn lên tối đa dưới 0,001 đồng mỗi lượt khi đơn giá không chia hết cho 1.000.
+
+Trang **Quản lý người dùng** thêm token tháng này, tổng token đã ghi nhận, phí token tháng, số dư ví, hạn duy trì và số lượt thiếu usage / chờ đối soát. Tháng theo giờ Việt Nam (UTC+7). Tổng gồm token đầu vào + đầu ra mà API thực sự trả về, tách token tính phí và miễn phí trong tooltip. Không hồi dựng số token của hội thoại cũ, không ước lượng lượt thiếu usage hay token local. Các luồng chưa ghi usage không nằm trong bộ đếm. Phí tháng là số tiền thực tế của sổ cái, không lấy tổng token nhân đơn giá hiện tại.

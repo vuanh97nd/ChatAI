@@ -39,7 +39,7 @@ class AdminMixin:
             for label,value in [('Tất cả','all'),('Đang hoạt động','active'),('Bị khóa','locked'),('Đã xóa mềm','deleted')]:self.admin_filter.addItem(label,value)
             row.addWidget(self.admin_filter);self.button(row,'Tìm / Làm mới',self.reload_admin_users)
             self.admin_search.returnPressed.connect(self.reload_admin_users)
-            self.admin_table=QTableWidget(0,8);self.admin_table.setHorizontalHeaderLabels(['Họ tên','Tên đăng nhập','Liên hệ','Tài khoản','Hoạt động','Lần gần nhất','Cập nhật hồ sơ','Thời hạn'])
+            self.admin_table=QTableWidget(0,14);self.admin_table.setHorizontalHeaderLabels(['Họ tên','Tên đăng nhập','Liên hệ','Tài khoản','Hoạt động','Lần gần nhất','Cập nhật hồ sơ','Thời hạn','Token tháng này','Tổng token','Phí token tháng','Số dư ví','Hạn duy trì','Thiếu usage / đối soát'])
             self.admin_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
             self.admin_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
             self.admin_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -47,7 +47,7 @@ class AdminMixin:
             self.admin_table.setMinimumHeight(320);layout.addWidget(self.admin_table)
             self.admin_table.cellDoubleClicked.connect(lambda *_:self.show_admin_user())
             self.admin_status=QLabel('Chọn một tài khoản để xem chi tiết.');self.admin_status.setWordWrap(True);layout.addWidget(self.admin_status)
-            note=QLabel('Online theo tín hiệu ứng dụng trong 90 giây gần nhất; không phải theo dõi thời gian thực. Ngày tạo cũ chưa ghi nhận sẽ hiển thị “Chưa có dữ liệu”.');note.setWordWrap(True);layout.addWidget(note)
+            note=QLabel('Online theo tín hiệu ứng dụng trong 90 giây gần nhất; không phải theo dõi thời gian thực. Ngày tạo cũ chưa ghi nhận sẽ hiển thị “Chưa có dữ liệu”. Token tính theo usage API đã ghi nhận; lượt thiếu usage và token local không được ước lượng. Tháng tính theo giờ Việt Nam.');note.setWordWrap(True);layout.addWidget(note)
             actions=QHBoxLayout();layout.addLayout(actions)
             for label,fn in [('Chi tiết / Chỉnh sửa',self.show_admin_user),('Khóa',lambda:self.admin_account_action('lock')),
                              ('Mở khóa',lambda:self.admin_account_action('unlock')),('Thu hồi đăng nhập',lambda:self.admin_account_action('revoke')),
@@ -69,8 +69,12 @@ class AdminMixin:
                 activity={'online':'● Online','offline':'Offline','unknown':'Không rõ trạng thái'}.get(user.get('activity_status'),'Không rõ trạng thái')
                 values=[user['fullname'],user['username'],user.get('email') or user.get('phone') or '',account,activity,
                         date_label(user.get('presence_at') or user.get('last_seen_at')),date_label(user.get('profile_updated_at') or user.get('updated_at')),user['expires_at']]
+                from .billing_ui import money,date_label as billing_date
+                billing=user.get('billing') or {}
+                values.extend([f"{billing.get('month_tokens',0):,}",f"{billing.get('total_tokens',0):,}",money(billing.get('month_token_fee',0)),money(billing.get('balance_vnd',0)),('Miễn phí' if billing.get('maintenance_waived') else billing_date(billing.get('maintenance_until'))),billing.get('pending_count',0)])
                 for col,value in enumerate(values):
                     item=QTableWidgetItem(str(value));item.setToolTip(str(value));self.admin_table.setItem(row,col,item)
+                    if col in (8,9):item.setToolTip('Tổng token API đã ghi nhận (đầu vào + đầu ra).\nDeepSeek tính phí: '+str(billing.get('paid_total_tokens',0))+' token tổng cộng\nAI miễn phí: '+str(billing.get('free_total_tokens',0))+' token tổng cộng\nChưa gồm lượt thiếu usage và token local. Tháng theo giờ Việt Nam.')
             self.admin_status.setText(f"{self.admin_offset+1 if self.admin_users else 0}–{self.admin_offset+len(self.admin_users)} / {self.admin_total} tài khoản · cập nhật {datetime.now():%H:%M:%S}")
         self.admin_request('list',{'search':self.admin_search.text(),'filter':self.admin_filter.currentData(),'offset':self.admin_offset},done)
 
@@ -116,6 +120,9 @@ class AdminMixin:
         tier=QComboBox();tier.addItems(['trial','pro','oem']);tier.setCurrentText(user['tier']);form.addRow('Loại tài khoản',tier)
         expiry=QLineEdit(user['expires_at']);expiry.setPlaceholderText('YYYY-MM-DD hoặc Vĩnh viễn');form.addRow('Thời hạn',expiry)
         info=QLabel('Tên đăng nhập: '+user['username']+'\nNgày tạo: '+date_label(user.get('created_at'))+'\nCập nhật: '+date_label(user.get('updated_at'))+'\nHồ sơ cập nhật: '+date_label(user.get('profile_updated_at'))+'\nHoạt động gần nhất: '+date_label(user.get('last_seen_at'))+'\nTrạng thái: '+user['account_status']);info.setWordWrap(True);layout.addWidget(info)
+        from .billing_ui import money,date_label as billing_date
+        billing=user.get('billing') or {}
+        totals=QLabel('Token tháng này: '+f"{billing.get('month_tokens',0):,}"+' · Tổng: '+f"{billing.get('total_tokens',0):,}"+'\nPhí token tháng: '+money(billing.get('month_token_fee',0))+' · Ví: '+money(billing.get('balance_vnd',0))+'\nHạn duy trì: '+('Miễn phí' if billing.get('maintenance_waived') else billing_date(billing.get('maintenance_until')))+' · Lượt thiếu usage / đối soát: '+str(billing.get('pending_count',0)));totals.setWordWrap(True);layout.addWidget(totals)
         log=QPlainTextEdit();log.setReadOnly(True);log.setPlainText('\n'.join(date_label(row['created_at'])+' · '+row['action']+' · '+row['details'] for row in result.get('audit',[])));layout.addWidget(QLabel('Nhật ký quản trị gần nhất'));layout.addWidget(log)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);buttons.button(QDialogButtonBox.StandardButton.Save).setText('Lưu thay đổi');buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Hủy');layout.addWidget(buttons)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)

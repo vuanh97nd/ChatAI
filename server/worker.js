@@ -1528,15 +1528,17 @@ export async function accountAdminAPI(env,actor,path,body){
   const params=['%'+query+'%','%'+query+'%','%'+query+'%',filter,filter,filter,filter];
   const total=await db.prepare('SELECT COUNT(*) AS total FROM users u'+where).bind(...params).first();
   const rows=await db.prepare("SELECT u.username,u.fullname,u.email,u.tier,u.expires_at,u.created_at,u.updated_at,u.account_status,u.deleted_at,u.total_usage_seconds,u.last_seen_at,p.phone,p.updated_at AS profile_updated_at,(SELECT MAX(s.last_seen_at) FROM support_sessions s WHERE s.username=u.username) AS presence_at FROM users u LEFT JOIN account_profiles p ON p.username=u.username"+where+' ORDER BY u.updated_at DESC,u.username LIMIT ? OFFSET ?').bind(...params,limit,offset).all();
-  const users=(rows.results||[]).map(u=>({...u,role:'user',is_online:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000,activity_status:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000?'online':u.last_seen_at||u.presence_at?'offline':'unknown',created_at:u.created_at||null,can_restore:u.account_status==='deleted'&&Date.parse(u.deleted_at)>=Date.now()-30*86400000}));
+  const billing=await adminBillingTotals(env,(rows.results||[]).map(u=>u.username));
+  const users=(rows.results||[]).map(u=>({...u,billing:billing.get(u.username),role:'user',is_online:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000,activity_status:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000?'online':u.last_seen_at||u.presence_at?'offline':'unknown',created_at:u.created_at||null,can_restore:u.account_status==='deleted'&&Date.parse(u.deleted_at)>=Date.now()-30*86400000}));
   return reply({success:true,users,total:total.total,offset,limit});
  }
  const target=String(body.target||'').trim();if(!validUser(target))return fail('Không được thay đổi tài khoản hệ thống hoặc tên tài khoản không hợp lệ.');
  const user=await db.prepare('SELECT * FROM users WHERE username=?').bind(target).first();if(!user)return fail('Không tìm thấy tài khoản.',404);
  if(action==='detail'){
+  const billing=(await adminBillingTotals(env,[target])).get(target);
   const profile=await db.prepare('SELECT phone,avatar,updated_at FROM account_profiles WHERE username=?').bind(target).first();
   const rows=await db.prepare('SELECT action,details,created_at FROM admin_audit WHERE target=? ORDER BY id DESC LIMIT 50').bind(target).all();
-  return reply({success:true,user:{username:user.username,fullname:user.fullname,email:user.email||'',phone:profile?.phone||'',avatar:profile?.avatar||'',tier:user.tier,expires_at:user.expires_at,account_status:user.account_status,deleted_at:user.deleted_at,created_at:user.created_at||null,updated_at:user.updated_at,profile_updated_at:profile?.updated_at||null,last_seen_at:user.last_seen_at},audit:rows.results||[]});
+  return reply({success:true,user:{billing,username:user.username,fullname:user.fullname,email:user.email||'',phone:profile?.phone||'',avatar:profile?.avatar||'',tier:user.tier,expires_at:user.expires_at,account_status:user.account_status,deleted_at:user.deleted_at,created_at:user.created_at||null,updated_at:user.updated_at,profile_updated_at:profile?.updated_at||null,last_seen_at:user.last_seen_at},audit:rows.results||[]});
  }
  if(!['update','lock','unlock','revoke','delete','restore'].includes(action))return fail('Không có thao tác quản trị này.',404);
  if(body.confirm!==true)return fail('Cần xác nhận thao tác.',409);
@@ -1831,6 +1833,8 @@ async function cloudDocumentModel(env,body){
 // Prepaid billing: integer milli-VND, authoritative usage, atomic D1 ledger.
 const BILLING_DENOMINATIONS=[20000,50000,100000,200000,500000];
 const BILLING_MONTH=30*86400000;
+const billingTokenPrice=c=>Number.isSafeInteger(c.token_price)&&c.token_price>=1&&c.token_price<=10000000?c.token_price:4000;
+const billingServiceFee=c=>Number.isSafeInteger(c.service_fee)&&c.service_fee>=0&&c.service_fee<=5000000?c.service_fee:100000;
 const billingSchemaJobs=new WeakMap();
 async function billingSchema(db){
  if(billingSchemaJobs.has(db))return billingSchemaJobs.get(db);
@@ -1840,6 +1844,7 @@ async function billingSchema(db){
   db.prepare('CREATE TABLE IF NOT EXISTS billing_receipts(id TEXT PRIMARY KEY,order_id TEXT UNIQUE NOT NULL,actor TEXT NOT NULL,credited INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,note TEXT NOT NULL DEFAULT \'\')'),
   db.prepare('CREATE TABLE IF NOT EXISTS billing_usage(id TEXT PRIMARY KEY,owner TEXT NOT NULL,reserved INTEGER NOT NULL,tokens INTEGER,charged INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL,created INTEGER NOT NULL)'),
   db.prepare('CREATE INDEX IF NOT EXISTS billing_orders_owner ON billing_orders(owner,created)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_usage_prices(id TEXT PRIMARY KEY,price INTEGER NOT NULL)'),
   db.prepare('CREATE INDEX IF NOT EXISTS billing_usage_owner ON billing_usage(owner,created)')
  ]);
  billingSchemaJobs.set(db,job);
@@ -1859,7 +1864,8 @@ async function billingWallet(env,actor){
  await env.DB.prepare('INSERT OR IGNORE INTO billing_wallets(owner,trial_until) VALUES(?,?)').bind(actor.username,start+BILLING_MONTH).run();
  await env.DB.prepare("UPDATE billing_usage SET state='pending_review' WHERE owner=? AND state='reserved' AND created<?").bind(actor.username,Date.now()-180000).run();
  const w=await env.DB.prepare('SELECT * FROM billing_wallets WHERE owner=?').bind(actor.username).first();
- return {...w,balance_vnd:w.balance/1000,held_vnd:w.held/1000,available_vnd:(w.balance-w.held)/1000,exempt:administrator(actor),service_active:administrator(actor)||Math.max(w.trial_until,w.service_until)>Date.now()};
+ const waived=billingServiceFee(await billingConfig(env))===0;
+ return {...w,maintenance_waived:waived,balance_vnd:w.balance/1000,held_vnd:w.held/1000,available_vnd:(w.balance-w.held)/1000,exempt:administrator(actor),service_active:waived||administrator(actor)||Math.max(w.trial_until,w.service_until)>Date.now()};
 }
 function billingError(message,status=400,code='BILLING_ERROR'){return reply({success:false,message,code},status);}
 async function billingCredit(env,order,receipt,actor,note){
@@ -1891,24 +1897,38 @@ async function billingAPI(env,actor,path,body,request){
   const paid=await db.prepare('SELECT status FROM billing_orders WHERE id=?').bind(order.id).first();
   return reply({success:true,matched:paid.status==='paid'});
  }
- if(path==='/api/admin/billing/config/get')return reply({success:true,config:{enabled:config.enabled===true,bank:config.bank||'',account:config.account||'',name:config.name||'',secret_configured:Boolean(config.secret),webhook_url:new URL('/api/billing/webhook',request.url).href}});
+ if(path==='/api/admin/billing/config/get')return reply({success:true,config:{enabled:config.enabled===true,bank:config.bank||'',account:config.account||'',name:config.name||'',service_fee:billingServiceFee(config),token_price:billingTokenPrice(config),secret_configured:Boolean(config.secret),webhook_url:new URL('/api/billing/webhook',request.url).href}});
+ if(path==='/api/admin/billing/fee/save'){
+  if(!Number.isSafeInteger(body.service_fee)||body.service_fee<0||body.service_fee>5000000)return billingError('Phí duy trì phải từ 0 đến 5.000.000 đ/30 ngày; 0 là miễn phí duy trì.');
+  const price=body.token_price===undefined?billingTokenPrice(config):body.token_price;
+  if(!Number.isSafeInteger(price)||price<1||price>10000000)return billingError('Giá token phải từ 1 đến 10.000.000 đ/triệu token.');
+  await writeProviderConfig(env,'billing_sepay',{key:config.secret,model:JSON.stringify({...config,secret:undefined,service_fee:body.service_fee,token_price:price})});
+  await adminEvent(db,actor,'billing','service_fee',{before:billingServiceFee(config),after:body.service_fee,token_before:billingTokenPrice(config),token_after:price}).run();
+  return reply({success:true,service_fee:body.service_fee,token_price:price,message:'Đã lưu bảng giá. Áp dụng cho đơn và lượt AI mới; giữ giá của đơn đã tạo, lượt đang chạy và thời hạn đã thanh toán.'});
+ }
  if(path==='/api/admin/billing/config/save'){
   const c=body.config||{};
+  const fee=c.service_fee===undefined?billingServiceFee(config):c.service_fee;
+  const price=c.token_price===undefined?billingTokenPrice(config):c.token_price;
+  if(!Number.isSafeInteger(price)||price<1||price>10000000)return billingError('Giá token phải từ 1 đến 10.000.000 đ/triệu token.');
+  if(!Number.isSafeInteger(fee)||fee<0||fee>5000000)return billingError('Phí duy trì phải từ 0 đến 5.000.000 đ/30 ngày; 0 là miễn phí duy trì.');
   if(typeof c.enabled!=='boolean'||typeof c.bank!=='string'||!/^[A-Za-z0-9]{2,30}$/.test(c.bank)||typeof c.account!=='string'||!/^\d{6,30}$/.test(c.account)||typeof c.name!=='string'||!c.name.trim()||c.name.length>100)return billingError('Nhập ngân hàng, số tài khoản và tên người nhận hợp lệ.');
   const secret=typeof c.secret==='string'&&c.secret.trim()?c.secret.trim():config.secret;
   if(c.enabled&&(!secret||secret.length<16||secret.length>256))return billingError('Cần khóa xác thực webhook SePay ít nhất 16 ký tự trước khi bật.');
-  await writeProviderConfig(env,'billing_sepay',{key:secret,model:JSON.stringify({enabled:c.enabled,bank:c.bank,account:c.account,name:c.name.trim()})});
-  await adminEvent(db,actor,'billing','payment_config',{enabled:c.enabled,bank:c.bank,account_last4:c.account.slice(-4)}).run();
+  await writeProviderConfig(env,'billing_sepay',{key:secret,model:JSON.stringify({enabled:c.enabled,bank:c.bank,account:c.account,name:c.name.trim(),service_fee:fee,token_price:price})});
+  await adminEvent(db,actor,'billing','payment_config',{enabled:c.enabled,service_fee:fee,token_price:price,bank:c.bank,account_last4:c.account.slice(-4)}).run();
   return reply({success:true,message:'Đã lưu cấu hình thanh toán. Khóa được mã hóa trên server.'});
  }
  if(path==='/api/admin/billing/reconcile'){
   if(typeof body.id!=='string'||typeof body.note!=='string'||!body.note.trim()||body.note.length>300||!Number.isSafeInteger(body.tokens)||body.tokens<0||body.tokens>10000000)return billingError('Nhập mã lượt, số token đã xác minh và lý do đối soát.');
   const row=await db.prepare("SELECT * FROM billing_usage WHERE id=? AND state='pending_review'").bind(body.id).first();
   if(!row)return billingError('Lượt không còn chờ đối soát.',409);
+  const storedPrice=await db.prepare('SELECT price FROM billing_usage_prices WHERE id=?').bind(row.id).first();
+  const charge=Math.ceil(body.tokens*(storedPrice?.price??4000)/1000);
   await db.batch([
-   db.prepare("UPDATE billing_wallets SET held=held-?,balance=balance-? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='pending_review')").bind(row.reserved,body.tokens*4,row.owner,row.id),
-   db.prepare("UPDATE billing_usage SET state='reconciled',tokens=?,charged=? WHERE id=? AND state='pending_review'").bind(body.tokens,body.tokens*4,row.id),
-   adminEvent(db,actor,row.owner,'billing_reconcile',{id:row.id,tokens:body.tokens,note:body.note.trim()})
+   db.prepare("UPDATE billing_wallets SET held=held-?,balance=balance-? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='pending_review')").bind(row.reserved,charge,row.owner,row.id),
+   db.prepare("UPDATE billing_usage SET state='reconciled',tokens=?,charged=? WHERE id=? AND state='pending_review'").bind(body.tokens,charge,row.id),
+   adminEvent(db,actor,row.owner,'billing_reconcile',{id:row.id,tokens:body.tokens,charged:charge,price:storedPrice?.price??4000,note:body.note.trim()})
   ]);
   return reply({success:true,message:'Đã đối soát lượt và giải phóng tiền giữ chỗ.'});
  }
@@ -1931,15 +1951,18 @@ async function billingAPI(env,actor,path,body,request){
  const wallet=await billingWallet(env,user);
  if(path==='/api/billing/status'||path==='/api/admin/billing/status'){
   const orders=await db.prepare('SELECT o.*,r.actor,r.note FROM billing_orders o LEFT JOIN billing_receipts r ON r.order_id=o.id WHERE o.owner=? ORDER BY o.created DESC LIMIT 50').bind(target).all();
-  const usage=await db.prepare('SELECT id,tokens,charged,state,created FROM billing_usage WHERE owner=? ORDER BY created DESC LIMIT 50').bind(target).all();
-  return reply({success:true,enabled:config.enabled===true,wallet,orders:orders.results||[],usage:usage.results||[],price_per_million:4000,service_fee:100000,trial_days:30,denominations:BILLING_DENOMINATIONS});
+  const usage=await db.prepare('SELECT u.id,u.tokens,u.charged,u.state,u.created,COALESCE(p.price,4000) AS price_per_million FROM billing_usage u LEFT JOIN billing_usage_prices p ON p.id=u.id WHERE u.owner=? ORDER BY u.created DESC LIMIT 50').bind(target).all();
+  return reply({success:true,enabled:config.enabled===true,wallet,orders:orders.results||[],usage:usage.results||[],price_per_million:billingTokenPrice(config),service_fee:billingServiceFee(config),trial_days:30,denominations:BILLING_DENOMINATIONS});
  }
  if(path==='/api/billing/order'){
   if(administrator(actor))return billingError('Tài khoản admin được miễn phí.');
   if(!config.enabled)return billingError('Admin chưa bật thanh toán tự động.',503);
-  if(!['topup','service'].includes(body.kind)||(body.kind==='topup'?!BILLING_DENOMINATIONS.includes(body.amount):body.amount!==100000)||!/^[-a-f0-9]{36}$/.test(body.request_id||''))return billingError('Mệnh giá hoặc loại thanh toán không hợp lệ.');
+  if(!['topup','service'].includes(body.kind)||!/^[-a-f0-9]{36}$/.test(body.request_id||''))return billingError('Mệnh giá hoặc loại thanh toán không hợp lệ.');
   const id=body.request_id,old=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
   if(old&&(old.owner!==actor.username||old.kind!==body.kind||old.amount!==body.amount))return billingError('Mã yêu cầu đã được dùng.',409);
+  if(!old&&body.kind==='topup'&&!BILLING_DENOMINATIONS.includes(body.amount))return billingError('Mệnh giá nạp token không hợp lệ.');
+  if(!old&&body.kind==='service'&&billingServiceFee(config)===0)return billingError('Hiện miễn phí duy trì; không cần tạo QR gia hạn.',400,'SERVICE_FEE_WAIVED');
+  if(!old&&body.kind==='service'&&body.amount!==billingServiceFee(config))return billingError('Phí duy trì đã thay đổi. Làm mới ví để xem giá hiện tại trước khi tạo QR.',409,'SERVICE_PRICE_CHANGED');
   const memo='CA'+crypto.randomUUID().replaceAll('-','').slice(0,20).toUpperCase();
   await db.prepare('INSERT OR IGNORE INTO billing_orders(id,owner,kind,amount,memo,created,expires) VALUES(?,?,?,?,?,?,?)').bind(id,actor.username,body.kind,body.amount,memo,Date.now(),Date.now()+30*60000).run();
   const order=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
@@ -1957,7 +1980,7 @@ async function billingProvider(env,actor,path,body){
  if(administrator(actor)||body.provider==='nvidia')return billingFreeProvider(env,actor,path,body);
  if(String(body.provider||'').startsWith('ai_')){const custom=await readProviderConfig(env,body.provider);if(custom.provider==='nvidia')return billingFreeProvider(env,actor,path,body);}
  const wallet=await billingWallet(env,actor);
- if(!wallet.service_active)return billingError('Hết 30 ngày dùng thử. Gia hạn phí duy trì 100.000 đ/30 ngày trong Số dư và thanh toán.',402,'SERVICE_EXPIRED');
+ if(!wallet.service_active)return billingError('Hết 30 ngày dùng thử. Gia hạn phí duy trì '+billingServiceFee(await billingConfig(env)).toLocaleString('vi-VN')+' đ/30 ngày trong Số dư và thanh toán.',402,'SERVICE_EXPIRED');
  if(!String(body.provider||'').startsWith('deepseek')&&!String(body.provider||'').startsWith('ai_'))return billingError('Thanh toán token hiện hỗ trợ DeepSeek. Chọn DeepSeek để dùng ví.',400);
  if(String(body.provider||'').startsWith('ai_')){
   const custom=await readProviderConfig(env,body.provider);if(custom.provider!=='deepseek')return billingError('Chọn cấu hình DeepSeek để dùng ví.',400);
@@ -1966,15 +1989,18 @@ async function billingProvider(env,actor,path,body){
  if(!Array.isArray(body.messages)||!body.messages.length||body.messages.length>40)return billingError('Tin nhắn không hợp lệ.');
  const input=JSON.stringify(body.messages),images=(input.match(/image_url/g)||[]).length;
  if(input.length>1800000)return billingError('Ngữ cảnh quá lớn.');
- const reserved=(new TextEncoder().encode(input).length+images*65536+40*128+8192)*4;
+ const rate=billingTokenPrice(await billingConfig(env));
+ const tokenBudget=new TextEncoder().encode(input).length+images*65536+40*128+8192;
+ const reserved=Math.ceil(tokenBudget*rate/1000);
  const id=crypto.randomUUID(),db=env.DB;
  await db.batch([
   db.prepare("INSERT INTO billing_usage(id,owner,reserved,state,created) SELECT ?,?,?, 'reserved',? FROM billing_wallets WHERE owner=? AND balance-held>=?").bind(id,actor.username,reserved,Date.now(),actor.username,reserved),
+  db.prepare('INSERT INTO billing_usage_prices(id,price) SELECT id,? FROM billing_usage WHERE id=?').bind(rate,id),
   db.prepare("UPDATE billing_wallets SET held=held+? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='reserved')").bind(reserved,actor.username,id)
  ]);
  if(!await db.prepare('SELECT id FROM billing_usage WHERE id=?').bind(id).first())return billingError('Số dư token chưa đủ cho lượt này. Nạp token trong Số dư và thanh toán.',402,'TOKEN_BALANCE_LOW');
  const release=async(tokens,state)=>{
-  const charged=tokens===null?0:tokens*4;
+  const charged=tokens===null?0:Math.ceil(tokens*rate/1000);
   await db.batch([
    db.prepare("UPDATE billing_wallets SET held=held-?,balance=balance-? WHERE owner=? AND EXISTS(SELECT 1 FROM billing_usage WHERE id=? AND state='reserved')").bind(reserved,charged,actor.username,id),
    db.prepare("UPDATE billing_usage SET state=?,tokens=?,charged=? WHERE id=? AND state='reserved'").bind(state,tokens,charged,id)
@@ -1985,7 +2011,7 @@ async function billingProvider(env,actor,path,body){
  try{response=await providerAPI(env,path,{...body,stream:false});result=await response.clone().json();}
  catch{await db.prepare("UPDATE billing_usage SET state='pending_review' WHERE id=?").bind(id).run();return billingError('Lượt AI đang chờ đối soát do lỗi kết nối.',503,'BILLING_USAGE_PENDING');}
  const tokens=result.usage?.total_tokens;
- if(Number.isSafeInteger(tokens)&&tokens>=0&&tokens<=reserved/4){await release(tokens,'charged');}
+ if(Number.isSafeInteger(tokens)&&tokens>=0&&tokens<=tokenBudget){await release(tokens,'charged');}
  else if(!response.ok&&result.code!=='EMPTY_AI_RESPONSE'&&result.code!=='AI_OUTPUT_LIMIT'&&result.code!=='UPSTREAM_CONNECTION_ERROR'){await release(null,'released');}
  else{
   await db.prepare("UPDATE billing_usage SET state='pending_review' WHERE id=?").bind(id).run();
@@ -2028,4 +2054,30 @@ async function billingFreeProvider(env,actor,path,body){
   async cancel(){await record(null);await reader.cancel().catch(()=>{});}
  });
  return new Response(stream,{status:response.status,headers:response.headers});
+}
+
+async function adminBillingTotals(env,owners,now=Date.now()){
+ const db=env.DB,waived=billingServiceFee(await billingConfig(env))===0;
+ await billingSchema(db);
+ if(!owners.length)return new Map();
+ const local=new Date(now+7*3600000);
+ const start=Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),1)-7*3600000;
+ const end=Date.UTC(local.getUTCFullYear(),local.getUTCMonth()+1,1)-7*3600000;
+ const usage=await db.prepare(`SELECT owner,COALESCE(SUM(tokens),0) AS total_tokens,
+ COALESCE(SUM(CASE WHEN created>=? AND created<? THEN tokens ELSE 0 END),0) AS month_tokens,
+ COALESCE(SUM(CASE WHEN created>=? AND created<? THEN charged ELSE 0 END),0) AS month_fee_milli,
+ COALESCE(SUM(CASE WHEN state IN ('charged','reconciled') THEN tokens ELSE 0 END),0) AS paid_total_tokens,
+ COALESCE(SUM(CASE WHEN state='free' THEN tokens ELSE 0 END),0) AS free_total_tokens,
+ SUM(CASE WHEN tokens IS NULL AND state<>'released' THEN 1 ELSE 0 END) AS pending_count
+ FROM billing_usage WHERE owner IN (SELECT value FROM json_each(?)) GROUP BY owner`).bind(start,end,start,end,JSON.stringify(owners)).all();
+ const wallets=await db.prepare('SELECT owner,balance,held,trial_until,service_until FROM billing_wallets WHERE owner IN (SELECT value FROM json_each(?))').bind(JSON.stringify(owners)).all();
+ const byWallet=new Map((wallets.results||[]).map(w=>[w.owner,w]));
+ const byUsage=new Map((usage.results||[]).map(u=>[u.owner,u]));
+ return new Map(owners.map(owner=>{
+  const w=byWallet.get(owner),u=byUsage.get(owner)||{};
+  return [owner,{total_tokens:Number(u.total_tokens||0),month_tokens:Number(u.month_tokens||0),month_token_fee:Number(u.month_fee_milli||0)/1000,
+   paid_total_tokens:Number(u.paid_total_tokens||0),free_total_tokens:Number(u.free_total_tokens||0),pending_count:Number(u.pending_count||0),
+   balance_vnd:w?w.balance/1000:0,held_vnd:w?w.held/1000:0,maintenance_until:w?Math.max(w.trial_until,w.service_until):null,
+   maintenance_waived:waived,month_timezone:'Asia/Ho_Chi_Minh',counting_scope:'Recorded API usage only'}];
+ }));
 }
