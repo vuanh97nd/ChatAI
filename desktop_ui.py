@@ -391,7 +391,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         profile = QHBoxLayout(); profile.setSpacing(6)
         self.profile_button = QPushButton('Chưa đăng nhập')
         self.profile_button.setStyleSheet('text-align:left;font-size:13px;border-radius:12px;padding:8px;')
-        self.profile_button.clicked.connect(self.account_menu)
+        self.profile_button.clicked.connect(self.open_profile)
         self.profile_avatar=QLabel();profile.insertWidget(0,self.profile_avatar)
         profile.addWidget(self.profile_button, 1)
         self.notification_button=QPushButton('🔔');self.notification_button.setToolTip('Thông báo');self.notification_button.clicked.connect(self.open_notifications);profile.addWidget(self.notification_button)
@@ -3242,7 +3242,15 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         else:
             menu.addAction('Đăng nhập',self.login_dialog)
             menu.addAction('Tạo tài khoản',self.register_dialog)
-        menu.exec(self.profile_button.mapToGlobal(self.profile_button.rect().topLeft()))
+        position=self.chat_login.mapToGlobal(self.chat_login.rect().bottomRight())
+        size=menu.sizeHint()
+        position.setX(position.x()-size.width())
+        screen=self.chat_login.screen()
+        if screen:
+            bounds=screen.availableGeometry()
+            position.setX(max(bounds.left(),min(position.x(),bounds.right()-size.width()+1)))
+            position.setY(max(bounds.top(),min(position.y(),bounds.bottom()-size.height()+1)))
+        menu.exec(position)
 
     def open_notifications(self):
         if not self.server_session:
