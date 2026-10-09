@@ -3,6 +3,7 @@ os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
 import unittest
 from unittest.mock import patch
 from PySide6.QtWidgets import QApplication,QLineEdit
+from PySide6.QtCore import QEventLoop,QTimer
 from assistant.billing_ui import BillingDialog,money
 
 
@@ -46,3 +47,30 @@ class BillingUITests(unittest.TestCase):
     def test_money_keeps_sub_dong_precision(self):
         self.assertEqual(money(20000),'20.000 đ')
         self.assertEqual(money(.48),'0,48 đ')
+
+    def test_real_worker_loads_admin_config_and_preserves_dialog_finished_signal(self):
+        calls=[]
+        def request(endpoint,path,body,timeout):
+            calls.append(path)
+            if path.endswith('/config/get'):
+                return {'success':True,'config':{'enabled':False,'bank':'VCB','account':'123456789','name':'Test','secret_configured':False,'webhook_url':endpoint+'/api/billing/webhook'}}
+            return {'success':True,'message':'Loaded'}
+        dialog=self.dialog(True)
+        loop=QEventLoop();timer=QTimer();timer.setInterval(10)
+        def check():
+            if dialog.worker is None and len(calls)==2:loop.quit()
+        timer.timeout.connect(check)
+        try:
+            with patch('assistant.billing_ui.request_account',side_effect=request):
+                dialog.refresh();timer.start();QTimer.singleShot(3000,loop.quit);loop.exec()
+                self.assertIsNone(dialog.worker)
+                self.assertEqual(calls,['/api/billing/status','/api/admin/billing/config/get'])
+                self.assertTrue(dialog.tabs.isEnabled())
+                self.assertEqual(dialog.bank.text(),'VCB')
+                finished=[];dialog.finished.connect(finished.append)
+                dialog.accept();self.assertEqual(finished,[dialog.DialogCode.Accepted.value])
+        finally:
+            timer.stop()
+            if dialog.worker:
+                dialog.worker.wait(3000);self.app.processEvents()
+            dialog.close()

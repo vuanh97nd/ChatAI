@@ -121,9 +121,9 @@ class BillingDialog(QDialog):
         self.tabs.setEnabled(False);self.status.setText('Đang xử lý…')
         self.worker=BillingRequest(self.session,path,body or {},self)
         self.worker.completed.connect(self.received);self.worker.failed.connect(self.failed)
-        self.worker.finished.connect(self.finished);self.worker.start();return True
+        self.worker.finished.connect(self.request_finished);self.worker.start();return True
 
-    def finished(self):
+    def request_finished(self):
         self.tabs.setEnabled(True)
         if self.worker:self.worker.deleteLater();self.worker=None
         if getattr(self,'load_config_next',False):
