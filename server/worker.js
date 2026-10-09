@@ -350,6 +350,7 @@ const referenceWorker = {async fetch(request,env){
    if(String(env.OPEN_REGISTRATION||'true')==='false')return fail('Đăng ký hiện tạm đóng.',403);
    const username=String(body.username||'').trim(),password=String(body.key||body.password||'').trim(),fullname=String(body.fullname||'').trim(),email=String(body.email||'').trim();
    if(!validUser(username)||password.length<8||password.length>128||!fullname||fullname.length>120||email.length>254||(email&&! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))return fail('Cần Họ và tên (tối đa120 ký tự), Tên đăng nhập 3–40 ký tự chữ/số/_.- và Mật khẩu 8–128 ký tự. Email là tùy chọn.');
+   if(email&&!await emailAvailable(db,normalizedEmail(email),username))return fail('Email đã được sử dụng bởi tài khoản khác.',409);
    const salt=b64(crypto.getRandomValues(new Uint8Array(16)));
    const trialExpiry=new Date(Date.now()+30*86400000).toISOString().slice(0,10);
    try{
@@ -366,7 +367,9 @@ const referenceWorker = {async fetch(request,env){
   // 2. ĐĂNG NHẬP
   if(path==='/api/login'&&method==='POST'){
    const attemptPassword=String(body.key||body.password||'').trim();
-   const actor=await auth(env,body.username,attemptPassword,true);
+   const identifier=String(body.username||'').trim();
+   const owner=identifier.includes('@')?await emailLoginOwner(env,identifier):identifier;
+   const actor=owner?await auth(env,owner,attemptPassword,true):null;
    if(!actor)return fail('Tài khoản hoặc mật khẩu không đúng, hoặc đã hết hạn.',401);
    
    let device=String(body.device_id||'').trim();
@@ -1274,11 +1277,14 @@ export function validateProfile(input){
  return profile;
 }
 export async function profileAPI(env,actor,path,body){
- await ensureProfileSchema(env.DB);
+ await ensureProfileSchema(env.DB);await emailSchema(env.DB);
  const username=actor.username;
  if(path==='/api/account/profile/update'){
   const profile=validateProfile(body.profile);if(!profile)return fail('Thông tin cá nhân hoặc ảnh đại diện không hợp lệ.');
+  profile.email=normalizedEmail(profile.email);
+  if(profile.email&&!await emailAvailable(env.DB,profile.email,username))return fail('Email đã được dùng bởi tài khoản khác.',409);
   await env.DB.batch([
+   env.DB.prepare('DELETE FROM email_identities WHERE owner=? AND email<>?').bind(username,profile.email),
    env.DB.prepare('INSERT INTO account_profiles VALUES(?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET fullname=excluded.fullname,email=excluded.email,phone=excluded.phone,avatar=excluded.avatar,updated_at=excluded.updated_at').bind(username,profile.fullname,profile.email,profile.phone,profile.avatar,new Date().toISOString()),
    env.DB.prepare('UPDATE users SET fullname=?,email=?,updated_at=? WHERE username=?').bind(profile.fullname,profile.email,new Date().toISOString(),username)
   ]);
@@ -1295,10 +1301,11 @@ export default {
  async fetch(request,env,ctx){
   const origin=request.headers.get('Origin');
   const allowed=String(env.ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
-  if(origin&&!allowed.includes(origin))return withCors(fail('Origin không được phép.',403),null);
+  if(origin&&origin!==new URL(request.url).origin&&!allowed.includes(origin))return withCors(fail('Origin không được phép.',403),null);
   const respond=r=>withCors(r,origin);
   if(request.method==='OPTIONS')return respond(new Response(null,{status:204,headers:cors}));
   const path=new URL(request.url).pathname;
+  if(request.method==='GET'&&['/email/verify','/email/reset'].includes(path))return emailActionPage(path.endsWith('/reset'));
   if(path==='/api/health'&&request.method==='GET')return respond(reply({success:true,app:'Chat AI',version:VERSION,database_configured:Boolean(env.DB),cloud_optional:true}));
   if(!env.DB||!adminSecret(env))return respond(fail('Cần binding DB và secret ADMIN_KEY.',503));
   try{
@@ -1309,6 +1316,16 @@ export default {
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
    await ensureRuntimeSchema(env.DB);
+   if(path.startsWith('/api/email/')||path.startsWith('/api/admin/email/config/')||path==='/api/admin/email/test'){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const authenticated=path.startsWith('/api/admin/')||path==='/api/email/verification/request';
+    const actor=authenticated?await auth(env,body.username,body.key):null;
+    if(authenticated&&!actor)return respond(fail('Đăng nhập lại để tiếp tục.',401));
+    if(path.startsWith('/api/admin/')&&!administrator(actor))return respond(fail('Chỉ admin được cấu hình email.',403));
+    const bucket=actor?.username||request.headers.get('CF-Connecting-IP')||'unknown';
+    if(!await throttle(env.DB,bucket,'email:'+path,path==='/api/admin/email/test'?3:10))return respond(fail('Đợi một phút trước khi thử lại.',429));
+    return respond(await emailAPI(env,actor,path,body,request));
+   }
    if(path.startsWith('/api/billing/')||path.startsWith('/api/admin/billing/')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=path==='/api/billing/webhook'?null:await auth(env,body.username,body.key);
@@ -1547,8 +1564,11 @@ export async function accountAdminAPI(env,actor,path,body){
   const input={...body.profile};if(input.avatar==null){const p=await db.prepare('SELECT avatar FROM account_profiles WHERE username=?').bind(target).first();input.avatar=p?.avatar||'';}
   const profile=validateProfile(input);const tier=String(body.tier||user.tier),expiry=String(body.expires_at||user.expires_at);
   if(!profile||!['trial','pro','oem'].includes(tier)||!(['Vĩnh viễn','Vô hạn'].includes(expiry)||(/^\d{4}-\d{2}-\d{2}$/.test(expiry)&&Number.isFinite(Date.parse(expiry))&&new Date(expiry).toISOString().slice(0,10)===expiry)))return fail('Thông tin cá nhân hoặc thời hạn chưa hợp lệ.');
+  await emailSchema(db);profile.email=normalizedEmail(profile.email);
+  if(profile.email&&!await emailAvailable(db,profile.email,target))return fail('Email đã được dùng bởi tài khoản khác.',409);
   const now=new Date().toISOString();
   await db.batch([
+   db.prepare('DELETE FROM email_identities WHERE owner=? AND email<>?').bind(target,profile.email),
    db.prepare('UPDATE users SET fullname=?,email=?,tier=?,expires_at=?,updated_at=? WHERE username=?').bind(profile.fullname,profile.email,tier,expiry,now,target),
    db.prepare('INSERT INTO account_profiles VALUES(?,?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET fullname=excluded.fullname,email=excluded.email,phone=excluded.phone,avatar=excluded.avatar,updated_at=excluded.updated_at').bind(target,profile.fullname,profile.email,profile.phone,profile.avatar,now),
    adminEvent(db,actor,target,action,{before:{fullname:user.fullname,email:user.email,tier:user.tier,expires_at:user.expires_at},after:{fullname:profile.fullname,email:profile.email,tier,expires_at:expiry}})
@@ -2080,4 +2100,114 @@ async function adminBillingTotals(env,owners,now=Date.now()){
    balance_vnd:w?w.balance/1000:0,held_vnd:w?w.held/1000:0,maintenance_until:w?Math.max(w.trial_until,w.service_until):null,
    maintenance_waived:waived,month_timezone:'Asia/Ho_Chi_Minh',counting_scope:'Recorded API usage only'}];
  }));
+}
+
+// Verified email aliases never replace the immutable account username.
+const emailSchemas=new WeakMap();
+const normalizedEmail=value=>typeof value==='string'?value.trim().toLowerCase():'';
+const validEmail=value=>value.length<=254&&/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(value);
+async function emailSchema(db){
+ if(emailSchemas.has(db))return emailSchemas.get(db);
+ const job=db.batch([
+  db.prepare('CREATE TABLE IF NOT EXISTS email_identities(owner TEXT PRIMARY KEY,email TEXT UNIQUE NOT NULL,verified_at INTEGER NOT NULL)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS email_actions(token_hash TEXT PRIMARY KEY,owner TEXT NOT NULL,email TEXT NOT NULL,purpose TEXT NOT NULL,expires INTEGER NOT NULL,used INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS email_actions_owner ON email_actions(owner,purpose,created)')
+ ]);emailSchemas.set(db,job);try{await job;}catch(e){emailSchemas.delete(db);throw e;}
+}
+async function emailConfig(env){
+ await initializeProviderStore(env);const saved=await readProviderConfig(env,'email_resend');
+ let c={};try{c=JSON.parse(saved.model||'{}');}catch{}
+ return {...c,secret:saved.key||String(env.RESEND_API_KEY||''),from:c.from||String(env.EMAIL_FROM||''),name:c.name||'ChatAI',enabled:c.enabled??Boolean(env.RESEND_API_KEY&&env.EMAIL_FROM)};
+}
+async function sendAccountEmail(env,to,subject,text,test=false){
+ const c=await emailConfig(env);
+ if((!c.enabled&&!test)||!c.secret||!validEmail(c.from))return fail('Admin chưa cấu hình gửi email. Đăng nhập bằng tên đăng nhập vẫn hoạt động.',503);
+ const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),20000);
+ try{
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+c.secret,'Content-Type':'application/json'},body:JSON.stringify({from:c.name+' <'+c.from+'>',to:[to],subject,text}),signal:abort.signal});
+  if(!response.ok){await response.body?.cancel();return fail('Dịch vụ email HTTP '+response.status+'. Kiểm tra API key, tên miền gửi đã xác minh và hạn mức Resend.',502);}
+  const result=await response.json();if(typeof result.id!=='string')return fail('Dịch vụ chưa xác nhận nhận email.',502);
+  return reply({success:true,message:'Dịch vụ đã nhận yêu cầu gửi email. Kiểm tra hộp thư và thư rác; chưa xác nhận email đã tới người nhận.'});
+ }catch{return fail('Không kết nối được dịch vụ email hoặc quá thời gian chờ.',503);}finally{clearTimeout(timer);}
+}
+async function emailAvailable(db,email,owner){
+ if(!email)return true;
+ await emailSchema(db);
+ return !await db.prepare('SELECT username FROM users WHERE lower(trim(email))=? AND username<>? LIMIT 1').bind(email,owner).first()&&!await db.prepare('SELECT owner FROM email_identities WHERE email=? AND owner<>?').bind(email,owner).first();
+}
+async function emailLoginOwner(env,identifier){
+ const email=normalizedEmail(identifier);if(!validEmail(email))return null;
+ await emailSchema(env.DB);
+ const user=await env.DB.prepare("SELECT u.username FROM email_identities i JOIN users u ON u.username=i.owner WHERE i.email=? AND lower(trim(u.email))=i.email AND u.account_status='active'").bind(email).first();
+ return user?.username||null;
+}
+async function emailAPI(env,actor,path,body,request){
+ const db=env.DB;await emailSchema(db);
+ if(path.startsWith('/api/admin/email/config/')||path==='/api/admin/email/test'){
+  if(!administrator(actor))return fail('Chỉ admin được cấu hình email.',403);
+  const c=await emailConfig(env);
+  if(path.endsWith('/get'))return reply({success:true,config:{enabled:c.enabled,from:c.from,name:c.name,secret_configured:Boolean(c.secret)}});
+  if(path.endsWith('/save')){
+   const input=body.config||{},from=normalizedEmail(input.from),name=String(input.name||'').trim();
+   const secret=typeof input.secret==='string'&&input.secret.trim()?input.secret.trim():c.secret;
+   if(typeof input.enabled!=='boolean'||!validEmail(from)||!name||name.length>80||/[<>\r\n]/.test(name)||secret.length>4096||(input.enabled&&secret.length<10))return fail('Nhập địa chỉ gửi, tên người gửi hợp lệ và API key trước khi bật email.');
+   await writeProviderConfig(env,'email_resend',{key:secret,model:JSON.stringify({from,name,enabled:input.enabled})});
+   await adminEvent(db,actor,'email','email_config',{from,name,enabled:input.enabled}).run();
+   return reply({success:true,message:'Đã lưu cấu hình email; API key được mã hóa trên server.'});
+  }
+  const to=normalizedEmail(body.to);if(!validEmail(to))return fail('Email nhận thử chưa hợp lệ.');
+  return sendAccountEmail(env,to,'ChatAI — Kiểm tra cấu hình email','Đây là email kiểm tra cấu hình gửi thư ChatAI. Nếu bạn nhận được email này, đường gửi thư tới hộp thư này đã hoạt động.',true);
+ }
+ if(path==='/api/email/verification/request'||path==='/api/email/password/request'){
+  const reset=path.includes('/password/'),c=await emailConfig(env);
+  if(!c.enabled||!c.secret||!validEmail(c.from))return fail('Admin chưa bật gửi email. Vẫn có thể đăng nhập bằng tên đăng nhập.',503);
+  const email=reset?normalizedEmail(body.email):normalizedEmail(actor?.email);
+  if(!validEmail(email))return fail('Lưu email hợp lệ trong Hồ sơ trước khi xác minh.');
+  let owner=actor?.username;
+  if(reset)owner=await emailLoginOwner(env,email);
+  else if(!actor||administrator(actor))return fail('Tài khoản hệ thống dùng tên đăng nhập admin.',403);
+  const generic=()=>reply({success:true,message:'Nếu email thuộc tài khoản đã xác minh, liên kết đặt lại mật khẩu sẽ được gửi. Kiểm tra cả thư rác.'});
+  if(!owner)return generic();
+  if(!await throttle(db,owner,'email/'+(reset?'reset':'verify'),1))return reset?generic():fail('Đợi một phút trước khi gửi lại.',429);
+  if(!reset&&!await emailAvailable(db,email,owner))return fail('Email đang được dùng bởi tài khoản khác. Cập nhật email riêng trước khi xác minh.',409);
+  const token=b64(crypto.getRandomValues(new Uint8Array(32))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');
+  const digest=await tokenDigest(token),purpose=reset?'reset':'verify',now=Date.now();
+  await db.batch([
+   db.prepare('UPDATE email_actions SET used=1 WHERE owner=? AND purpose=? AND used=0').bind(owner,purpose),
+   db.prepare('INSERT INTO email_actions(token_hash,owner,email,purpose,expires,created) VALUES(?,?,?,?,?,?)').bind(digest,owner,email,purpose,now+(reset?15:60)*60000,now)
+  ]);
+  const link=new URL(reset?'/email/reset':'/email/verify',request.url);link.hash='token='+token;
+  const response=await sendAccountEmail(env,email,reset?'ChatAI — Đặt lại mật khẩu':'ChatAI — Xác minh email',(reset?'Đặt lại mật khẩu trong 15 phút':'Xác minh email trong 60 phút')+':\n'+link.href+'\nNếu không yêu cầu thao tác này, hãy bỏ qua email.');
+  if(!response.ok){await db.prepare('DELETE FROM email_actions WHERE token_hash=?').bind(digest).run();return response;}
+  return reset?generic():reply({success:true,message:'Đã gửi liên kết xác minh tới email trong Hồ sơ. Kiểm tra cả thư rác.'});
+ }
+ if(!['/api/email/verify','/api/email/password/reset'].includes(path))return fail('Không có chức năng email này.',404);
+ if(typeof body.token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(body.token))return fail('Liên kết không hợp lệ hoặc đã hết hạn.',400);
+ const digest=await tokenDigest(body.token),purpose=path.endsWith('/verify')?'verify':'reset',now=Date.now();
+ const action=await db.prepare('SELECT * FROM email_actions WHERE token_hash=? AND purpose=? AND used=0 AND expires>?').bind(digest,purpose,now).first();
+ if(!action)return fail('Liên kết không hợp lệ, đã dùng hoặc đã hết hạn.',400);
+ const user=await db.prepare("SELECT * FROM users WHERE username=? AND lower(trim(email))=? AND account_status='active'").bind(action.owner,action.email).first();
+ if(!user)return fail('Email hoặc trạng thái tài khoản đã thay đổi. Yêu cầu liên kết mới.',400);
+ if(purpose==='verify'){
+  if(!await emailAvailable(db,action.email,action.owner))return fail('Email đang được dùng bởi tài khoản khác.',409);
+  try{await db.batch([
+   db.prepare("INSERT INTO email_identities(owner,email,verified_at) SELECT owner,email,? FROM email_actions WHERE token_hash=? AND used=0 AND expires>? AND EXISTS(SELECT 1 FROM users WHERE username=owner AND lower(trim(users.email))=email_actions.email AND account_status='active') ON CONFLICT(owner) DO UPDATE SET email=excluded.email,verified_at=excluded.verified_at").bind(now,digest,now),
+   db.prepare('UPDATE email_actions SET used=1 WHERE token_hash=? AND EXISTS(SELECT 1 FROM email_identities WHERE owner=? AND email=? AND verified_at=?)').bind(digest,action.owner,action.email,now)
+  ]);}catch{return fail('Email đã được xác minh bởi tài khoản khác. Dùng email riêng.',409);}
+  return reply({success:true,message:'Đã xác minh email. Bạn có thể đăng nhập bằng email hoặc tên đăng nhập.'});
+ }
+ if(typeof body.password!=='string'||body.password.trim().length<8||body.password.trim().length>128)return fail('Mật khẩu phải từ 8 đến 128 ký tự.');
+ const identity=await db.prepare('SELECT owner FROM email_identities WHERE owner=? AND email=?').bind(action.owner,action.email).first();if(!identity)return fail('Email chưa được xác minh.',400);
+ const salt=b64(crypto.getRandomValues(new Uint8Array(16))),password='pbkdf2:'+await hash(body.password.trim(),salt);
+ const changed=await db.batch([
+  db.prepare("UPDATE users SET key='',password_hash=?,salt=?,session_epoch=session_epoch+1,updated_at=? WHERE username=? AND lower(trim(email))=? AND account_status='active' AND EXISTS(SELECT 1 FROM email_actions WHERE token_hash=? AND purpose='reset' AND used=0 AND expires>?)").bind(password,salt,new Date(now).toISOString(),action.owner,action.email,digest,now),
+  db.prepare('UPDATE email_actions SET used=1 WHERE token_hash=? AND EXISTS(SELECT 1 FROM users WHERE username=? AND password_hash=?)').bind(digest,action.owner,password),
+  ...['account_tokens','device_logins','support_sessions'].map(table=>db.prepare('DELETE FROM '+table+' WHERE username=? AND EXISTS(SELECT 1 FROM users WHERE username=? AND password_hash=?)').bind(action.owner,action.owner,password))
+ ]);
+ if(!changed[0]?.meta?.changes)return fail('Liên kết không còn hiệu lực.',400);
+ return reply({success:true,message:'Đã đổi mật khẩu và thu hồi các phiên cũ. Đăng nhập lại trong ChatAI.'});
+}
+function emailActionPage(reset){
+ const nonce=b64(crypto.getRandomValues(new Uint8Array(16))),title=reset?'Đặt lại mật khẩu ChatAI':'Xác minh email ChatAI';
+ return new Response(`<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style nonce="${nonce}">body{font:16px system-ui;background:#202020;color:#eee;margin:0}main{max-width:480px;margin:10vh auto;padding:24px;background:#303030;border-radius:16px}input,button{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border-radius:8px}button{cursor:pointer}p{white-space:pre-wrap}</style><main><h1>${title}</h1>${reset?'<input id="password" type="password" autocomplete="new-password" placeholder="Mật khẩu mới (8–128 ký tự)" minlength="8" maxlength="128"><input id="confirm" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu">':''}<button id="submit">${reset?'Đổi mật khẩu':'Xác minh email'}</button><p id="status"></p></main><script nonce="${nonce}">const token=new URLSearchParams(location.hash.slice(1)).get('token');history.replaceState(null,'',location.pathname);const button=document.getElementById('submit'),status=document.getElementById('status');button.onclick=async()=>{const body={token};${reset?"body.password=document.getElementById('password').value;if(body.password!==document.getElementById('confirm').value){status.textContent='Mật khẩu nhập lại chưa khớp.';return;}":''}button.disabled=true;status.textContent='Đang xử lý…';try{const r=await fetch('${reset?'/api/email/password/reset':'/api/email/verify'}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();status.textContent=data.message;button.disabled=data.success===true;}catch{status.textContent='Chưa kết nối được server. Thử lại.';button.disabled=false;}};</script></html>`,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`}});
 }

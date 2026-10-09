@@ -93,7 +93,7 @@ class ProfileMixin:
             paint_avatar(preview,avatar['data'],fullname.text(),72,self.preview_theme)
         def remove():avatar['data']='';paint_avatar(preview,'',fullname.text(),72,self.preview_theme)
         self.button(row,'Chọn ảnh',choose);self.button(row,'Bỏ ảnh',remove);form.addRow(row)
-        note=QLabel('Email là thông tin liên hệ, chưa dùng để khôi phục mật khẩu.');note.setWordWrap(True);form.addRow(note)
+        note=QLabel('Lưu email rồi bấm Xác minh email trong Hồ sơ. Sau khi xác minh, có thể dùng email để đăng nhập và khôi phục mật khẩu.');note.setWordWrap(True);form.addRow(note)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText('Lưu thông tin');buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Hủy')
         buttons.rejected.connect(dialog.reject)
@@ -141,5 +141,6 @@ class ProfileMixin:
         for label,value in [('Tên đăng nhập',session['username']),('Email',session.get('email') or 'Chưa cập nhật'),('Số điện thoại',session.get('phone') or 'Chưa cập nhật')]:
             field=QLabel(value);field.setTextFormat(Qt.TextFormat.PlainText);form.addRow(label,field)
         layout.addWidget(card);self.button(layout,'Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
+        self.button(layout,'Xác minh email',self.request_email_verification)
         self.button(layout,'Đổi mật khẩu',self.change_password_dialog);layout.addStretch(1)
         self.add_scroll_page(page,'Hồ sơ');self.profile_page_index=self.tabs.count()-1;self.tabs.setCurrentIndex(self.profile_page_index)

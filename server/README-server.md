@@ -5,7 +5,7 @@ Worker Cloudflare viết lại từ `worker.js` bạn cung cấp. Đây là serv
 ## Các tính năng
 
 - Tài khoản đăng ký/đăng nhập, đổi mật khẩu, hạn dùng trial/pro/oem; theo dõi thiết bị và heartbeat.
-- Quản trị tài khoản, trạng thái online, broadcast, hàng đợi thông báo email cho bridge bên ngoài. Worker không tự gửi email.
+- Quản trị tài khoản, trạng thái online, broadcast, hàng đợi thông báo email cho bridge bên ngoài. Email xác minh tài khoản và đặt lại mật khẩu được gửi qua Resend; xem [cấu hình email](../docs/email-setup.md).
 - Chat hỗ trợ giữa người dùng và admin; tin nhắn, ảnh JPEG, file, đánh dấu đọc/chưa đọc, trạng thái đang gõ, gửi chống trùng client_id.
 - Trợ lý tiếng Việt: Cloudflare Workers AI, Gemini, DeepSeek API, OpenAI, Groq, NVIDIA; provider không cấu hình trả lỗi rõ. Tên model và quyền truy cập phụ thuộc tài khoản nhà cung cấp; sửa các biến model nếu model cũ không còn khả dụng.
 - Tra web Brave Search độc lập với model, có URL nguồn; chỉ lấy trích đoạn tìm kiếm, không tự đọc toàn văn.

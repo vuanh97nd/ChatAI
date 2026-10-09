@@ -2548,7 +2548,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         dialog=QDialog(self);dialog.setWindowTitle('Đăng nhập Chat AI');form=QFormLayout(dialog)
         username=QLineEdit();password=QLineEdit();password.setEchoMode(QLineEdit.EchoMode.Password)
         remember=QCheckBox('Ghi nhớ đăng nhập');remember.setChecked(self.account_remember.isChecked())
-        form.addRow('Tên đăng nhập:',username);form.addRow('Mật khẩu:',password);form.addRow(remember)
+        form.addRow('Email hoặc tên đăng nhập:',username);form.addRow('Mật khẩu:',password);form.addRow(remember)
+        forgot=QPushButton('Quên mật khẩu');forgot.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.forgot_password_dialog)));form.addRow(forgot)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
         if dialog.exec()!=QDialog.DialogCode.Accepted:return
@@ -2566,6 +2567,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             with measure('login.https_request'):
                 result=request_account(session['endpoint'],'/api/login',{'username':session['username'],'key':session['key'],'device_id':self.device_id})
             authenticated=time.monotonic()
+            canonical=result.get('user',{}).get('username') or result.get('username')
+            if canonical:session['username']=canonical
             if result.get('session_token'):session['key']=result['session_token']
             # The login endpoint already returns identity and role; optional profile
             # enrichment must not hold up authentication or the chat controls.
@@ -3201,7 +3204,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         menu=QMenu(self)
         if self.server_session:
             menu.addAction(self.server_session.get('fullname') or self.server_session['username']).setEnabled(False)
-            if admin_session(self.server_session):menu.addAction('Quản lý người dùng',self.open_user_admin)
+            if admin_session(self.server_session):
+                menu.addAction('Quản lý người dùng',self.open_user_admin)
+                menu.addAction('Cấu hình email',self.open_email_settings)
             menu.addAction('Số dư và thanh toán',self.open_billing)
             menu.addAction('Hồ sơ',self.open_profile)
             menu.addAction('Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
@@ -3214,6 +3219,25 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             menu.addAction('Đăng nhập',self.login_dialog)
             menu.addAction('Tạo tài khoản',self.register_dialog)
         menu.exec(self.profile_button.mapToGlobal(self.profile_button.rect().topLeft()))
+
+    def open_email_settings(self):
+        if not admin_session(self.server_session):return
+        from assistant.email_ui import EmailSettingsDialog
+        EmailSettingsDialog(self.server_session,self).exec()
+
+    def request_email_verification(self):
+        if not self.server_session or self.busy():return
+        session=dict(self.server_session)
+        from assistant.accounts import request_account
+        self.work(lambda emit:request_account(session['endpoint'],'/api/email/verification/request',{'username':session['username'],'key':session['key']},timeout=30),lambda result:QMessageBox.information(self,'Xác minh email',result['message']))
+
+    def forgot_password_dialog(self):
+        if self.busy():return
+        email,ok=QInputDialog.getText(self,'Quên mật khẩu','Email đã xác minh của tài khoản:')
+        if not ok or not email.strip():return
+        from assistant.accounts import request_account
+        endpoint=self.settings_server.text().strip().rstrip('/')
+        self.work(lambda emit:request_account(endpoint,'/api/email/password/request',{'email':email.strip()},timeout=30),lambda result:QMessageBox.information(self,'Quên mật khẩu',result['message']))
 
     def open_billing(self):
         if not self.server_session:return
