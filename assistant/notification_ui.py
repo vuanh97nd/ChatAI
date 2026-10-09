@@ -58,6 +58,11 @@ class NotificationDialog(QDialog):
         self.worker.deleteLater();self.worker=None
         if getattr(self,'reload_next',False):self.reload_next=False;self.refresh()
 
+    def reject(self):
+        if self.worker is not None:
+            self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');return
+        self.session.clear();super().reject()
+
     def closeEvent(self,event):
         if self.worker:event.ignore();self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');return
         self.session.clear();event.accept()

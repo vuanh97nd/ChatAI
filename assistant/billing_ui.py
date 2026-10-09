@@ -129,9 +129,9 @@ class BillingDialog(QDialog):
         parent=self.parent()
         if parent and hasattr(parent,'open_user_admin'):parent.open_user_admin()
 
-    def send(self,path,body=None):
-        if self.worker and self.worker.isRunning():return False
-        self.tabs.setEnabled(False);self.status.setText('Đang xử lý…')
+    def send(self,path,body=None,background=False):
+        if self.worker is not None:return False
+        if not background:self.tabs.setEnabled(False);self.status.setText('Đang xử lý…')
         self.worker=BillingRequest(self.session,path,body or {},self)
         self.worker.completed.connect(self.received);self.worker.failed.connect(self.failed)
         self.worker.finished.connect(self.request_finished);self.worker.start();return True
@@ -139,6 +139,8 @@ class BillingDialog(QDialog):
     def request_finished(self):
         self.tabs.setEnabled(True)
         if self.worker:self.worker.deleteLater();self.worker=None
+        if getattr(self,'pending_topup',False):
+            self.pending_topup=False;self.create_order('topup');return
         if getattr(self,'load_config_next',False):
             self.load_config_next=False;self.send('/api/admin/billing/config/get')
 
@@ -163,7 +165,7 @@ class BillingDialog(QDialog):
         if self.send('/api/billing/status') and self.is_admin:self.load_config_next=True
 
     def poll(self):
-        if self.current_order:self.send('/api/billing/status')
+        if self.current_order:self.send('/api/billing/status',background=True)
 
     def topup_amount(self):
         return self.custom_amount.value() if self.amount.currentData() is None else self.amount.currentData()
@@ -176,7 +178,8 @@ class BillingDialog(QDialog):
         if self.current_order and self.current_order.get('kind')=='topup':
             self.timer.stop();self.current_order=None;self.qr.clear()
             self.payment_info.setText('Đang tạo QR theo mệnh giá mới…')
-            self.create_order('topup')
+            if self.worker is not None:self.pending_topup=True
+            else:self.create_order('topup')
 
     def create_order(self,kind):
         if kind=='topup' and self.topup_amount()%1000:
@@ -258,7 +261,12 @@ class BillingDialog(QDialog):
         for row,values in enumerate(rows):
             for col,value in enumerate(values):table.setItem(row,col,QTableWidgetItem(str(value)))
 
+    def reject(self):
+        if self.worker is not None:
+            self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');return
+        self.timer.stop();self.session.clear();super().reject()
+
     def closeEvent(self,event):
-        if self.worker and self.worker.isRunning():
+        if self.worker is not None:
             self.status.setText('Đợi yêu cầu hiện tại hoàn tất để đóng cửa sổ.');event.ignore();return
         self.timer.stop();self.session.clear();event.accept()

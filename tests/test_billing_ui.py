@@ -8,6 +8,26 @@ from assistant.billing_ui import BillingDialog,money
 
 
 class BillingUITests(unittest.TestCase):
+    def test_worker_pending_cleanup_blocks_new_request_and_escape(self):
+        dialog=self.dialog()
+        try:
+            from unittest.mock import Mock
+            pending=Mock();pending.isRunning.return_value=False
+            dialog.worker=pending
+            self.assertFalse(dialog.send('/api/billing/status'))
+            finished=[];dialog.finished.connect(finished.append)
+            dialog.reject();self.assertEqual(finished,[])
+            self.assertIs(dialog.worker,pending)
+        finally:dialog.worker=None;dialog.close()
+
+    def test_poll_uses_background_refresh(self):
+        dialog=self.dialog()
+        try:
+            dialog.current_order={'kind':'topup','amount':20000}
+            with patch.object(dialog,'send') as send:
+                dialog.poll();send.assert_called_once_with('/api/billing/status',background=True)
+        finally:dialog.close()
+
     def test_custom_topup_amount_is_sent_and_validated(self):
         dialog=self.dialog()
         try:

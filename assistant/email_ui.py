@@ -23,7 +23,7 @@ class EmailSettingsDialog(QDialog):
         self.send('/api/admin/email/config/get')
 
     def send(self,path,body=None):
-        if self.worker and self.worker.isRunning():return False
+        if self.worker is not None:return False
         self.panel.setEnabled(False);self.status.setText('Đang xử lý…')
         self.worker=BillingRequest(self.session,path,body or {},self)
         self.worker.completed.connect(self.received);self.worker.failed.connect(self.status.setText)
@@ -42,6 +42,11 @@ class EmailSettingsDialog(QDialog):
         self.panel.setEnabled(True)
         if self.worker:self.worker.deleteLater();self.worker=None
 
+    def reject(self):
+        if self.worker is not None:
+            self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');return
+        self.session.clear();super().reject()
+
     def closeEvent(self,event):
-        if self.worker and self.worker.isRunning():self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');event.ignore();return
+        if self.worker is not None:self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');event.ignore();return
         self.session.clear();event.accept()
