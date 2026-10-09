@@ -10,7 +10,7 @@ from .prompts import SYSTEM, FAST_SYSTEM
 from .routing import classify_question
 from .calculator import CALCULATOR_SCHEMA, calculate
 from .answer_policy import evidence_record, guard_answer
-from .experience import task_record, repeated_failure
+from .experience import task_record, repeated_failure, select_cards
 from .collaboration import collaboration_intent, collect_artifacts, existing_artifacts, choose_coder, handoff_instruction, refresh_artifacts
 
 
@@ -484,8 +484,13 @@ class Agent:
                 procedure_query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
                 instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query)
                 state["task_progress"]=workflow
-                # Không đưa thẻ hướng dẫn/ví dụ mẫu vào lượt trả lời.
-                state["experience_cards"]=[]
+                experience_query='\n'.join(
+                    m.get('content','') for m in state['messages'][-12:]
+                    if m.get('role')=='user' and isinstance(m.get('content'),str))
+                cards=select_cards(experience_query,state.get('routing',{}),record)
+                state["experience_cards"]=[card['id'] for card in cards]
+                if cards:
+                    instruction += "\nHƯỚNG DẪN THEO HỒ SƠ GEOSLOPE ĐÃ XÁC NHẬN: " + dumps(cards)
                 if workflow["phase"]=="discussion":instruction += "\nChưa được cấp quyền ghi cho yêu cầu đang ở giai đoạn trao đổi."
                 if workflow["attempts"]:
                     instruction += "\nKết quả công cụ của lượt này: " + dumps(workflow["attempts"][-4:])

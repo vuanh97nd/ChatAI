@@ -12,10 +12,16 @@ def pair(error='offline',denied=False,args=None):
 
 class ExperienceTest(unittest.TestCase):
     def test_cards_count_selection_and_budget(self):
-        self.assertEqual(len(CARDS),32)
+        self.assertEqual(len(CARDS),33)
         chosen=select_cards('Ứng dụng khởi động rồi tự tắt',{'category':'coding'},evidence_record({}))
-        self.assertEqual(chosen,[])  # No canned experience instructions are injected.
+        self.assertEqual(chosen,[])  # General experience cards remain disabled.
         self.assertEqual(select_cards('Xin chào',{'category':'conversation'},evidence_record({})),[])
+
+    def test_geoslope_bth_card_is_limited_to_the_confirmed_project(self):
+        query='Tính SLOPE/W Km 134+300 từ SLTT.xlsx sheet BTH (2), dùng Co và phi=0'
+        cards=select_cards(query,{'category':'engineering'},evidence_record({}))
+        self.assertEqual([card['id'] for card in cards],['geoslope_bth_su'])
+        self.assertEqual(select_cards('Tính GeoSlope cho Km 135+000',{},{}),[])
 
     def test_discussion_does_not_mean_permission_or_claim_success(self):
         state={'messages':[{'role':'user','content':'Hãy đề xuất trước, chưa sửa'}, {'role':'assistant','content':'Tôi đã sửa file'}]}
@@ -49,6 +55,19 @@ class ExperienceIntegrationTest(unittest.TestCase):
         self.assertEqual(saved['task_progress']['attempts'],[])
         self.assertEqual(len(client.requests),1)
         self.assertNotIn('startup:',client.requests[0]['messages'][0]['content'])
+
+    def test_geoslope_rule_is_injected_for_matching_project(self):
+        client=fixtures.FakeClient([[fixtures.chunk('Đã ghi nhận hướng dẫn cho hồ sơ này.')]])
+        agent=Agent(client,None,self.cfg,self.store,self.cid,tools_enabled=False)
+        state=self.store.load(self.cid)
+        agent.start(state,'Tính GeoSlope Km 134+300 từ SLTT.xlsx, BTH (2), Co và phi=0','qwen2.5:7b')
+        list(agent.run(state))
+        prompt=client.requests[0]['messages'][0]['content']
+        self.assertIn('UndrainedPhiZero',prompt)
+        self.assertIn('E13=15.10 kN/m2',prompt)
+        self.assertIn('gamma 16.1, Co/Su 14.7',prompt)
+        self.assertIn('không dùng c DST khi đã có Co VST',prompt)
+        self.assertEqual(state['experience_cards'],['geoslope_bth_su'])
 
     def test_identical_failed_tool_executes_only_twice(self):
         from unittest.mock import patch

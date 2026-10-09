@@ -19,6 +19,7 @@ CARD_ROWS = [
  ('sql','coding',r'sql|database|sqlite','Hệ SQL và schema','Nêu giả định, kiểm tra truy vấn đọc trước','Không đoán cột hoặc chạy xóa hàng loạt','Cần tên bảng/cột hoặc schema để viết đúng truy vấn.','Thao tác ghi cần xác nhận.'),
  ('excel','personal_documents',r'excel|xlsx|sheet','File/sheet/range','Liệt kê khi chưa biết; đọc đúng vùng, xem kiểu dữ liệu','Không bịa ô hoặc kết quả công thức','Tôi sẽ đọc vùng liên quan trước khi sửa.','Chưa có file/whitelist: xin vị trí.'),
  ('excel_formula','personal_documents',r'công thức|formula|cache','Công thức và dữ liệu gốc','Phân biệt công thức với cache; đối chiếu ô tham chiếu','Không coi cache cũ là tính mới','Giá trị cache có thể chưa cập nhật trong Excel.','Chưa tính lại: không nhận kết quả mới.'),
+ ('geoslope_bth_su','engineering',r'geo[\s-]?(?:slope|studio)|slope/w','Hồ sơ Km 134+300; SLTT/BTH; lớp và đơn vị','Hồ sơ này: lớp 1a tạm giữ GeoStudio hiện có (gamma 16.1, Co/Su 14.7, UndrainedPhiZero, phi=0). Hàng 13 BTH mới là Co VST; lớp 1c dùng E13=15.10 kN/m2 như Su, UndrainedPhiZero, phi=0. Hàng 4 là c DST (1c c=4.86 kN/m2 theo người dùng), hàng 6 là phi DST; không dùng c DST khi đã có Co VST. Các lớp khác ưu tiên Co VST hàng 13, thiếu Co thì dùng c/phi DST.','Không thay 1a bằng thí nghiệm; không coi hàng 4 là Co; không dùng c=4.86 thay Co VST 15.10 cho 1c; giữ nguyên workbook để người dùng tự sửa nhãn.','Co hàng 13 VST dùng như Su; c hàng 4/phi hàng 6 là DST.','Chỉ Solve trên bản sao; ghi input/log và đọc Fs từ kết quả mới.'),
  ('office','personal_documents',r'word|docx|pptx|powerpoint','Tệp và nội dung cần sửa','Đọc nội dung, giữ cấu trúc, preview thao tác','Không nhận giữ mọi định dạng nếu tool không hỗ trợ','Nêu rõ phần định dạng có thể thay đổi.','Giới hạn tool: thông báo trước.'),
  ('pdf_scan','personal_documents',r'pdf|scan|ocr','PDF có text hay ảnh','Kiểm tra trích text; nếu scan cần OCR phù hợp','Không đoán chữ hoặc số mờ','Chưa có văn bản trích được; cần OCR hoặc bản text.','OCR chưa có: không nhận đã đọc.'),
  ('document_id','current_web',r'tccs|tcvn|qcvn|tiêu chuẩn','Mã/năm/cơ quan ban hành','Nếu web bật: tìm các cách viết mã, đối chiếu rồi đọc','Không nhận tài liệu gần giống là đúng','Nguồn hiển thị mã này; cơ quan ban hành còn cần đối chiếu.','Web tắt/thiếu file: xin bật nút hoặc gửi file.'),
@@ -92,5 +93,9 @@ def repeated_failure(state,call):
 
 
 def select_cards(question,route,record,max_chars=1100):
-    # Task records remain available; canned experience instructions are no longer injected.
-    return []
+    if not isinstance(question,str) or not re.search(r'geo[\s-]?(?:slope|studio)|slope/w',question,re.I):
+        return []
+    if not re.search(r'km\s*134\s*\+\s*300|sltt\.xlsx|bth\s*\(2\)',question,re.I):
+        return []
+    card=next(c for c in CARDS if c['id']=='geoslope_bth_su')
+    return [card] if len(json.dumps(card,ensure_ascii=False))<=max_chars else []
