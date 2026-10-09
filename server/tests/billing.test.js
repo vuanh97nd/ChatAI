@@ -31,6 +31,12 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    r=await call('/api/billing/order',{kind:'topup',amount:12345,request_id:crypto.randomUUID()},'alice');assert.equal(r.status,400);
    const id=crypto.randomUUID();r=await call('/api/billing/order',{kind:'topup',amount:20000,request_id:id},'alice');assert.equal(r.status,200);const order=r.value.order;
    assert.ok(r.value.qr_url.includes('amount=20000'));assert.ok(r.value.qr_url.includes(order.memo));
+   const custom=await call('/api/billing/order',{kind:'topup',amount:750000,request_id:crypto.randomUUID()},'alice');
+   assert.equal(custom.status,200);assert.equal(custom.value.order.amount,750000);assert.ok(custom.value.qr_url.includes('amount=750000'));
+   for(const amount of [19000,750001,10001000,'750000']){
+    const invalid=await call('/api/billing/order',{kind:'topup',amount,request_id:crypto.randomUUID()},'alice');assert.equal(invalid.status,400);
+   }
+
    const orderRetry=await call('/api/billing/order',{kind:'topup',amount:20000,request_id:id},'alice');assert.equal(orderRetry.value.order.memo,order.memo);
    const tx={id:123456,transferType:'in',accountNumber:'0123456789',content:order.memo,transferAmount:20000};
    const hook=(body=tx,token=secret)=>call('/api/billing/webhook',body,null,{Authorization:'Apikey '+token});

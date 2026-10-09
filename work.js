@@ -2093,7 +2093,7 @@ async function billingAPI(env,actor,path,body,request){
   if(!['topup','service'].includes(body.kind)||!/^[-a-f0-9]{36}$/.test(body.request_id||''))return billingError('Mệnh giá hoặc loại thanh toán không hợp lệ.');
   const id=body.request_id,old=await db.prepare('SELECT * FROM billing_orders WHERE id=?').bind(id).first();
   if(old&&(old.owner!==actor.username||old.kind!==body.kind||old.amount!==body.amount))return billingError('Mã yêu cầu đã được dùng.',409);
-  if(!old&&body.kind==='topup'&&!BILLING_DENOMINATIONS.includes(body.amount))return billingError('Mệnh giá nạp token không hợp lệ.');
+  if(!old&&body.kind==='topup'&&(!Number.isInteger(body.amount)||body.amount<20000||body.amount>10000000||body.amount%1000!==0))return billingError('Số tiền nạp từ 20.000đ đến 10.000.000đ, theo bội số 1.000đ.');
   if(!old&&body.kind==='service'&&billingServiceFee(config)===0)return billingError('Hiện miễn phí duy trì; không cần tạo QR gia hạn.',400,'SERVICE_FEE_WAIVED');
   if(!old&&body.kind==='service'&&body.amount!==billingServiceFee(config))return billingError('Phí duy trì đã thay đổi. Làm mới ví để xem giá hiện tại trước khi tạo QR.',409,'SERVICE_PRICE_CHANGED');
   const memo='CA'+crypto.randomUUID().replaceAll('-','').slice(0,20).toUpperCase();

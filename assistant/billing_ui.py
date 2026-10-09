@@ -71,6 +71,10 @@ class BillingDialog(QDialog):
         self.month_summary=QLabel('Đang tải thống kê token…');self.month_summary.setWordWrap(True);wl.addWidget(self.month_summary)
         row=QHBoxLayout();self.amount=QComboBox()
         for value in [20000,50000,100000,200000,500000]:self.amount.addItem(money(value),value)
+        self.amount.addItem('Số tiền khác',None)
+        self.custom_amount=QSpinBox();self.custom_amount.setRange(20000,10000000);self.custom_amount.setSingleStep(1000);self.custom_amount.setValue(20000);self.custom_amount.setSuffix(' đ');self.custom_amount.setGroupSeparatorShown(True);self.custom_amount.hide()
+        self.custom_amount.editingFinished.connect(self.custom_amount_changed)
+        row.addWidget(self.custom_amount)
         self.amount.currentIndexChanged.connect(self.amount_changed)
         row.addWidget(self.amount);self.topup=QPushButton('Nạp token bằng QR');self.topup.clicked.connect(lambda:self.create_order('topup'));row.addWidget(self.topup)
         self.renew=QPushButton('Đang tải phí duy trì…');self.renew.setEnabled(False);self.renew.clicked.connect(lambda:self.create_order('service'));wl.addLayout(row);wl.addWidget(self.renew)
@@ -161,14 +165,23 @@ class BillingDialog(QDialog):
     def poll(self):
         if self.current_order:self.send('/api/billing/status')
 
+    def topup_amount(self):
+        return self.custom_amount.value() if self.amount.currentData() is None else self.amount.currentData()
+
+    def custom_amount_changed(self):
+        if self.amount.currentData() is None and self.current_order and self.current_order.get('kind')=='topup' and self.current_order.get('amount')!=self.topup_amount():self.amount_changed()
+
     def amount_changed(self):
+        self.custom_amount.setVisible(self.amount.currentData() is None)
         if self.current_order and self.current_order.get('kind')=='topup':
             self.timer.stop();self.current_order=None;self.qr.clear()
             self.payment_info.setText('Đang tạo QR theo mệnh giá mới…')
             self.create_order('topup')
 
     def create_order(self,kind):
-        self.send('/api/billing/order',{'kind':kind,'amount':self.amount.currentData() if kind=='topup' else self.service_fee,'request_id':str(uuid.uuid4())})
+        if kind=='topup' and self.topup_amount()%1000:
+            self.status.setText('Số tiền nạp phải theo bội số 1.000đ.');return
+        self.send('/api/billing/order',{'kind':kind,'amount':self.topup_amount() if kind=='topup' else self.service_fee,'request_id':str(uuid.uuid4())})
 
     def save_config(self):
         self.send('/api/admin/billing/config/save',{'config':{'enabled':self.enabled.isChecked(),'service_fee':self.fee_field.value(),'token_price':self.token_price_field.value(),'bank':self.bank.text().strip(),'account':self.account.text().strip(),'name':self.name.text().strip(),'secret':self.secret.text().strip()}})

@@ -8,6 +8,19 @@ from assistant.billing_ui import BillingDialog,money
 
 
 class BillingUITests(unittest.TestCase):
+    def test_custom_topup_amount_is_sent_and_validated(self):
+        dialog=self.dialog()
+        try:
+            dialog.amount.setCurrentIndex(dialog.amount.count()-1)
+            self.assertEqual(dialog.custom_amount.minimum(),20000)
+            dialog.custom_amount.setValue(750000)
+            with patch.object(dialog,'send') as send:
+                dialog.create_order('topup')
+                self.assertEqual(send.call_args[0][1]['amount'],750000)
+                send.reset_mock();dialog.custom_amount.setValue(750001)
+                dialog.create_order('topup');send.assert_not_called()
+        finally:dialog.close()
+
     def test_change_denomination_replaces_topup_qr(self):
         dialog=self.dialog()
         try:
