@@ -288,6 +288,8 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(json.loads(self.state['plaxis_active_problem']['problem']),problem)
         self.assertTrue(any('API tổng quát' in e.get('text','') for e in events))
         self.assertIn('không hỏi xác nhận bắt đầu',self.requests[-1][0]['content'])
+        self.assertIn('Kỷ luật PLAXIS',self.requests[-1][0]['content'])
+        self.assertIn('không lặp lại',self.requests[-1][0]['content'])
         registry=self.requests[-1][0]['content'].split('Công cụ: ',1)[1].split('\n',1)[0]
         self.assertNotIn('"name": "plaxis_run_problem"',registry)
 
@@ -315,6 +317,20 @@ class OnlineAutomationTest(unittest.TestCase):
         list(agent.run(self.state))
         self.assertEqual(self.committed[0]['action'],'plaxis_commands')
         self.assertFalse(self.state['running'])
+
+    def test_plaxis_planning_rounds_stop_at_bounded_limit(self):
+        from assistant.online_automation import PLAXIS_AUTOMATION_ROUND_LIMIT
+        tools=self.agent.windows
+        agent=OnlineAutomation(self.agent.client,self.cfg,self.store,self.cid,tools,tools,plaxis_remote=tools)
+        self.state.update(running=True,pending=None,queue=[],automation_rounds=PLAXIS_AUTOMATION_ROUND_LIMIT,
+                          routing={'category':'conversation'},collaboration={'enabled':False},
+                          document_prepared=True,research_prepared=True,memory_prepared=True,rag_prepared=True,
+                          online_automation=True,model='DeepSeek Flash')
+        calls=len(self.requests)
+        events=list(agent.run(self.state))
+        self.assertFalse(self.state['running'])
+        self.assertEqual(len(self.requests),calls)
+        self.assertIn('12 bước lập kế hoạch',events[-1]['text'])
 
     def test_redundant_confirmation_after_ok_is_replanned_before_display(self):
         self.cfg['windows_apps_auto_execute']=True
