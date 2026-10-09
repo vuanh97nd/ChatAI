@@ -62,7 +62,7 @@ class BillingDialog(QDialog):
         layout=QVBoxLayout(self)
         title=QLabel('Số dư và thanh toán');title.setStyleSheet('font-size: 20px; font-weight: 600;')
         layout.addWidget(title)
-        self.plan_note=QLabel('Cloud AI, NVIDIA và AI local miễn phí. DeepSeek: 4.000 đ/triệu token.\n'
+        self.plan_note=QLabel('Cloud AI, NVIDIA và AI trên máy miễn phí. DeepSeek: 4.000 đ/triệu token.\n'
                     'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó 100.000 đ/30 ngày.\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.');self.plan_note.setWordWrap(True);layout.addWidget(self.plan_note)
         self.tabs=QTabWidget();layout.addWidget(self.tabs)
         wallet=QWidget();wl=QVBoxLayout(wallet);self.tabs.addTab(wallet,'Ví token')
@@ -146,7 +146,7 @@ class BillingDialog(QDialog):
         data=self.month_data[month]
         tokens=f"{int(data['tokens']):,}".replace(',','.')
         note=f" · {data['unknown_requests']} lượt chưa có số liệu token" if data['unknown_requests'] else ''
-        self.month_summary.setText(f"{tokens} token · Phí token: {money(data['fee_vnd'])}{note}\nCập nhật: {self.month_updated}\nChỉ thống kê token API trả về; AI local chưa thống kê.")
+        self.month_summary.setText(f"{tokens} token · Phí token: {money(data['fee_vnd'])}{note}\nCập nhật: {self.month_updated}\nChỉ thống kê token API trả về; AI trên máy chưa thống kê.")
 
     def refresh(self):
         if self.send('/api/billing/status') and self.is_admin:self.load_config_next=True
@@ -182,7 +182,7 @@ class BillingDialog(QDialog):
                 self.fee_field.setValue(self.service_fee);self.token_price_field.setValue(self.token_price)
             self.renew.setText('Miễn phí duy trì' if self.service_fee==0 else 'Gia hạn 30 ngày · '+money(self.service_fee))
             maintenance='Miễn phí duy trì; vẫn cần nạp tiền token.' if self.service_fee==0 else 'Miễn phí duy trì 30 ngày đầu; vẫn cần nạp token. Sau đó '+money(self.service_fee)+'/30 ngày.'
-            self.plan_note.setText('Cloud AI, NVIDIA và AI local miễn phí. DeepSeek: '+money(self.token_price)+'/triệu token.\n'+maintenance+'\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.')
+            self.plan_note.setText('Cloud AI, NVIDIA và AI trên máy miễn phí. DeepSeek: '+money(self.token_price)+'/triệu token.\n'+maintenance+'\nOpenAI chưa thiết lập bảng giá; chưa mở tính phí.')
         if 'config' in result:
             c=result['config'];self.enabled.setChecked(c['enabled']);self.bank.setText(c['bank']);self.account.setText(c['account']);self.name.setText(c['name']);self.webhook.setText(c['webhook_url'])
             self.secret.setPlaceholderText('Đã lưu khóa · để trống giữ nguyên' if c['secret_configured'] else 'Nhập khóa xác thực webhook')

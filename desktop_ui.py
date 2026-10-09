@@ -1279,7 +1279,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if self.model.currentText() in REMOTE_MODELS:
             preferred=next((x for x in (self.cfg['default_model'],'qwen2.5:7b','qwen2.5:3b') if x in self.models),self.cfg['default_model'])
             self.select_ai(preferred)
-            self.status.setText('Chuyên gia dùng AI local; AI chưa tải sẽ hỏi trước khi tải.')
+            self.status.setText('Chuyên gia dùng AI trên máy; AI chưa tải sẽ hỏi trước khi tải.')
 
     # ── Hỗ trợ Công việc ──────────────────────────────────────────────────────
 
@@ -1694,7 +1694,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             return
         if mode==2:
             image_model=MEDIA_VARIANTS[self.manager.media_variant()]['display']
-            action='image_generate';description='Tạo ảnh PNG bằng AI ảnh local '+image_model+'.'
+            action='image_generate';description='Tạo ảnh PNG bằng AI ảnh trên máy '+image_model+'.'
             args={'prompt':prompt}
         elif image_paths:
             action='video_from_images';description='Ghép các ảnh đã chọn thành video MP4.'
@@ -1815,7 +1815,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 elif re.search(r'(tạo|vẽ|sinh)\s+(?:một\s+)?(?:ảnh|hình|logo)',prompt,re.I):cooperation['media_tool']='image_generate'
         model = self.model.currentText()
         if model in REMOTE_MODELS and (cooperation['media_tool'] or self.chat_mode.currentIndex()==5):
-            QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI local để dùng mục này.');self.choose_other_model();return
+            QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI trên máy để dùng mục này.');self.choose_other_model();return
         if model in REMOTE_MODELS:
             from assistant.online_automation import use_automation
             if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1):
@@ -2789,7 +2789,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             from assistant.accounts import request_account
             return request_account(endpoint,'/api/register',data,timeout=30)
         def done(result):
-            QMessageBox.information(self,'Chat AI','Đã tạo tài khoản: '+data['username']+'\nKhông lưu mật khẩu vào ứng dụng. Chat local vẫn dùng Ollama.')
+            QMessageBox.information(self,'Chat AI','Đã tạo tài khoản: '+data['username']+'\nKhông lưu mật khẩu vào ứng dụng. AI trên máy vẫn dùng Ollama.')
         self.work(task,done)
 
     def apply_font(self):
