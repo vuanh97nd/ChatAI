@@ -2264,11 +2264,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         group_layout.addWidget(tools_group)
         layout.addWidget(group)
         self.api_key_group=QGroupBox('Key AI trực tuyến · Quản trị viên');api_form=QFormLayout(self.api_key_group);self.api_key_fields={};self.api_model_fields={}
-        api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, Gemini và Groq. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
-        for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq')]:
+        api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, OpenAI, Gemini và Groq. OpenAI chưa thiết lập bảng giá. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
+        for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT')]:
             field=QLineEdit();field.setEchoMode(QLineEdit.EchoMode.Password);field.setPlaceholderText('Nhập key mới; để trống để giữ key trên server');self.api_key_fields[provider]=field;api_form.addRow(label,field)
             model_field=QLineEdit(self.cfg.get(provider+'_model',''));self.api_model_fields[provider]=model_field;api_form.addRow('Mã AI '+label,model_field)
-            if provider in ('nvidia','deepseek','groq'):
+            if provider in ('nvidia','deepseek','groq','openai'):
                 self.button(api_form,'Chọn AI từ '+label,lambda checked=False,p=provider:self.load_provider_catalog(True,p))
                 field.editingFinished.connect(lambda p=provider:QTimer.singleShot(200,lambda:self.load_provider_catalog(False,p)))
             self.button(api_form,'Kiểm tra '+label,lambda checked=False,p=provider:self.check_online_provider(p))
@@ -2866,7 +2866,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         label=QLineEdit();model=QLineEdit();key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password)
         key.setPlaceholderText('Để trống để dùng key chung đã lưu trên server')
         provider=QComboBox()
-        for title,value in [('NVIDIA','nvidia'),('DeepSeek','deepseek'),('Gemini','gemini'),('Groq','groq')]:provider.addItem(title,value)
+        for title,value in [('NVIDIA','nvidia'),('DeepSeek','deepseek'),('Gemini','gemini'),('Groq','groq'),('OpenAI / ChatGPT','openai')]:provider.addItem(title,value)
         form.addRow('Tên hiển thị',label);form.addRow('Dịch vụ',provider);form.addRow('Mã AI',model);form.addRow('API key',key)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
@@ -2887,7 +2887,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def done(value):
             states=value.get('providers',{})
             lines=[]
-            for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq')]:
+            for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT')]:
                 item=states.get(provider,{})
                 lines.append(label+(': Đã có key trên server' if item.get('configured') else ': Chưa có key'))
                 if item.get('model'):self.api_model_fields[provider].setText(item['model'])
@@ -3202,6 +3202,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if self.server_session:
             menu.addAction(self.server_session.get('fullname') or self.server_session['username']).setEnabled(False)
             if admin_session(self.server_session):menu.addAction('Quản lý người dùng',self.open_user_admin)
+            menu.addAction('Số dư và thanh toán',self.open_billing)
             menu.addAction('Hồ sơ',self.open_profile)
             menu.addAction('Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
             menu.addAction('Cá nhân hóa',lambda:self.open_settings_section('Cấu hình máy và AI'))
@@ -3213,6 +3214,12 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             menu.addAction('Đăng nhập',self.login_dialog)
             menu.addAction('Tạo tài khoản',self.register_dialog)
         menu.exec(self.profile_button.mapToGlobal(self.profile_button.rect().topLeft()))
+
+    def open_billing(self):
+        if not self.server_session:return
+        from assistant.billing_ui import BillingDialog
+        dialog=BillingDialog(self.server_session,self)
+        dialog.exec()
 
     def settings_menu(self):
         menu=QMenu(self)
