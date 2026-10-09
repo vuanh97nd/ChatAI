@@ -8,7 +8,7 @@ from .experience import repeated_failure, task_record
 # A full tutorial model (materials, geometry, anchors, staged phases, mesh,
 # calculate, read Output) needs far more than a dozen tool calls; runaway loops
 # are caught by repeated_failure, not by this budget.
-PLAXIS_AUTOMATION_ROUND_LIMIT = 64
+PLAXIS_AUTOMATION_ROUND_LIMIT = 120
 GEOSLOPE_AUTOMATION_ROUND_LIMIT = 64
 
 
@@ -230,7 +230,7 @@ def _automation_round_limit(state, has_plaxis_remote=False):
 
 _PLAXIS_READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
                'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults'}
-PLAXIS_READ_STALL_LIMIT=8
+PLAXIS_READ_STALL_LIMIT=20
 
 
 def _plaxis_read_stall(state, name, args):
