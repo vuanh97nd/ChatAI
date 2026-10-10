@@ -3,8 +3,9 @@ from io import BytesIO
 from pathlib import Path
 import zipfile
 
-MAX_BYTES = 32 * 1024**2
-MAX_TEXT = 4_000_000
+import sys as _sys
+MAX_BYTES = _sys.maxsize
+MAX_TEXT = _sys.maxsize
 
 
 def read_bytes(raw, name, mime=''):

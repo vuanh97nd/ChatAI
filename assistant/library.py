@@ -21,7 +21,7 @@ EMBED_MODEL = 'bge-m3'
 CHUNK_CHARS = 900
 CHUNK_OVERLAP = 150
 PART_CHARS = 650000          # base64 mỗi phần gửi server (< 700 KB)
-MAX_TEXT = 1_000_000
+MAX_TEXT = __import__('sys').maxsize
 CODE_PATTERN = re.compile(
     r'(?<![\w])(?:TCVN|TCCS|QCVN|TCN|TCXD|TCXDVN|ISO|IEC|EN|ASTM|AASHTO|JIS|BS|DIN|ACI|QĐ|NĐ|TT|QH)'
     r'[\s-]*\d[\w.:/-]*', re.I)

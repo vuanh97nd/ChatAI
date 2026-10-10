@@ -7,10 +7,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 
-MAX_BYTES=20*1024**2
-MAX_TEXT=1_000_000
-MAX_PAGES=1500
-MAX_OCR_PAGES=200
+# No product caps on document size, text or pages (user request); only RAM bounds a read.
+import sys as _sys
+MAX_BYTES=_sys.maxsize
+MAX_TEXT=_sys.maxsize
+MAX_PAGES=_sys.maxsize
+MAX_OCR_PAGES=_sys.maxsize
 
 
 def pdf_vision_ocr(client, model='gemma3:4b', *, num_ctx=4096):
@@ -224,8 +226,8 @@ def read_document_range(files,path,start=0,limit=6000,pdf_ocr=None,foxit_ocr=Fal
     p=files.path(path)
     if p.suffix.lower() not in ('.pdf','.docx','.txt','.md','.html'):
         raise ValueError('PDF/DOCX/TXT/MD/HTML; Excel dùng excel_read.')
-    if type(start) is not int or start<0 or type(limit) is not int or not 1<=limit<=8000:
-        raise ValueError('start >= 0, limit 1..8000.')
+    if type(start) is not int or start<0 or type(limit) is not int or not 1<=limit<=40000:
+        raise ValueError('start >= 0, limit 1..40000.')
     if page is not None and (type(page) is not int or page<1):raise ValueError('page phải là số trang >= 1.')
     if query is not None and (not isinstance(query,str) or not query.strip() or len(query)>200):
         raise ValueError('query là cụm từ cần tìm, 1..200 ký tự.')

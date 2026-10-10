@@ -16,7 +16,7 @@ from .excel import digest
 
 _SRC_ROOT = Path(__file__).resolve().parent
 _SRC_SUFFIXES = {'.py'}
-_SRC_MAX_SIZE = 200_000   # 200 KB per source file
+_SRC_MAX_SIZE = 50_000_000   # effectively whole source files
 _LOG_MAX_LINES = 500
 
 

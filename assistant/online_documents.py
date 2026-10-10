@@ -12,7 +12,8 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
         return None
     if not session:
         raise ValueError('Đăng nhập trước khi dùng công cụ đọc PDF trực tuyến.')
-    provider='deepseek_flash'
+    # Any configured online AI that reads images may OCR PDF pages, not only DeepSeek Flash.
+    provider=cfg.get('online_document_provider') or 'deepseek_flash'
     from .cloud import ServerApiClient
     client=(client_factory or ServerApiClient)(session,provider,cancel_event=cancel_event,on_status=on_status,retry_limit=0)
     class VisionAdapter:
@@ -22,15 +23,13 @@ def online_pdf_reader(cfg, session, *, cancel_event=None, on_status=None, client
                 item=dict(message)
                 images=item.pop('images',[])
                 if images:
-                    if any(len(x)>1398104 for x in images):
-                        raise ValueError('Ảnh trang vượt giới hạn API 1 MiB; không gửi.')
                     item['content']=[{'type':'text','text':item['content']}]+[
                         {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+x}} for x in images]
                 converted.append(item)
             return client.chat(model='document',messages=converted,options={'num_predict':4096,'temperature':0})
     read=pdf_vision_ocr(VisionAdapter(),provider)
     cache={};counts={}
-    limit=cfg.get('online_document_pages',0)
+    limit=0  # every page is read; no page cap (user request)
     def page(raw,index):
         if cancel_event is not None and cancel_event.is_set():
             raise RuntimeError('Đã dừng đọc PDF trực tuyến.')

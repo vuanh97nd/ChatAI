@@ -148,7 +148,7 @@ class ApiDocumentClient:
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def _build_payload(self,model,messages,options,stream):
         payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':stream,
-                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),4096),
+                 'max_tokens':min(max(int(options.get('num_predict',1600)),128),8192),
                  'temperature':options.get('temperature',.2)}
         if self.provider=='gemini':payload['reasoning_effort']='low';payload['max_tokens']+=1024
         return payload
@@ -190,6 +190,7 @@ class ApiDocumentClient:
             messages.insert(0,{'role':'system','content':'Trả về một đối tượng JSON hợp lệ, không Markdown. Schema: '+json.dumps(kwargs['format'],ensure_ascii=False)})
         options=kwargs.get('options',{})
         payload=self._build_payload(model,messages,options,stream=False)
+        if kwargs.get('format'):payload['response_format']={'type':'json_object'}  # every provider here is OpenAI-compatible
         request=Request(API_ENDPOINTS[self.provider],data=json.dumps(payload).encode(),
             headers={'Content-Type':'application/json','Authorization':'Bearer '+self.key})
         try:
@@ -202,6 +203,24 @@ class ApiDocumentClient:
             truncated=value['choices'][0].get('finish_reason')=='length'
             if truncated and model=='document-small':raise CloudError('Đoạn tổng hợp bị giới hạn token, chưa đọc/tổng hợp đầy đủ.')
             return {'message':{'role':'assistant','content':content},'truncated':truncated}
+        except HTTPError as error:
+            if error.code==400 and 'response_format' in payload:
+                # The model rejected JSON mode; resend once with only the schema instruction.
+                payload.pop('response_format')
+                return self._send_plain(payload,model)
+            self._api_error(error)
+        except (URLError,TimeoutError):raise CloudError('Không kết nối được '+PROVIDER_NAMES[self.provider]+'.') from None
+        except (ValueError,KeyError,IndexError,TypeError):raise CloudError('Phản hồi API không đúng định dạng.') from None
+
+    def _send_plain(self,payload,model):
+        request=Request(API_ENDPOINTS[self.provider],data=json.dumps(payload).encode(),
+            headers={'Content-Type':'application/json','Authorization':'Bearer '+self.key})
+        try:
+            with self.opener(request,timeout=120) as response:
+                value=json.loads(response.read(4000001))
+            content=value['choices'][0]['message'].get('content')
+            if not isinstance(content,str) or not content.strip():raise CloudError('API chưa trả nội dung; kiểm tra model hoặc token trả lời.')
+            return {'message':{'role':'assistant','content':content},'truncated':value['choices'][0].get('finish_reason')=='length'}
         except HTTPError as error:self._api_error(error)
         except (URLError,TimeoutError):raise CloudError('Không kết nối được '+PROVIDER_NAMES[self.provider]+'.') from None
         except (ValueError,KeyError,IndexError,TypeError):raise CloudError('Phản hồi API không đúng định dạng.') from None
@@ -306,7 +325,9 @@ class ServerApiClient:
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def stream_answer(self,model,messages,**kwargs):
-        if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider) not in ('deepseek','deepseek_flash','deepseek_pro','deepseek_r1'):
+        # Streaming for every OpenAI-compatible provider (the Worker relays their SSE as is);
+        # only Gemini's native endpoint answers as one JSON body.
+        if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)=='gemini':
             yield 'text',self.chat(model,messages,**kwargs)['message']['content'];return
         endpoint=self.session['endpoint']
         url=urlparse(endpoint)

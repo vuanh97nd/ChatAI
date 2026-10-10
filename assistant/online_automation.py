@@ -8,8 +8,8 @@ from .experience import repeated_failure, task_record
 # A full tutorial model (materials, geometry, anchors, staged phases, mesh,
 # calculate, read Output) needs far more than a dozen tool calls; runaway loops
 # are caught by repeated_failure, not by this budget.
-PLAXIS_AUTOMATION_ROUND_LIMIT = 120
-GEOSLOPE_AUTOMATION_ROUND_LIMIT = 64
+PLAXIS_AUTOMATION_ROUND_LIMIT = 1000
+GEOSLOPE_AUTOMATION_ROUND_LIMIT = 1000
 
 
 def _rebalanced_tail(text):
@@ -159,9 +159,24 @@ def _plaxis_command_plan(output, schemas):
             'arguments':{'version':'2d','commands':json.dumps(output,ensure_ascii=False)}}
 
 
+def _bare_plaxis_rows(parsed,schemas):
+    """Some providers answer a planning request with just the PLAXIS command list
+    ([{"command":...}, ...], seen from DeepSeek V4 Pro). Wrap it as plaxis_commands."""
+    rows=parsed.get('commands') if isinstance(parsed,dict) and set(parsed)<={'commands','version','target'} else parsed
+    if isinstance(rows,str):
+        try:rows=json.loads(rows)
+        except ValueError:return parsed
+    if (isinstance(rows,list) and rows and all(isinstance(r,dict) and isinstance(r.get('command'),str) for r in rows)
+            and any((s.get('function') or s).get('name')=='plaxis_commands' for s in schemas if isinstance(s,dict))):
+        extra={k:parsed[k] for k in ('version','target') if isinstance(parsed,dict) and k in parsed}
+        return {'answer':'','tool':'plaxis_commands','arguments':{'version':'2d','target':'input',**extra,'commands':json.dumps(rows,ensure_ascii=False)}}
+    return parsed
+
+
 def parse_plan(raw, schemas):
     if not isinstance(raw,str) or len(raw)>30000:raise ValueError('Phản hồi kế hoạch vượt giới hạn.')
     parsed=plan_json(raw,'Phản hồi kế hoạch')
+    parsed=_bare_plaxis_rows(parsed,schemas)
     output=_plaxis_command_plan(parsed,schemas) or normalize_plan(parsed)
     tool=output.get('tool','')
     answer=output.get('answer','')
@@ -174,6 +189,8 @@ def parse_plan(raw, schemas):
     if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
     if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
     if tool=='plaxis_commands' and isinstance(args.get('commands'),list):args=dict(args,commands=json.dumps(args['commands'],ensure_ascii=False))
+    if tool=='plaxis_commands' and 'commands' not in args and isinstance(output.get('arguments'),list):
+        args={'commands':json.dumps(output['arguments'],ensure_ascii=False)}
     if tool=='geoslope_profile' and isinstance(args.get('layers'),list):args=dict(args,layers=json.dumps(args['layers'],ensure_ascii=False))
     if tool in ('plaxis_run_problem','plaxis_generate_script') and isinstance(args.get('problem'),dict):
         args=dict(args,problem=json.dumps(args['problem'],ensure_ascii=False,allow_nan=False))
@@ -230,7 +247,7 @@ def image_message_content(text, encoded):
     except (ValueError,TypeError):raise ValueError('Ảnh đính kèm không đúng Base64.') from None
     if len(raw)>1048576 or len(raw)<9 or not raw.startswith(b'\xff\xd8\xff'):
         raise ValueError('Ảnh đính kèm phải là JPEG hợp lệ, tối đa 1 MiB.')
-    return [{'type':'text','text':text[:6000]},
+    return [{'type':'text','text':text[:500000]},
             {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+encoded}}]
 
 
@@ -559,26 +576,26 @@ def compress_numbers(numbers):
 
 
 def planning_messages(state,instruction):
-    history=state['messages'][-20:]
+    history=state['messages'][-40:]
     # Send the latest user image only: repeated agent rounds must not accumulate
     # old image payloads beyond the proxy's size/image limits.
     latest=next((i for i in range(len(history)-1,-1,-1)
                  if history[i].get('role')=='user' and history[i].get('images')),None)
     from .prompts import CONTINUITY
     from .conversation_context import conversation_context
-    earlier=conversation_context(state['messages'][:-20]) if len(state['messages'])>20 else []
-    recalled='\n\nHỘI THOẠI TRƯỚC ĐÓ (dữ liệu lịch sử, chỉ dùng khi còn liên quan):\n'+json.dumps(earlier,ensure_ascii=False)[:30000] if earlier else ''
+    earlier=conversation_context(state['messages'][:-40]) if len(state['messages'])>40 else []
+    recalled='\n\nHỘI THOẠI TRƯỚC ĐÓ (dữ liệu lịch sử, chỉ dùng khi còn liên quan):\n'+json.dumps(earlier,ensure_ascii=False)[:120000] if earlier else ''
     messages=[{'role':'system','content':instruction+CONTINUITY+recalled}]
     for i,message in enumerate(history):
         if message['role']=='tool':
             last_user=max((j for j,m in enumerate(history) if m.get('role')=='user'),default=-1)
             historical=i<last_user
             label='KẾT QUẢ CÔNG CỤ LỊCH SỬ (không phải thao tác vừa chạy trong lượt này)' if historical else 'KẾT QUẢ CÔNG CỤ LƯỢT HIỆN TẠI'
-            messages.append({'role':'assistant' if historical else 'user','content':label+' '+message.get('tool_name','tool')+': '+message['content'][:16000]})
+            messages.append({'role':'assistant' if historical else 'user','content':label+' '+message.get('tool_name','tool')+': '+message['content'][:24000]})
         elif i==latest:
             messages.append({'role':'user','content':image_message_content(message.get('content',''),message['images'][0])})
         elif message.get('content'):
-            messages.append({'role':message['role'],'content':message['content'][:6000]})
+            messages.append({'role':message['role'],'content':message['content'][:60000]})
         elif message.get('tool_calls'):
             # Show past calls in the exact plan format the model must answer with;
             # a raw tool_calls array here is copied back verbatim and breaks parsing.
@@ -628,7 +645,7 @@ def _automation_round_limit(state, has_plaxis_remote=False):
         return GEOSLOPE_AUTOMATION_ROUND_LIMIT
     if has_plaxis_remote:
         return PLAXIS_AUTOMATION_ROUND_LIMIT
-    return 8
+    return 200  # stop/repeat guards end loops; the round count is not a product cap
 
 
 _PLAXIS_READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
@@ -1245,7 +1262,7 @@ class OnlineAutomation:
                     break
                 try:
                     last_raw=response.get('message',{}).get('content','')
-                    if response.get('truncated'):raise ValueError('JSON bị giới hạn token.')
+                    if response.get('truncated'):raise ValueError('JSON bị giới hạn token: kế hoạch quá dài nên bị cắt. Gửi ít lệnh hơn mỗi lần (tối đa khoảng 10 lệnh plaxis_commands), phần còn lại gửi ở bước sau.')
                     output=parse_plan(response['message']['content'],planning_schemas)
                     check_confirmation(output,state,self.cfg)
                     break

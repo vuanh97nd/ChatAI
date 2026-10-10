@@ -26,9 +26,9 @@ def range_boundaries(*args):
     from openpyxl.utils.cell import range_boundaries as convert
     return convert(*args)
 
-MAX_FILE = 20 * 1024 * 1024
+MAX_FILE = __import__('sys').maxsize
 MAX_EXPANDED = 100 * 1024 * 1024
-MAX_CELLS = 200_000
+MAX_CELLS = 50_000_000
 
 
 def scalar(value):

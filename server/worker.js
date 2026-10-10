@@ -488,7 +488,7 @@ const referenceWorker = {async fetch(request,env){
    if(path==='/api/chat/search'){
     const query=String(body.text||'').trim();
     if(!query||query.length>2000)return fail('Câu hỏi tra cứu phải có từ 1 đến 2000 ký tự.');
-    if(!await throttle(db,account,'chat/search',15))return fail('Vui lòng đợi một chút trước khi tra cứu tiếp.',429);
+    if(!await throttle(db,account,'chat/search',600))return fail('Vui lòng đợi một chút trước khi tra cứu tiếp.',429);
     try{return reply(await requestWebSearch(env,query));}
     catch(error){return fail(error.message||'Chưa kết nối được dịch vụ tra cứu mạng.',503);}
    }
@@ -517,17 +517,17 @@ const referenceWorker = {async fetch(request,env){
      text+='\n\nNGỮ CẢNH VÀ KẾT QUẢ CHAT_AI (dữ liệu tham khảo):\n'+body.context;
     }
     const outputTokens=body.agent_schema||body.document&&body.tools!==true?8192:1600;
-    const answerLimit=body.agent_schema||body.document&&body.tools!==true?48000:12000;
+    const answerLimit=1000000;
     const history=body.history||[];
     if(!Array.isArray(history)||history.length>12||history.some(m=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'||m.content.length>12000))return fail('Lịch sử trò chuyện không hợp lệ.');
     const imageValidAI=image=>{
-     if(!image||!['image/png','image/jpeg'].includes(image.mime)||typeof image.data!=='string'||image.data.length>1398104||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data))return false;
-     try{const bytes=atob(image.data);const signature=image.mime==='image/png'?[137,80,78,71,13,10,26,10]:[255,216,255];return bytes.length>8&&bytes.length<=1048576&&signature.every((value,i)=>bytes.charCodeAt(i)===value);}catch{return false;}
+     if(!image||!['image/png','image/jpeg'].includes(image.mime)||typeof image.data!=='string'||image.data.length>14000000||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data))return false;
+     try{const bytes=atob(image.data);const signature=image.mime==='image/png'?[137,80,78,71,13,10,26,10]:[255,216,255];return bytes.length>8&&signature.every((value,i)=>bytes.charCodeAt(i)===value);}catch{return false;}
     };
     const images=[body.image,...history.filter(m=>m.image).map(m=>m.image)].filter(Boolean);
     if(images.length>2||images.some(image=>!imageValidAI(image))||history.some(m=>m.image&&m.role!=='user'))return fail('Ảnh chưa hợp lệ hoặc quá lớn. Mỗi ảnh tối đa 1 MB, dùng PNG hoặc JPEG.');
     const partsFor=(content,image)=>[...(image?[{inlineData:{mimeType:image.mime,data:image.data}}]:[]),{text:content||'Hãy giải thích ảnh này trong ngữ cảnh Chat AI.'}];
-    if(!await throttle(db,account,'chat/ai',15))return fail('Vui lòng đợi một chút trước khi hỏi tiếp.',429);
+    if(!await throttle(db,account,'chat/ai',600))return fail('Vui lòng đợi một chút trước khi hỏi tiếp.',429);
     await db.prepare('CREATE TABLE IF NOT EXISTS support_ai_usage (username TEXT NOT NULL,day TEXT NOT NULL,hits INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(username,day))').run();
     const day=now.slice(0,10);
     await db.prepare('INSERT INTO support_ai_usage(username,day,hits) VALUES(?,?,1) ON CONFLICT(username,day) DO UPDATE SET hits=hits+1').bind(account,day).run();
@@ -991,8 +991,8 @@ export async function conversationAPI(path,body,actor,db) {
    // Store dialogue only; never credentials, executable queues or file contents.
    const clean={messages:state.messages.map(m=>({role:m.role,content:m.content,...(m.role==='tool'?{tool_name:String(m.tool_name||'tool').slice(0,100)}:{})})),custom_title:String(state.custom_title||'').slice(0,120),model:typeof state.model==='string'?state.model.slice(0,150):null,online_automation:state.online_automation===true};
    const memory=Array.isArray(state.document_memory)?state.document_memory:[];
-   if(memory.length>8||memory.some(d=>!d||!/^[a-f0-9]{64}$/.test(d.id)||typeof d.text!=='string'||typeof d.file!=='string'||d.text.length>240000))return fail('Bộ nhớ tài liệu không hợp lệ.');
-   if(memory.reduce((n,d)=>n+new TextEncoder().encode(d.text).length,0)>300000)return fail('Bộ nhớ tài liệu quá lớn.',413);
+   if(memory.length>200||memory.some(d=>!d||!/^[a-f0-9]{64}$/.test(d.id)||typeof d.text!=='string'||typeof d.file!=='string'))return fail('Bộ nhớ tài liệu không hợp lệ.');
+   if(memory.reduce((n,d)=>n+new TextEncoder().encode(d.text).length,0)>1100000)return fail('Bộ nhớ tài liệu quá lớn.',413);
    clean.document_memory=memory.map(d=>({id:d.id,file:d.file.slice(0,240),text:d.text,format:String(d.format||'').slice(0,40),coverage:String(d.coverage||'partial').slice(0,40),coverage_note:String(d.coverage_note||'').slice(0,2048),updated:String(d.updated||'').slice(0,50)}));
    const procedures=Array.isArray(state.procedure_memory)?state.procedure_memory:[];
    if(procedures.length>20||procedures.some(p=>!p||!/^[a-f0-9]{64}$/.test(p.id)||!['success','failed'].includes(p.outcome)||['tool','task','arguments','evidence','updated'].some(k=>typeof p[k]!=='string')||p.arguments.length>12000))return fail('Bộ nhớ cách làm không hợp lệ.');
@@ -1051,7 +1051,7 @@ export async function conversationAPI(path,body,actor,db) {
  }
  return fail('Route not found.',404);
 }
-async function limitedBody(request,max=12000000){
+async function limitedBody(request,max=80000000){
  if(Number(request.headers.get('content-length')||0)>max)throw Object.assign(new Error('Request quá lớn.'),{status:413});
  if(!request.body)return '';
  const reader=request.body.getReader(),parts=[];let total=0;
@@ -1141,7 +1141,7 @@ async function streamChat(body,env,request,owner){
       const reason=data.choices?.[0]?.delta?.reasoning_content;
       if(typeof reason==='string'&&reason&&!length){reasonLen+=reason.length;if(reasonLen-reasonMark>=200||reasonMark===0){reasonMark=reasonLen;emit('status',{text:'🤔 AI đang suy luận… ('+reasonLen+' ký tự)'});}}
       const chunk=data.choices?.[0]?.delta?.content ?? data.response ?? '';
-      if(typeof chunk==='string'&&chunk){length+=chunk.length;if(length>48000)throw new Error('Answer limit');emit('delta',{text:chunk});}
+      if(typeof chunk==='string'&&chunk){length+=chunk.length;if(length>1000000)throw new Error('Answer limit');emit('delta',{text:chunk});}
      }
     }
     if(abort.signal.aborted)emit('error',{message:'Luồng đã ngắt hoặc quá 60 giây.'});
@@ -1170,7 +1170,7 @@ export async function ensureProductSchema(db){
 const cloudLimit=()=>reply({success:false,code:'CLOUD_LIMIT',message:'Vui lòng chuyển sang mô hình ngôn ngữ khác để tiếp tục trò chuyện.'},409);
 export async function reserveCloud(env,owner){
  await ensureProductSchema(env.DB);
- const day=new Date().toISOString().slice(0,10),cap=Math.max(1,Math.min(10000,Number(env.CLOUD_DAILY_REQUEST_LIMIT)||100));
+ const day=new Date().toISOString().slice(0,10),cap=Math.max(1,Number(env.CLOUD_DAILY_REQUEST_LIMIT)||1000000);
  await env.DB.prepare('INSERT OR IGNORE INTO cloud_daily(day,used) VALUES(?,0)').bind(day).run();
  const budget=await env.DB.prepare('UPDATE cloud_daily SET used=used+1 WHERE day=? AND used<? RETURNING used').bind(day,cap).first();
  if(!budget){await releaseCloud(env,owner);return reply({success:false,code:'CLOUD_BUSY',message:'AI trên server tạm hết hạn mức. Vui lòng chọn mô hình ngôn ngữ khác.'},429);}
@@ -1660,12 +1660,12 @@ async function writeProviderConfig(env,provider,value){
  try{await env.DB.prepare('INSERT INTO provider_credentials(provider,encrypted_value,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at').bind(provider,encrypted,new Date().toISOString()).run();}catch{throw providerFailure('storage');}
 }
 async function providerAPI(env,path,body){
- const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','openai'];
+ const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','openai','groq'];
  await initializeProviderStore(env);
  if(path.endsWith('/deepseek-presets')){
   const shared=await readProviderConfig(env,'deepseek');
   if(!shared.key&&!String(env.DEEPSEEK_API_KEY||'').trim())return fail('Chưa có key chung DeepSeek. Lưu key DeepSeek một lần trước khi tạo ba cấu hình.',503);
-  const rows=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' LIMIT 50").all();
+  const rows=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' LIMIT 1000").all();
   const existing=[];
   for(const row of rows.results||[])existing.push({id:row.provider,value:await decodeProviderConfig(env,row.provider,row.encrypted_value)});
   const presets=[{label:'DeepSeek Flash',model:'deepseek-flash',thinking_enabled:false},{label:'DeepSeek V4 Pro',model:'deepseek-v4-pro',thinking_enabled:true},{label:'DeepSeek Suy luận',model:'deepseek-flash',thinking_enabled:true}];
@@ -1690,7 +1690,7 @@ async function providerAPI(env,path,body){
   const base=key?{}:await readProviderConfig(env,provider);
   if(!key&&!base.key&&!env[provider.toUpperCase()+'_API_KEY'])return fail('Nhập key cho AI mới hoặc lưu key chung của dịch vụ trước.');
   if(['Cloudflare AI','NVIDIA AI','DeepSeek API','Gemini API'].includes(label))return fail('Tên AI đã có. Chọn tên hiển thị khác.');
-  const existing=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' LIMIT 50").all();
+  const existing=await env.DB.prepare("SELECT provider,encrypted_value FROM provider_credentials WHERE provider LIKE 'ai_%' LIMIT 1000").all();
   for(const row of existing.results||[]){const value=await decodeProviderConfig(env,row.provider,row.encrypted_value);if(String(value.label||'').toLowerCase()===label.toLowerCase())return fail('Tên AI đã có. Chọn tên hiển thị khác.');}
   const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM provider_credentials WHERE provider LIKE 'ai_%'").first();
   if(count.total>=50)return fail('Đã đạt giới hạn 50 AI bổ sung.');
@@ -1739,38 +1739,40 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  if(!key)key=String(env[_baseProvider.toUpperCase()+'_API_KEY']||'');
  if(!key)return fail('Quản trị viên chưa cấu hình key cho AI này.',503);
  if(path.endsWith('/models')){
-  if(!['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','openai'].includes(provider))return fail('Danh sách tự động hiện hỗ trợ NVIDIA và DeepSeek.');
+  if(!['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','openai','groq','gemini'].includes(provider))return fail('Dịch vụ này chưa có danh sách AI tự động.');
   const cancel=new AbortController(),timer=setTimeout(()=>cancel.abort(),20000);
   try{
-   const response=await fetch(_baseProvider==='openai'?'https://api.openai.com/v1/models':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/models':'https://api.deepseek.com/models',{headers:{Authorization:'Bearer '+key},signal:cancel.signal});
+   const gemini=_baseProvider==='gemini';
+   const response=await fetch(gemini?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000':_baseProvider==='openai'?'https://api.openai.com/v1/models':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/models':_baseProvider==='groq'?'https://api.groq.com/openai/v1/models':'https://api.deepseek.com/models',{headers:gemini?{'x-goog-api-key':key}:{Authorization:'Bearer '+key},signal:cancel.signal});
    if(!response.ok){await response.body?.cancel();return fail('Không lấy được danh sách AI: HTTP '+response.status+'.',502);}
   const result=await response.json();
-   const models=(result.data||[]).map(x=>x.id).filter(x=>typeof x==='string'&&/^[A-Za-z0-9._/-]{1,160}$/.test(x)).sort();
+   const models=(gemini?(result.models||[]).map(x=>String(x.name||'').replace(/^models\//,'')):(result.data||[]).map(x=>x.id)).filter(x=>typeof x==='string'&&/^[A-Za-z0-9._/-]{1,160}$/.test(x)).sort();
    return reply({success:true,models});
   }catch{return fail('Không lấy được danh sách AI từ dịch vụ.',503);}finally{clearTimeout(timer);}
  }
  const testing=path.endsWith('/test');
  const messages=testing?[{role:'user',content:'Chỉ trả lời OK.'}]:body.messages;
- if(!Array.isArray(messages)||!messages.length||messages.length>40||JSON.stringify(messages).length>1800000)return fail('Ngữ cảnh không hợp lệ.');
+ if(!Array.isArray(messages)||!messages.length||messages.length>1000||JSON.stringify(messages).length>60000000)return fail('Ngữ cảnh không hợp lệ.');
  const hasImage=messages.some(m=>Array.isArray(m?.content)&&m.content.some(part=>part?.type==='image_url'));
  const imageCount=messages.reduce((total,m)=>total+(Array.isArray(m?.content)?m.content.filter(part=>part?.type==='image_url').length:0),0);
- if(imageCount>2)return fail('Mỗi lượt chỉ hỗ trợ tối đa 2 ảnh.');
+ // No product cap on images; the provider rejects what its model cannot take (bounded only by request size).
+
  const validContent=(message)=>{
   if(typeof message.content==='string')return true;
   if(!Array.isArray(message.content)||message.content.length>8)return false;
   return message.content.every(part=>{
-   if(part?.type==='text')return typeof part.text==='string'&&part.text.length<=140000;
+   if(part?.type==='text')return typeof part.text==='string';
    if(part?.type!=='image_url'||message.role!=='user')return false;
    const url=part.image_url?.url;
    const match=typeof url==='string'&&url.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/);
-   if(!match||match[2].length>1398104)return false;
-   try{const bytes=atob(match[2]),sig=match[1]==='image/jpeg'?[255,216,255]:[137,80,78,71,13,10,26,10];return bytes.length>8&&bytes.length<=1048576&&sig.every((v,i)=>bytes.charCodeAt(i)===v);}catch{return false;}
+   if(!match)return false;
+   try{const bytes=atob(match[2]),sig=match[1]==='image/jpeg'?[255,216,255]:[137,80,78,71,13,10,26,10];return bytes.length>8&&sig.every((v,i)=>bytes.charCodeAt(i)===v);}catch{return false;}
   });
  };
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
- const maxTokens=testing?1024:Math.max(64,Math.min(body.format?8192:4096,Number(body.max_tokens)||1600));
+ const maxTokens=testing?1024:Math.max(64,Math.min(8192,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
- const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',openai:env.OPENAI_MODEL||'gpt-4.1-mini'};
+ const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',openai:env.OPENAI_MODEL||'gpt-4.1-mini',groq:env.GROQ_MODEL||'openai/gpt-oss-120b'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/llama-3.1-nemotron-ultra-253b-v1';
  let selectedModel=testing&&body.model?String(body.model):configuredModel||models[provider];
  // Image requests use Flash vision and inherit the existing DeepSeek key.
@@ -1792,9 +1794,11 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     });
    };
    payload={contents:messages.filter(m=>m.role!=='system').map(m=>({role:m.role==='assistant'?'model':'user',parts:geminiParts(m.content)})),generationConfig:{temperature,maxOutputTokens:maxTokens}};
+   // Planning requests: force a JSON body and keep Flash from spending the budget on thinking.
+   if(body.format){payload.generationConfig.responseMimeType='application/json';if(/flash/i.test(selectedModel))payload.generationConfig.thinkingConfig={thinkingBudget:0};}
    const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');if(system)payload.systemInstruction={parts:[{text:system}]};
   }else{
-   url=_baseProvider==='openai'?'https://api.openai.com/v1/chat/completions':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/chat/completions':'https://api.deepseek.com/chat/completions';headers.Authorization='Bearer '+key;
+   url=_baseProvider==='openai'?'https://api.openai.com/v1/chat/completions':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/chat/completions':_baseProvider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.deepseek.com/chat/completions';headers.Authorization='Bearer '+key;
    let requestMessages=messages;
    if(provider==='nvidia'&&selectedModel==='nvidia/llama-3.1-nemotron-ultra-253b-v1'){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
@@ -1803,10 +1807,19 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
    if(provider==='openai'&&/^(?:gpt-5|o[134](?:-|$))/.test(selectedModel)){payload.max_completion_tokens=payload.max_tokens;delete payload.max_tokens;delete payload.temperature;}
    if(payload.stream)payload.stream_options={include_usage:true};
-   if(['deepseek','openai'].includes(_baseProvider)&&body.format)payload.response_format={type:'json_object'};
+   // JSON mode for every OpenAI-compatible provider, not only DeepSeek/OpenAI: without it
+   // NVIDIA answered planning requests with Markdown prose instead of a plan.
+   if(['deepseek','openai','nvidia','groq'].includes(_baseProvider)&&body.format)payload.response_format={type:'json_object'};
    if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&body.repair_response!==true&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
-  const response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
+  let response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
+  if(!response.ok&&response.status===400&&(payload.response_format||payload.generationConfig?.responseMimeType)){
+   // Some models reject JSON mode / thinking settings; retry once with the plain request.
+   await response.body?.cancel();
+   delete payload.response_format;
+   if(payload.generationConfig){delete payload.generationConfig.responseMimeType;delete payload.generationConfig.thinkingConfig;}
+   response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
+  }
   if(!response.ok){
    if(response.status===429){
     let detail={};try{detail=await response.json();}catch{await response.body?.cancel();}
@@ -1824,7 +1837,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
       const {done,value}=await reader.read();
       if(done){clearTimeout(timer);out.close();return;}
       bytes+=value.byteLength;
-      if(bytes>1000000)throw new Error('Oversized provider stream');
+      if(bytes>50000000)throw new Error('Oversized provider stream');
       out.enqueue(value);
      }catch{clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});out.error(new Error('Provider stream interrupted'));}
     },
@@ -1850,7 +1863,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
 async function cloudDocumentModel(env,body){
  if(typeof env.AI?.run!=='function')return fail('Chưa có binding Workers AI tên AI trên Worker đang chạy.',503);
  const messages=body.messages;
- if(!Array.isArray(messages)||!messages.length||messages.length>40||JSON.stringify(messages).length>150000)return fail('Ngữ cảnh tài liệu không hợp lệ.');
+ if(!Array.isArray(messages)||!messages.length||messages.length>1000||JSON.stringify(messages).length>60000000)return fail('Ngữ cảnh tài liệu không hợp lệ.');
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||typeof m.content!=='string'))return fail('Tin nhắn tài liệu không hợp lệ.');
  const model=env.CLOUDFLARE_DOCUMENT_MODEL||env.CLOUDFLARE_AI_MODEL||'@cf/qwen/qwen3-30b-a3b-fp8';
  const input=messages.map(m=>({...m}));
@@ -2026,9 +2039,9 @@ async function billingProvider(env,actor,path,body){
   const custom=await readProviderConfig(env,body.provider);if(custom.provider!=='deepseek')return billingError('Chọn cấu hình DeepSeek để dùng ví.',400);
  }
  // Reserve a conservative input byte bound plus image and output budgets.
- if(!Array.isArray(body.messages)||!body.messages.length||body.messages.length>40)return billingError('Tin nhắn không hợp lệ.');
+ if(!Array.isArray(body.messages)||!body.messages.length||body.messages.length>1000)return billingError('Tin nhắn không hợp lệ.');
  const input=JSON.stringify(body.messages),images=(input.match(/image_url/g)||[]).length;
- if(input.length>1800000)return billingError('Ngữ cảnh quá lớn.');
+ if(input.length>60000000)return billingError('Ngữ cảnh quá lớn.');
  const rate=billingTokenPrice(await billingConfig(env));
  const tokenBudget=new TextEncoder().encode(input).length+images*65536+40*128+8192;
  const reserved=Math.ceil(tokenBudget*rate/1000);

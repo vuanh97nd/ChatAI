@@ -947,11 +947,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if self.busy():
             QMessageBox.information(self,'Ảnh','Đợi AI trả lời xong trước khi đính kèm ảnh mới.'); return
         if image.isNull(): return
-        image=image.scaled(1600,1600,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+        image=image.scaled(4096,4096,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
         data=QByteArray(); buffer=QBuffer(data); buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        if not image.save(buffer,'JPEG',85):buffer.close(); return
+        if not image.save(buffer,'JPEG',90):buffer.close(); return
         buffer.close()
-        if data.size()>950000:
+        if data.size()>8000000:
             QMessageBox.warning(self,'Ảnh','Ảnh quá lớn sau khi nén. Chọn ảnh nhỏ hơn.'); return
         self.pending_image=bytes(data.toBase64()).decode('ascii')
         self.attachment_preview.image=QImage(image)
@@ -1836,13 +1836,21 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
-            if len(prompt)>6000:
-                QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
+            if len(prompt)>500000:
+                QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 500000 ký tự.');return
             self.sent_prompt=prompt;self.input.clear();self.cloud_chat_task(prompt);return
         if self.pending_image and self.chat_mode.currentIndex() not in (3,5):
-            if not CHAT_MODELS[model].get('vision'):
-                if QMessageBox.question(self,'Đọc ảnh','Ảnh cần model vision. Chuyển sang Gemma3 4B để đọc ảnh?') != QMessageBox.StandardButton.Yes:return
-                self.select_ai('gemma3:4b'); model='gemma3:4b'
+            from assistant.vision_support import local_supports_vision,installed_vision_model
+            if not local_supports_vision(self.cfg['ollama_host'],model):
+                # Ask Ollama which installed model reads images instead of assuming Gemma3.
+                candidate=installed_vision_model(self.cfg['ollama_host'])
+                if candidate and candidate in CHAT_MODELS:
+                    if QMessageBox.question(self,'Đọc ảnh',f'{model} không đọc được ảnh. Chuyển sang {candidate} (đã cài, đọc được ảnh)?') != QMessageBox.StandardButton.Yes:return
+                    self.select_ai(candidate); model=candidate
+                else:
+                    if QMessageBox.question(self,'Đọc ảnh',f'{model} không đọc được ảnh và máy chưa có AI trên máy nào đọc được ảnh. '
+                                            'Chuyển sang Gemma3 4B (cần tải về) hoặc chọn AI trực tuyến để đọc ảnh?') != QMessageBox.StandardButton.Yes:return
+                    self.select_ai('gemma3:4b'); model='gemma3:4b'
             if self.chat_mode.currentIndex() not in (4,5):self.chat_mode.setCurrentIndex(0)
         if not CHAT_MODELS[model]['tools'] and self.chat_mode.currentIndex() not in (0,4,5):
             self.chat_mode.setCurrentIndex(0)
@@ -1865,7 +1873,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if needs_image_model and not self.manager.enabled('media'):
             self.download('media'); return
         if len(prompt) > 6000:
-            QMessageBox.information(self, 'Tin nhắn quá dài', 'Tin nhắn tối đa 6000 ký tự. Nội dung của bạn vẫn được giữ lại.'); return
+            QMessageBox.information(self, 'Tin nhắn quá dài', 'Tin nhắn tối đa 500000 ký tự. Nội dung của bạn vẫn được giữ lại.'); return
         previous=self.store.load(self.cid).get('account_username')
         owner=self.server_session['username'] if self.server_session else GUEST_OWNER
         if previous and previous!=owner:
@@ -1884,8 +1892,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         provider=REMOTE_MODELS.get(model)
         if provider=='cloudflare' or not provider:
             QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare chưa hỗ trợ lập kế hoạch điều khiển app.');return
-        if prompt is not None and len(prompt)>6000:
-            QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
+        if prompt is not None and len(prompt)>500000:
+            QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 500000 ký tự.');return
         if prompt is not None:self.begin_app_request()
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
         attachment_paths=list(self.pending_documents) if prompt is not None else []
@@ -2260,11 +2268,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.online_tools_check=QCheckBox('Cho phép dùng công cụ API trực tuyến');self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
         self.online_upload_check=QCheckBox('Cho phép gửi ảnh trang tài liệu tới dịch vụ AI');self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
         network_form.addRow(self.online_tools_check);network_form.addRow(self.online_upload_check)
-        field=QComboBox();field.addItems(['deepseek_flash']);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
+        field=QComboBox();field.addItems(['deepseek_flash','nvidia','gemini','openai','groq']+[x['id'] for x in self.cfg.get('custom_ai',[]) if isinstance(x,dict) and x.get('id')]);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
         self.settings_fields['online_document_provider']=field;network_form.addRow('API đọc trang PDF',field)
         field=QSpinBox();field.setRange(0,1000000);field.setSpecialValueText('Không giới hạn');field.setValue(self.cfg.get('online_document_pages',0))
         self.settings_fields['online_document_pages']=field;network_form.addRow('Số trang nhận dạng tối đa',field)
-        note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Chỉ dùng DeepSeek Flash với key DeepSeek trên server; không chạy Foxit OCR. Đặt số trang bằng 0 để đọc lần lượt không giới hạn tổng số trang. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
+        note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Dùng AI trực tuyến đã chọn (DeepSeek, NVIDIA, Gemini, OpenAI, Groq hoặc AI bổ sung) với key trên server; không chạy Foxit OCR. Đặt số trang bằng 0 để đọc lần lượt không giới hạn tổng số trang. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
         group_layout.addWidget(network_group)
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
         self.ai_tools_auto_check=QCheckBox('AI tự thực hiện các công cụ trong phạm vi đã cấp quyền, không hỏi lại từng bước');self.ai_tools_auto_check.setChecked(self.cfg.get('ai_tools_auto_execute',False))

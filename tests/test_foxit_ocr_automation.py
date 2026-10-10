@@ -210,8 +210,8 @@ class TestReadLocalFoxitFallback(unittest.TestCase):
         from assistant import documents
 
         with tempfile.TemporaryDirectory() as tmp:
-            p = Path(tmp) / "data.txt"
-            p.write_bytes(b"x" * (documents.MAX_BYTES + 1))
+            # Size caps were removed on request; a missing file is the non-OCR error now.
+            p = Path(tmp) / "missing.txt"
             with self.assertRaises(ValueError):
                 documents.read_local(str(p), foxit_ocr=True)
 

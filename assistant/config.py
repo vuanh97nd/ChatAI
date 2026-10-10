@@ -43,7 +43,7 @@ def validate_config(cfg):
         cfg['online_document_provider']='deepseek_flash'
         cfg['online_document_revision']=2
     cfg.setdefault('online_document_pages',0)
-    if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia'):raise ValueError('API đọc PDF không hợp lệ.')
+    if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia','openai','groq') and not str(cfg['online_document_provider']).startswith('ai_'):raise ValueError('API đọc PDF không hợp lệ.')
     if type(cfg['online_document_pages']) is not int or not 0<=cfg['online_document_pages']<=1000000:raise ValueError('Số trang trực tuyến phải từ 0 đến 1000000; 0 là không giới hạn.')
 
     if cfg['machine_profile'] not in ('weak','medium','high'):raise ValueError('Cấu hình máy không hợp lệ.')
@@ -84,8 +84,8 @@ def validate_config(cfg):
             raise ValueError("Model không có trong danh mục local hỗ trợ.")
     if not 1024 <= cfg["num_ctx"] <= 32768:
         raise ValueError("num_ctx phải từ 1024 đến 32768.")
-    if not 1 <= cfg["max_rounds"] <= 20:
-        raise ValueError("max_rounds phải từ 1 đến 20.")
+    if not 1 <= cfg["max_rounds"] <= 1000:
+        raise ValueError("max_rounds phải từ 1 đến 1000.")
     if not 128 <= cfg.get('num_predict',2048) <= 8192 or not 0 <= cfg.get('temperature',.2) <= 2:
         raise ValueError('Token hoặc độ sáng tạo ngoài giới hạn.')
     if not 12 <= cfg.get('font_size',16) <= 22:

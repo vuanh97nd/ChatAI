@@ -14,6 +14,39 @@ from .experience import task_record, repeated_failure, select_cards
 from .collaboration import collaboration_intent, collect_artifacts, existing_artifacts, choose_coder, handoff_instruction, refresh_artifacts
 
 
+def _textual_tool_call(text, schemas):
+    """A tool call written as JSON text ({"name":..,"arguments":..}, {"tool":..}, or
+    {"function":{...}}), possibly fenced. Returned only when the whole reply is that call
+    and the name is one of the offered tools."""
+    import json as _json
+    import re as _re
+    body = (text or '').strip()
+    fenced = _re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```', body, _re.I)
+    if fenced:
+        body = fenced.group(1).strip()
+    if not body.startswith('{'):
+        return None
+    try:
+        value = _json.loads(body)
+    except ValueError:
+        return None
+    if isinstance(value, dict) and isinstance(value.get('function'), dict):
+        value = value['function']
+    name = value.get('name') or value.get('tool') if isinstance(value, dict) else None
+    names = {(s.get('function') or s).get('name') for s in schemas if isinstance(s, dict)}
+    if not isinstance(name, str) or name not in names:
+        return None
+    arguments = value.get('arguments', value.get('parameters', {}))
+    if isinstance(arguments, str):
+        try:
+            arguments = _json.loads(arguments)
+        except ValueError:
+            return None
+    if not isinstance(arguments, dict):
+        return None
+    return {'function': {'name': name, 'arguments': arguments}}
+
+
 def context_cost(messages):
     # Payload ảnh base64 không phải văn bản token; dự trù một khoản cho encoder ảnh.
     return sum(len(dumps({k:v for k,v in m.items() if k!='images'}))+2000*len(m.get('images',[])) for m in messages)
@@ -76,17 +109,18 @@ class Agent:
         if model not in CHAT_MODELS:
             raise ValueError("Model không được phép.")
         if not prompt.strip() or len(prompt) > 6000:
-            raise ValueError("Tin nhắn phải có nội dung và tối đa 6000 ký tự.")
+            raise ValueError("Tin nhắn phải có nội dung và tối đa 500000 ký tự.")
         if self.schemas and not CHAT_MODELS[model]['tools'] and not expert_mode:
             raise ValueError('Model này chỉ bật Chat nhanh trong bản ứng dụng hiện tại.')
         state['windows_readiness_reported']=False
         message={"role":"user","content":prompt}
         if images:
             import base64
-            if (not CHAT_MODELS[model].get('vision') or self.schemas) and not expert_mode:
-                raise ValueError('Ảnh cần model vision ở chế độ Chat nhanh.')
-            if len(images)>1 or any(not isinstance(x,str) or len(x)>2000000 for x in images):
-                raise ValueError('Mỗi lượt tối đa một ảnh, không quá1.5MB.')
+            from .vision_support import local_supports_vision
+            if not local_supports_vision(self.cfg.get('ollama_host','http://127.0.0.1:11434'),model) and not expert_mode:
+                raise ValueError(f'{model} không đọc được ảnh (Ollama không báo khả năng vision). Chọn AI đọc được ảnh.')
+            if any(not isinstance(x,str) for x in images):
+                raise ValueError('Ảnh không hợp lệ.')
             for value in images:
                 raw=base64.b64decode(value,validate=True)
                 if not (raw.startswith(b'\xff\xd8\xff') or raw.startswith(b'\x89PNG\r\n\x1a\n')):
@@ -236,7 +270,7 @@ class Agent:
                 plan['artifacts']=existing_artifacts(state,self.cfg['roots'])
                 if plan['artifacts']:plan['media_status']='existing'
             current_user=next((m for m in reversed(state['messages']) if m['role']=='user'),{})
-            if not state.get('expert_mode') and plan['enabled'] and not plan['media_tool'] and current_user.get('images') and CHAT_MODELS[state['model']].get('vision'):
+            if not state.get('expert_mode') and plan['enabled'] and not plan['media_tool'] and current_user.get('images') and __import__('assistant.vision_support',fromlist=['x']).local_supports_vision(self.cfg.get('ollama_host','http://127.0.0.1:11434'),state['model']):
                 plan.update(stage='vision',artifacts=[],media_status='uploaded_image_description_only')
             state['collaboration']=plan
             self.save(state)
@@ -588,6 +622,10 @@ class Agent:
                     close_stream=getattr(stream,"close",None)
                     if close_stream:close_stream()
                 message = {"role": "assistant", "content": "".join(pieces)}
+                if not calls and schemas:
+                    # Local models without native tool calling often write the call as JSON text.
+                    textual=_textual_tool_call(message["content"],schemas)
+                    if textual:calls=[textual];message["content"]=""
                 if calls:
                     message["tool_calls"] = calls
                     if internal_stage:message['content']=''

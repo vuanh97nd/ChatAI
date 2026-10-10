@@ -31,13 +31,13 @@ class PDFSource:
             if len(query)>200:raise ValueError('query tối đa 200 ký tự.')
             return {'action':name,'path':str(path),'sha256':fingerprint(path),'start':start,
                     'page':int(page) if page else None,'query':query or None,
-                    'notice':'Đọc tối đa 8000 ký tự PDF tại vị trí start, trang page hoặc chỗ có query và đưa vào hội thoại AI.'}
+                    'notice':'Đọc 20000 ký tự PDF mỗi lần (đọc tiếp đến hết bằng next_start) tại vị trí start, trang page hoặc chỗ có query và đưa vào hội thoại AI.'}
         app=self.windows.allowed_path(args['app'])
         if app.name.lower() not in {'foxitpdfreader.exe','foxitreader.exe','foxit reader.exe','foxitpdfeditor.exe','foxit pdf editor.exe'}:
             raise ValueError('Chọn EXE Foxit PDF Reader hoặc Foxit PDF Editor trong danh sách app được phép.')
         if name=='pdf_local_open':
             path=self.files.path(args['path'])
-            if path.suffix.lower()!='.pdf' or path.stat().st_size>20*1024**2:raise ValueError('Chỉ mở PDF tối đa 20 MiB.')
+            if path.suffix.lower()!='.pdf':raise ValueError('Chỉ mở tệp PDF.')
             return {'action':name,'app':str(app),'sha256':fingerprint(app),'path':str(path),'file_sha256':fingerprint(path),
                     'notice':'Mở PDF có sẵn bằng Foxit và đọc phần đầu vào hội thoại; không sửa bản gốc.'}
         url=public_url(args['url'])
@@ -50,7 +50,7 @@ class PDFSource:
     def read(self,path,start=0,page=None,query=None):
         from .documents import read_document_range
         try:
-            result=read_document_range(self.files,str(path),start=start,limit=8000,pdf_ocr=self.pdf_ocr,foxit_ocr=False,page=page,query=query)
+            result=read_document_range(self.files,str(path),start=start,limit=20000,pdf_ocr=self.pdf_ocr,foxit_ocr=False,page=page,query=query)
             return dict(result,read_ok=True)
         except (ValueError, RuntimeError) as error:
             return {'ok':False,'read_ok':False,'path':str(path),'content':'','coverage':'none',
@@ -77,8 +77,8 @@ class PDFSource:
         request=Request(url,headers={'User-Agent':'ChatAI-PDF/1.0','Accept':'application/pdf'})
         with build_opener(PublicRedirect()).open(request,timeout=25) as response:
             final_url=public_url(response.geturl())
-            raw=response.read(20*1024**2+1)
-        if len(raw)>20*1024**2 or not raw.startswith(b'%PDF-'):
+            raw=response.read()
+        if not raw.startswith(b'%PDF-'):
             raise ValueError('Nguồn không phải PDF hoặc vượt 20 MiB. Có thể là trang đăng nhập/CAPTCHA.')
         from pypdf import PdfReader
         document=PdfReader(io.BytesIO(raw))

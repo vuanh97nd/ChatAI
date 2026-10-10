@@ -7,14 +7,16 @@ from datetime import datetime,timezone
 
 
 def clean_records(records):
-    clean=[];remaining=300000
+    # Only the synced snapshot is bounded (server stores one conversation row up to 1.5 MB);
+    # the local document memory keeps every excerpt in full.
+    clean=[];remaining=900000
     for r in records if isinstance(records,list) else []:
         if not isinstance(r,dict) or not isinstance(r.get('text'),str):continue
         text=r['text'];file=str(r.get('file') or 'Tài liệu')[:240]
         identifier=r.get('id') or hashlib.sha256(file.encode()).hexdigest()
         if not isinstance(identifier,str) or not re.fullmatch(r'[a-f0-9]{64}',identifier):continue
         encoded=text.encode('utf-8')[:remaining]
-        text=encoded.decode('utf-8',errors='ignore')[:240000]
+        text=encoded.decode('utf-8',errors='ignore')
         remaining-=len(text.encode())
         if not text.strip():continue
         truncated=text!=r['text']
@@ -22,7 +24,7 @@ def clean_records(records):
                       'coverage':'partial' if truncated else str(r.get('coverage','partial'))[:40],
                       'coverage_note':str(r.get('coverage_note',''))[:2000]+(' · Bộ nhớ chỉ lưu một phần văn bản.' if truncated else ''),
                       'updated':str(r.get('updated',''))[:50]})
-        if len(clean)>=8 or remaining<=0:break
+        if remaining<=0:break
     return clean
 
 
@@ -210,7 +212,6 @@ class DocumentMemory:
                 # Keep the note short: the latest range note replaces repeated older ones.
                 note=(old.get('coverage_note','').split(' · ')[0]+' · '+note).strip(' ·')[:2000]
             if item.get('locations'):note+=' · Vị trí: '+str(item['locations'])[:1500]
-            text=text[:240000]
             if old and old['text']==text and old.get('coverage_note')==note:continue
             record={'id':identifier,'file':file,'text':text,'format':item.get('format',PureWindowsPath(file).suffix),
                     'coverage':item.get('coverage','partial' if item.get('truncated') else 'read_text'),

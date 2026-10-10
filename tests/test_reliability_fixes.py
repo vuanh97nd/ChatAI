@@ -637,3 +637,32 @@ class Bai3SecondPassTests(unittest.TestCase):
         text = provider_problem('Dịch vụ DEEPSEEK HTTP 402. Chưa xử lý được yêu cầu. Chi tiết: Insufficient Balance')
         self.assertIn('DEEPSEEK', text); self.assertIn('hết tiền', text)
         self.assertIsNone(provider_problem('Phản hồi kế hoạch không phải JSON'))
+
+
+class ProviderParityTests(unittest.TestCase):
+    def test_local_textual_tool_call_is_executed(self):
+        from assistant.agent import _textual_tool_call
+        schemas = [{'type': 'function', 'function': {'name': 'file_read'}}]
+        call = _textual_tool_call('```json\n{"name": "file_read", "arguments": {"path": "a.txt"}}\n```', schemas)
+        self.assertEqual(call, {'function': {'name': 'file_read', 'arguments': {'path': 'a.txt'}}})
+        self.assertIsNone(_textual_tool_call('Đây là câu trả lời {"name": "file_read"}', schemas))
+        self.assertIsNone(_textual_tool_call('{"name": "rm_rf", "arguments": {}}', schemas))
+
+    def test_commands_object_without_tool_name_is_wrapped(self):
+        from assistant.online_automation import parse_plan
+        from assistant.tools import EXTRA_TOOLS
+        raw = json.dumps({'commands': json.dumps([{'command': 'gotostructures', 'args': []}])})
+        plan = parse_plan(raw, [s for _, s in EXTRA_TOOLS])
+        self.assertEqual(plan['tool'], 'plaxis_commands')
+
+    def test_vision_from_ollama_capabilities(self):
+        from assistant import vision_support
+        vision_support._CACHE.clear()
+        with patch.object(vision_support, '_show', return_value={'capabilities': ['completion', 'vision']}):
+            self.assertTrue(vision_support.local_supports_vision('http://h', 'llava-new:7b'))
+        with patch.object(vision_support, '_show', return_value={'capabilities': ['completion', 'tools']}):
+            self.assertFalse(vision_support.local_supports_vision('http://h', 'qwen2.5:3b'))
+
+    def test_provider_account_error_message(self):
+        from assistant.online_automation import provider_problem
+        self.assertIn('Khóa API', provider_problem('Dịch vụ NVIDIA HTTP 401 unauthorized'))
