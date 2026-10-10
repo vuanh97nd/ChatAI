@@ -161,3 +161,7 @@ Quyền cần thiết: Internet, Micro khi bấm nói, Camera khi quét QR, Thô
 bấm bật. Không yêu cầu đọc toàn bộ bộ nhớ máy hoặc trợ năng để điều khiển Windows.
 Chế độ khách không đăng ký nhận thông báo tài khoản. Cần thử trên Android thật:
 cấp/từ chối quyền, tài khoản khác, logout, nền/khởi động lại, tiết kiệm pin.
+
+WorkManager được cố định 0.9.0 cùng ba module nền tảng vì bản 0.9.4 có chữ ký
+Apple không khớp platform interface, làm kiểm thử Dart trên Android không biên dịch.
+Không nâng riêng một module; chạy lại analyze, test và build APK khi nâng cả bộ.
