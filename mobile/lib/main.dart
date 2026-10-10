@@ -14,7 +14,7 @@ import 'animated_logo.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.0');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.1');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
