@@ -132,6 +132,7 @@ class BillingDialog(QDialog):
     def send(self,path,body=None,background=False):
         if self.worker is not None:return False
         if not background:self.tabs.setEnabled(False);self.status.setText('Đang xử lý…')
+        self.worker_is_write=not(path.endswith('/status') or path.endswith('/get') or background)
         self.worker=BillingRequest(self.session,path,body or {},self)
         self.worker.completed.connect(self.received);self.worker.failed.connect(self.failed)
         self.worker.finished.connect(self.request_finished);self.worker.start();return True
@@ -279,11 +280,11 @@ class BillingDialog(QDialog):
             for col,value in enumerate(values):table.setItem(row,col,QTableWidgetItem(str(value)))
 
     def reject(self):
-        if self.worker is not None:
+        if self.worker is not None and getattr(self,'worker_is_write',False):
             self.status.setText('Đợi yêu cầu hoàn tất trước khi đóng.');return
         self.timer.stop();self.session.clear();super().reject()
 
     def closeEvent(self,event):
-        if self.worker is not None:
+        if self.worker is not None and getattr(self,'worker_is_write',False):
             self.status.setText('Đợi yêu cầu hiện tại hoàn tất để đóng cửa sổ.');event.ignore();return
         self.timer.stop();self.session.clear();event.accept()
