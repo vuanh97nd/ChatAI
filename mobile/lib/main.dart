@@ -18,7 +18,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.3');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.4');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -58,9 +58,7 @@ class ChatApp extends StatelessWidget {
 class StartupScreen extends StatelessWidget {
   const StartupScreen({super.key});
   @override
-  Widget build(BuildContext context) => const Scaffold(body: SafeArea(
-    child: Align(alignment: Alignment.topCenter, child: LinearProgressIndicator(minHeight: 2)),
-  ));
+  Widget build(BuildContext context) => const Scaffold(body: SizedBox.shrink());
 }
 
 class ChatWelcome extends StatelessWidget {
@@ -172,10 +170,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final raw = await storage.read(key: 'session');
       if (raw != null) {
         api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        changed(() => loading = false);
         await refresh();
       } else {
+        changed(() => loading = false);
         final status = await api.post('/api/mobile/guest/status', {'guest_token': guestToken}, authenticated: false);
-        guestRemaining = (status['remaining'] as num).toInt();
+        changed(() => guestRemaining = (status['remaining'] as num).toInt());
       }
     } catch (e) { changed(() => error = '$e'); }
     finally { changed(() => loading = false); }

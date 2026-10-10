@@ -115,7 +115,7 @@ void main() {
     await tester.pumpWidget(testApp(home: const StartupScreen()));
     expect(find.byType(Image), findsNothing);
     expect(find.text('Đang khởi động…'), findsNothing);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsNothing);
     await tester.pumpWidget(testApp(home: const SizedBox()));
   });
   testWidgets('first screen offers NVIDIA, login and required email registration', (tester) async {
