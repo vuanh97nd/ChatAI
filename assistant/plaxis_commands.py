@@ -52,8 +52,9 @@ def commands_from_json(raw):
     try:rows=json.loads(raw)
     except json.JSONDecodeError as error:
         # '..."mat"}]}]' instead of '..."mat"]}]': only the closing tail is wrong.
-        from .online_automation import _rebalanced_tail
-        rows=_rebalanced_tail(raw)
+        from .online_automation import _rebalanced_tail,fix_mismatched_closers
+        rows=fix_mismatched_closers(raw)
+        if rows is None:rows=_rebalanced_tail(raw)
         if rows is None:
             # A bare character offset is not something a model can act on; show the spot.
             near=raw[max(0,error.pos-60):error.pos+20]
@@ -549,6 +550,14 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     'set [{"ref":"Soil_1_1.Material"},{"ref":"g.InitialPhase"},{"ref":"clay"}]; tên khối đất đọc từ g.Soils, '
                     'không dùng Polygon_x. Nếu đang dựng hình: gán qua thuộc tính .Soil của polygon. Cách chắc nhất: '
                     'gotosoil/gotostructures, gán vật liệu cho mọi vùng rồi mới chia lưới lại.')
+            if row['command']=='setmaterial' and 'Invalid parameters' in str(exc):
+                try:target=_label(resolve(row.get('args',[None])[0]))
+                except Exception:target=''
+                if re.search(r'<(?:Line|Point|Polygon)\b',target):
+                    # Seen: the wall material was assigned to the geometry line 'wall_line'.
+                    failure['object_hint']=('Đối tượng nhận vật liệu là hình học ('+target.split(' <')[0]+'), không phải phần tử. '
+                        'Gán cho phần tử nằm trên đó: tấm {"ref":"g.Plates","index":i}, neo {"ref":"g.FixedEndAnchors","index":i} '
+                        'hoặc {"ref":"g.NodeToNodeAnchors","index":i}, đất của polygon {"ref":"g.Polygon_x.Soil"}. Đọc model_state để biết chỉ số.')
             if 'Invalid parameters' in str(exc):
                 # PLAXIS validates arguments before acting, so nothing changed; give the
                 # accepted forms right away instead of letting the model guess for 8 rounds.

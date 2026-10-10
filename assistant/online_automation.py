@@ -12,6 +12,32 @@ PLAXIS_AUTOMATION_ROUND_LIMIT = 1000
 GEOSLOPE_AUTOMATION_ROUND_LIMIT = 1000
 
 
+def fix_mismatched_closers(text):
+    """Swap closing brackets that do not match what is open, anywhere in the text
+    ('"Wall"}],{' -> '"Wall"]},{', written by NVIDIA). Strings are left untouched and the
+    result is returned only if it parses, so no content is invented."""
+    if not isinstance(text,str):return None
+    out=[];stack=[];quoted=False;escaped=False;changed=False
+    for char in text:
+        if quoted:
+            out.append(char)
+            if escaped:escaped=False
+            elif char=='\\':escaped=True
+            elif char=='"':quoted=False
+            continue
+        if char=='"':quoted=True
+        elif char in '{[':stack.append('}' if char=='{' else ']')
+        elif char in '}]':
+            if not stack:return None
+            expected=stack.pop()
+            if char!=expected:char=expected;changed=True
+        out.append(char)
+    if not changed or quoted or stack:return None
+    fixed=''.join(out)
+    try:return json.loads(fixed)
+    except json.JSONDecodeError:return None
+
+
 def _rebalanced_tail(text):
     """Fix only the closing brackets at the very end ('}}]' vs '}}}]' vs '}}]}');
     everything before the tail must already be valid, so no content is invented."""
@@ -68,6 +94,8 @@ def plan_json(raw, label):
     if fenced:text=fenced.group(1).strip()
     try:return json.loads(text)
     except json.JSONDecodeError as error:
+        salvaged=fix_mismatched_closers(text)
+        if isinstance(salvaged,dict):return salvaged
         salvaged=_single_plan(text)
         if salvaged is not None:return salvaged
         # '..."commands": "[ ... ]}}' : the nested string lost its closing quote right

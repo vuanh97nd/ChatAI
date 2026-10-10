@@ -666,3 +666,30 @@ class ProviderParityTests(unittest.TestCase):
     def test_provider_account_error_message(self):
         from assistant.online_automation import provider_problem
         self.assertIn('Khóa API', provider_problem('Dịch vụ NVIDIA HTTP 401 unauthorized'))
+
+
+class MidStringBracketTests(unittest.TestCase):
+    def test_swapped_closers_inside_commands_are_fixed(self):
+        from assistant.plaxis_commands import commands_from_json
+        raw = ('[{"command":"platemat","args":[],"result":"wall_mat"},'
+               '{"command":"setproperties","args":[{"ref":"wall_mat"},"Identification","Wall"}],'
+               '{"command":"setmaterial","args":[{"ref":"g.Plates","index":0},{"ref":"wall_mat"}]}]')
+        rows = commands_from_json(raw)
+        self.assertEqual([r['command'] for r in rows], ['platemat', 'setproperties', 'setmaterial'])
+        self.assertEqual(rows[1]['args'][-1], 'Wall')
+
+    def test_brackets_inside_strings_are_not_touched(self):
+        from assistant.online_automation import fix_mismatched_closers
+        self.assertEqual(fix_mismatched_closers('{"a":["x}]y"}]'), {'a': ['x}]y']})
+        self.assertIsNone(fix_mismatched_closers('{"a":[1]}'))  # nothing to fix
+
+    def test_material_on_geometry_line_gets_object_hint(self):
+        from unittest.mock import Mock
+        from assistant.plaxis_commands import execute_commands
+        from assistant import windows_apps
+        windows_apps.resume_automation()
+        line = Mock(); line.__str__ = lambda self: 'Line_1 <Line {ABC}>'; line.Name.value = 'Line_1'
+        g = Mock(); g.Line_1 = line; g.setmaterial.side_effect = RuntimeError('Unsuccessful command:\nInvalid parameters.')
+        g.commands.return_value = "setmaterial (sm)\n  <{1,...}: Feature'>' Material'"
+        result = execute_commands(Mock(), g, [{'command': 'setmaterial', 'args': [{'ref': 'Line_1'}, 1]}])
+        self.assertIn('g.Plates', result['object_hint'])
