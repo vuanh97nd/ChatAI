@@ -35,12 +35,16 @@ void main() {
     expect(find.textContaining('Dùng thử NVIDIA · còn'), findsNothing);
     for (var i = 1; i <= 3; i++) {
       await tester.enterText(find.byType(TextField), 'Question $i');
-      await tester.tap(find.byIcon(Icons.send)); await tester.pumpAndSettle();
+      await tester.pump();
+      expect(find.byTooltip('Gửi tin nhắn'), findsOneWidget);
+      await tester.tap(find.byTooltip('Gửi tin nhắn')); await tester.pumpAndSettle();
       expect(turns, i);
       expect(find.byType(LoginPage), findsNothing);
     }
     await tester.enterText(find.byType(TextField), 'Question 4');
-    await tester.tap(find.byIcon(Icons.send)); await tester.pumpAndSettle();
+    await tester.pump();
+    expect(find.byTooltip('Gửi tin nhắn'), findsOneWidget);
+    await tester.tap(find.byTooltip('Gửi tin nhắn')); await tester.pumpAndSettle();
     expect(turns, 3);
     expect(find.byType(LoginPage), findsOneWidget);
     await tester.pumpWidget(testApp(home: SizedBox()));
