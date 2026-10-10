@@ -2838,7 +2838,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.remove_dynamic_page('memory_page_index')
             self.add_scroll_page(dialog,'Bộ nhớ cá nhân')
             self.memory_page_index=self.tabs.count()-1
-            self.tabs.setCurrentIndex(self.memory_page_index)
+            self.settings_navigation_guard=True;self.tabs.setCurrentIndex(self.memory_page_index);self.settings_navigation_guard=False
         self.work(task,show)
 
     def register_dialog(self):
@@ -3292,7 +3292,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def _nav_model_download():
             _clear_section_buttons()
             self.settings_extra_nav_buttons['model_download'].setChecked(True)
-            self.tabs.setCurrentIndex(1)
+            self.settings_navigation_guard=True;self.tabs.setCurrentIndex(1);self.settings_navigation_guard=False
         memory_btn=self.button(layout,'Bộ nhớ cá nhân',_nav_memory);memory_btn.setCheckable(True)
         model_btn=self.button(layout,'Tải mô hình',_nav_model_download);model_btn.setCheckable(True)
         self.settings_extra_nav_buttons={'memory':memory_btn,'model_download':model_btn}
