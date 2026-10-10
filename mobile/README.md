@@ -188,3 +188,25 @@ mới, còn mục Chat quay lại phiên hiện tại. Admin có mục Quản tr
 Khi bàn phím mở hoặc vùng nội dung quá thấp, lời chào và logo giữa màn hình ẩn
 để ưu tiên ô nhập. Chưa có chức năng đính kèm file trên Android, nên không đặt
 nút đính kèm chưa hoạt động trong ô nhập.
+
+## Android 0.9.3 (build 16)
+
+Thanh đầu chat giữ menu ☰ và tài khoản, bỏ logo/tên lặp. Menu rộng 80% màn hình.
+Các trang chức năng có mũi tên quay lại và giữ bản nháp chat; đăng nhập/đăng ký
+cảnh báo trước khi bỏ thông tin chưa gửi. Chat mới và mở hội thoại khác hỏi nếu
+còn bản nháp/file chưa gửi.
+
+Menu có công tắc **Chế độ tối**: tắt để dùng chế độ sáng, bật để dùng chế độ tối.
+Lựa chọn lưu trên thiết bị, dùng lại lần mở sau; lần đầu theo giao diện hệ thống.
+
+Nút **+** cạnh bộ chọn AI mở bộ chọn file Android sau khi đăng nhập. Hỗ trợ
+TXT/MD/CSV/JSON UTF-8, DOCX, XLSX và PNG/JPEG. Hiện giới hạn 3 file/lượt,
+8 MB/file và tổng văn bản 35.000 ký tự để vừa giới hạn lưu hội thoại của server.
+Không tự cắt nội dung vượt giới hạn. XLSX ghi tên sheet, địa chỉ ô và đánh dấu
+công thức chỉ dùng giá trị cache, chưa tính lại. Không đọc ảnh nhúng trong DOCX/XLSX.
+PDF (kể cả scan), DXF và các định dạng khác chưa hỗ trợ trên Android.
+
+Văn bản trích xuất được gửi cho AI được chọn, dưới nhãn dữ liệu tham khảo, và
+lưu trong hội thoại. Ảnh được gửi dạng dữ liệu ảnh; cần mô hình hỗ trợ đọc ảnh.
+Ảnh gốc chưa lưu để mở lại hoặc gửi lại trong các lượt sau. File chỉ gửi khi bấm
+Gửi, có thể gỡ bằng nút x trên chip tên file; không tự gửi khi chọn file.

@@ -70,14 +70,32 @@ void main() {
     await tester.scrollUntilVisible(find.text('Bộ nhớ'), -160, scrollable: drawerScroll);
     await tester.tap(find.text('Bộ nhớ')); await tester.pumpAndSettle();
     expect(find.text('Test memory'), findsOneWidget);
+    await tester.tap(find.byType(BackButton)); await tester.pumpAndSettle();
+    expect(find.byType(ChatWelcome), findsOneWidget);
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Thông báo'), -160, scrollable: drawerScroll);
     await tester.tap(find.text('Thông báo')); await tester.pumpAndSettle();
     expect(find.text('Test notice'), findsOneWidget);
+    await tester.tap(find.byType(BackButton)); await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Chat'), -160, scrollable: drawerScroll);
     await tester.tap(find.text('Chat')); await tester.pumpAndSettle();
     expect(find.byType(ChatWelcome), findsOneWidget);
+    await tester.pumpWidget(testApp(home: const SizedBox()));
+  });
+  testWidgets('login back arrow returns to chat and keeps its draft', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final api = ChatApi(client: MockClient((request) async => http.Response(
+      '{"success":true,"remaining":3}', 200, headers: {'content-type': 'application/json'})));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Keep this draft');
+    await tester.tap(find.text('Đăng nhập')); await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
+    await tester.tap(find.byTooltip('Quay lại')); await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsNothing);
+    expect(find.text('Keep this draft'), findsOneWidget);
+    expect(find.byTooltip('Đính kèm file'), findsOneWidget);
     await tester.pumpWidget(testApp(home: const SizedBox()));
   });
   testWidgets('empty chat welcomes users with the shared logo without a login form', (tester) async {
@@ -103,9 +121,9 @@ void main() {
   testWidgets('first screen offers NVIDIA, login and required email registration', (tester) async {
     final api = ChatApi(); addTearDown(api.close);
     await tester.pumpWidget(testApp(home: LoginPage(api: api, device: 'test', onLogin: (_) async {})));
-    expect(find.text('AI trực tuyến · NVIDIA mặc định'), findsOneWidget);
+    expect(find.text('AI trực tuyến · NVIDIA mặc định'), findsNothing);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
-    expect(find.text('Đăng nhập'), findsOneWidget);
+    expect(find.text('Đăng nhập'), findsNWidgets(2));
     await tester.tap(find.text('Tạo tài khoản')); await tester.pumpAndSettle();
     expect(find.text('Email bắt buộc'), findsOneWidget);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');

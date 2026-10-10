@@ -9,6 +9,21 @@ http.Response jsonResponse(String body, int status) => http.Response.bytes(
     utf8.encode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
 void main() {
+  test('attachment image reaches the selected provider with the user question', () async {
+    final api = ChatApi(client: MockClient((request) async {
+      final body = jsonDecode(request.body);
+      final content = (body['messages'] as List).last['content'] as List;
+      expect(request.url.path, '/api/provider/model');
+      expect(body['provider'], 'nvidia');
+      expect(content.first['text'], 'Read this');
+      expect(content.last['image_url']['url'], 'data:image/png;base64,test');
+      return jsonResponse('{"success":true,"answer":"Done"}', 200);
+    }));
+    addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
+    expect(await api.answer('nvidia', [{'role': 'user', 'content': 'Read this'}], [],
+      imageUrls: ['data:image/png;base64,test']), 'Done');
+  });
+
   test('guest chat uses public trial endpoint with persistent request ID', () async {
     final api = ChatApi(client: MockClient((request) async {
       final body = jsonDecode(request.body);
