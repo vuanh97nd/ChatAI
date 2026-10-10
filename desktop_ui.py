@@ -3149,7 +3149,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for field in self.api_key_fields.values():field.clear()
 
     def check_settings_navigation(self,index):
-        if self.settings_navigation_guard:return
+        if self.settings_navigation_guard:self.settings_last_tab=index;return
         previous=self.settings_last_tab
         if previous==3 and index!=3 and self.settings_dirty():
             self.settings_navigation_guard=True;self.tabs.setCurrentIndex(3);self.settings_navigation_guard=False
