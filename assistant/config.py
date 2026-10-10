@@ -52,8 +52,8 @@ def validate_config(cfg):
     cfg.setdefault("theme","dark")
     if cfg["theme"] not in ("light","dark"):raise ValueError("Giao diện chỉ hỗ trợ Sáng hoặc Tối.")
     if cfg.get('api_provider_revision') != 2:
-        cfg['chat_provider']='deepseek_flash';cfg['api_provider_revision']=2
-    cfg.setdefault("chat_provider","deepseek_flash")
+        cfg['api_provider_revision']=2
+    cfg.setdefault("chat_provider","nvidia")
     cfg.setdefault('nvidia_model','nvidia/llama-3.1-nemotron-ultra-253b-v1')
     if cfg.get('nvidia_model')=='meta/llama-3.3-70b-instruct':cfg['nvidia_model']='nvidia/llama-3.1-nemotron-ultra-253b-v1'
     cfg.setdefault('deepseek_model','deepseek-flash')

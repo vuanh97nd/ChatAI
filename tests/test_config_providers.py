@@ -26,6 +26,24 @@ class ConfigProviderTests(unittest.TestCase):
         self.assertEqual(config.load_config()['chat_provider'], 'groq')
         self.assertTrue(list((self.root / 'data/backups').glob('config-*.json')))
 
+    def test_fresh_install_defaults_to_online_nvidia(self):
+        self.assertEqual(config.load_config()['chat_provider'], 'nvidia')
+        self.assertIn('nvidia', REMOTE_MODELS.values())
+
+    def test_missing_provider_defaults_to_nvidia(self):
+        cfg = dict(self.original)
+        cfg.pop('chat_provider')
+        cfg.pop('api_provider_revision')
+        self.assertEqual(config.validate_config(cfg)['chat_provider'], 'nvidia')
+
+    def test_legacy_revision_preserves_existing_provider_choice(self):
+        for provider in ('local', 'deepseek_flash', 'groq', 'nvidia'):
+            with self.subTest(provider=provider):
+                cfg = dict(self.original, chat_provider=provider)
+                cfg.pop('api_provider_revision')
+                config.save_config(cfg)
+                self.assertEqual(config.load_config()['chat_provider'], provider)
+
     def test_all_builtin_online_choices_can_be_saved(self):
         for provider in set(REMOTE_MODELS.values()):
             if provider.startswith('ai_'):
