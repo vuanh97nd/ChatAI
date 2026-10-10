@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'voice_chat.dart';
 import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
@@ -146,6 +147,22 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (!voice.speaking) readingMessage = null;
     });
   }
+  Future<void> openVoiceChat() async {
+    if (api.session == null) { await openLogin(); return; }
+    if (input.text.trim().isNotEmpty || attachments.isNotEmpty) return;
+    await voice.stop();
+    if (!mounted) return;
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => VoiceChatPage(
+      answer: (words) async {
+        input.text = words;
+        final count = messages.length;
+        await send();
+        if (messages.length <= count || messages.last['role'] != 'assistant') {
+          throw Exception(error ?? 'Chưa nhận được câu trả lời.');
+        }
+        return messages.last['content']!;
+      })));
+  }
   Future<void> dictate() async {
     if (voice.listening || voice.starting) { await voice.stop(); return; }
     changed(() => error = null);
@@ -154,7 +171,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     await voice.start((words) {
       if (!mounted) return;
       final text = prefix.isEmpty ? words : '$prefix $words';
-      input.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+      changed(() => input.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length)));
     });
   }
   Future<void> readMessage(int index) async {
@@ -411,7 +428,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow,
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(28)),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: input, minLines: 1, maxLines: 4, maxLength: 12000,
+        TextField(controller: input, onChanged: (_) => changed(() {}), minLines: 1, maxLines: 4, maxLength: 12000,
           decoration: const InputDecoration(hintText: 'Hỏi Chat AI…', counterText: '',
             border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none)),
         if (attachments.isNotEmpty) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -433,9 +450,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             onPressed: sending || working ? null : dictate,
             icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
             color: voice.listening ? Colors.redAccent : null),
-          IconButton.filled(tooltip: 'Gửi tin nhắn',
-            onPressed: sending || working || voice.starting ? null : send,
-            icon: const Icon(Icons.send)),
+          IconButton.filled(tooltip: input.text.trim().isEmpty && attachments.isEmpty ? 'Trò chuyện giọng nói' : 'Gửi tin nhắn',
+            onPressed: sending || working || voice.starting ? null : input.text.trim().isEmpty && attachments.isEmpty ? openVoiceChat : send,
+            icon: Icon(input.text.trim().isEmpty && attachments.isEmpty ? Icons.graphic_eq : Icons.send)),
         ]),
       ]))),
   ]);
