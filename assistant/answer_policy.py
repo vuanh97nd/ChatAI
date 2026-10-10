@@ -76,7 +76,9 @@ def evidence_record(state,web_allowed=False):
         'identity_verified':False,'identity_note':'Chưa có bộ kiểm tra độc lập xác nhận mã/năm/cơ quan ban hành; phải đối chiếu nội dung nguồn.',
         'urls':sorted(urls),'successful_tools':[r['name'] for r in tools if r['result'].get('ok') is True],
         'has_document_text':bool(pages or attached or rag or prepared),
-        'memory_saved':state.get('memory_write_status')=='saved'}
+        'memory_saved':state.get('memory_write_status') in ('saved','local_saved'),
+        'memory_location':'local' if state.get('memory_write_status')=='local_saved' else None,
+        'memory_server_saved':False}
 
 
 def select_examples(route,record,max_chars=900):
@@ -104,6 +106,7 @@ def guard_answer(text,state,web_allowed=False,category='knowledge'):
     tested=any(r['name']=='python_run' and r['result'].get('ok') is True and
         (r['result'].get('tests_passed') is True or re.search(r'\b\d+ passed\b|Ran \d+ tests[\s\S]*\bOK\b',str(r['result'].get('stdout','')))) for r in tools)
     rules=[
+        (r'(?:tôi\s+)?đã\s+(?:lưu|đồng bộ)\s+(?:ghi nhớ|ký ức|bộ nhớ)[^.!?\n]*?(?:server|máy chủ|đám mây)',record.get('memory_server_saved',False),'Ghi nhớ mới chỉ được lưu trên máy; chưa có xác nhận lưu lên server.' if record['memory_saved'] else 'Chưa có xác nhận lưu ghi nhớ lên server.'),
         (r'(?:tôi\s+)?đã\s+(?:kiểm thử|chạy thử|test)\b',tested,'Chưa có kết quả công cụ xác nhận đã kiểm thử.'),
         (r'(?:tôi\s+)?đã\s+(?:sửa|ghi|xóa|di chuyển|tạo)\s+(?:file|tệp|ô|sheet|tài liệu)\b',bool(success & {'excel_edit_cell','file_write','file_edit','file_delete','file_move','office_create','word_replace','image_generate','video_generate'}),'Chưa có kết quả công cụ xác nhận thao tác file đã hoàn tất.'),
         (r'(?:tôi\s+)?đã\s+(?:tìm kiếm|tra cứu|tìm|tra)\s+(?:trên\s+)?(?:web|mạng|internet)\b',bool(state.get('web_results') or success & {'web_search','web_read','python_search','browser_search','browser_run'}),'Chưa có kết quả tra cứu mạng cho lượt này.'),

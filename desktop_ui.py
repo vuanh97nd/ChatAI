@@ -272,6 +272,11 @@ class LocalOllamaClient:
             client=self._client
         return getattr(client,name)
 
+    def close(self):
+        # Each cancellable turn owns this client; closing it cannot affect a new turn.
+        with self._lock:client=self._client
+        if client is not None:client._client.close()
+
 
 def prepare_context(progress=print):
     progress('Đang đọc cấu hình và mở lịch sử…')
@@ -2021,6 +2026,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 if state.get('account_username') and state['account_username']!=owner:
                     raise RuntimeError('Hội thoại thuộc tài khoản khác. Hãy tạo cuộc trò chuyện mới.')
                 audit = lambda action, details: self.store.audit(cid, action, details)
+                from assistant.cancellable_client import CancellableClient
+                turn_client=CancellableClient(LocalOllamaClient(self.cfg['ollama_host'],timeout=180),
+                    self.worker.stop_requested,ChatCancelled,on_status=lambda text:emit({'type':'status','text':text}))
                 if self.cfg.get('windows_apps_enabled'):
                     from assistant.automation_setup import ensure_dependencies
                     ensure_dependencies(self.cfg,ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text}),audit=audit)
@@ -2030,7 +2038,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     from assistant.excel import ExcelTools
                     from assistant.capabilities import Capabilities
                     excel = ExcelTools(self.cfg['roots'], ROOT / 'data/backups', audit)
-                    caps = Capabilities(self.manager, excel, self.client, self.cfg, ROOT, audit, owner=owner,
+                    caps = Capabilities(self.manager, excel, turn_client, self.cfg, ROOT, audit, owner=owner,
                         storage_root=Path(self.store.path).parent,
                         allow_web=requested_web if prompt is not None else state.get('ui_mode') in (4,5) and bool(state.get('web_search_requested')),
                         on_status=lambda message:self.worker.event.emit({'type':'status','text':message}))
@@ -2042,17 +2050,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                     else:
                         caps.schemas = [schema for schema in caps.schemas if schema['function']['name'] in {'video_from_images','video_generate'}]
                         if not caps.schemas:raise RuntimeError('Chưa có công cụ video cơ bản hoặc nâng cao.')
-                agent = Agent(self.client, excel, self.cfg, self.store, cid, caps, tools_enabled=use_tools)
+                agent = Agent(turn_client, excel, self.cfg, self.store, cid, caps, tools_enabled=use_tools)
                 agent.web_enabled=True  # Built-in Bing; actual permission remains gated by the web button.
                 if session and self.manager.ready('rag'):
                     if caps:agent.document_search=caps.rag
                     else:
                         from assistant.files import FileTools
                         from assistant.rag import RagTools
-                        agent.document_search=RagTools(FileTools(self.cfg['roots'],ROOT/'data/backups',audit),self.client,ROOT,audit,owner=session['username'],storage_root=Path(self.store.path).parent,vision_model=self.cfg.get('vision_model','gemma3:4b'))
+                        agent.document_search=RagTools(FileTools(self.cfg['roots'],ROOT/'data/backups',audit),turn_client,ROOT,audit,owner=session['username'],storage_root=Path(self.store.path).parent,vision_model=self.cfg.get('vision_model','gemma3:4b'))
                 if session:
                     from assistant.memory import PersonalMemory
-                    agent.memory=PersonalMemory(self.store,self.client,session['username'],self.manager.ready('rag'))
+                    agent.memory=PersonalMemory(self.store,turn_client,session['username'],self.manager.ready('rag'))
                 agent.personal_memories=[{'title':m['title'],'text':m['text'][:400]} for m in cached_memories[:12]] if session else []
                 if prompt is not None:
                     web_results=None
@@ -2119,6 +2127,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                         emit(event)
                 finally:
                     events.close()
+                    if not self.worker.stop_requested.is_set():
+                        turn_client.client.close()
                 return self.store.load(cid)
         self.work(task, self.after_chat, cancellable=True,app_countdown=prompt is not None)
 

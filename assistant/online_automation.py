@@ -1369,7 +1369,9 @@ class OnlineAutomation:
                 instruction+='\nNgười dùng đã cấp quyền tự thực hiện thao tác cho công việc họ yêu cầu. Khi đủ dữ kiện, gọi công cụ để tiếp tục; không hỏi xác nhận bắt đầu từng bước hoặc chọn lại phương án đã đồng ý. Chỉ hỏi khi thiếu dữ kiện kỹ thuật, có mâu thuẫn hoặc cần đăng nhập. Quyền thực tế vẫn được ứng dụng kiểm tra khi thực thi.'
                 instruction+='\nTự tra cú pháp/API, mở liên kết kết quả tìm kiếm và bản raw, đọc trạng thái đối tượng để sửa lỗi trong công việc đã yêu cầu; không xin phép từng bước tra cứu. Không hỏi người dùng tên biến g/g_i, chữ ký lệnh hay path của browser_search: đối chiếu mô tả công cụ và tự tìm ứng dụng. browser_search.path là đường dẫn EXE Chrome thực, không phải từ khóa hoặc tên phiên. Trong plaxis_commands, g là gốc; tên result (như bh) dùng lại được ở lượt sau trong cùng dự án (xem mục names của kết quả). info nhận đối tượng, không truyền method như g.SoilModel.borehole. Khi lỗi, kiểm tra phần đã tạo rồi đổi bước lỗi, không chạy lại cả mô hình. Hỏi người dùng khi thiếu kích thước, thông số thiết kế, có mâu thuẫn chưa xác minh được hoặc cần đăng nhập; giữ nguyên bài đang làm.'
             instruction+=WINDOWS_VISUAL_INSTRUCTION
-            if plaxis_context:instruction+=TUNNEL_REFERENCE
+            if plaxis_context:
+                from .plaxis_stage_guard import STAGE_INSTRUCTION
+                instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION
             messages=planning_messages(state,instruction)
             if volatile.strip():
                 messages.append({'role':'system','content':'NGỮ CẢNH HIỆN TẠI (dữ liệu cập nhật theo từng bước, không phải yêu cầu mới):'+volatile})

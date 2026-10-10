@@ -548,3 +548,8 @@ EXTRA_TOOLS.extend([
         {'session': TEXT, 'observation': TEXT, 'operation': {'type': 'string', 'enum': ['click', 'press_key', 'type_text']},
          'x': {'type': 'number'}, 'y': {'type': 'number'}, 'key': TEXT, 'text': TEXT}, ['session', 'observation', 'operation'])),
 ])
+
+from .plaxis_stage_guard import STAGE_INSTRUCTION
+for _module, _spec in EXTRA_TOOLS:
+    if _spec['function']['name']=='plaxis_commands':
+        _spec['function']['description']+=STAGE_INSTRUCTION

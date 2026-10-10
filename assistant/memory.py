@@ -7,6 +7,11 @@ from .storage import now
 
 EMBED_MODEL='bge-m3'
 
+
+def explicit_memory_text(question):
+    match=re.match(r'^\s*(?:hãy\s+)?(?:ghi nhớ|nhớ rằng|lưu vào bộ nhớ)\s*[:,-]?\s*(.+)$',question,re.I|re.S)
+    return match[1] if match else None
+
 def tokens(text):
     stop={'tôi','của','bạn','là','và','có','cho','về','một','các','để','trong','hãy','nhớ','ghi','rằng','thì','này','đó'}
     return set(re.findall(r'\w+',text.casefold()))-stop
@@ -44,15 +49,12 @@ class PersonalMemory:
             raise ValueError('Không lưu mật khẩu hoặc khóa truy cập vào ký ức.')
         ident=identifier or hashlib.sha256(text.encode()).hexdigest()[:24]
         with self.store.connection() as db:
-            existing=db.execute('SELECT text,vector FROM personal_memory WHERE owner=? AND id=?',(self.owner,ident)).fetchone()
-        if existing and existing[0]==text and (existing[1] or not self.embedding_enabled):return ident
-        vector=None
-        if self.embedding_enabled:
-            try:vector=json.dumps(embed(self.client,[text])[0])
-            except Exception:pass
-        with self.store.connection() as db:
+            existing=db.execute('SELECT text,vector,embedding_model,title FROM personal_memory WHERE owner=? AND id=?',(self.owner,ident)).fetchone()
+            if existing and existing[0]==text and existing[3]==title[:120]:return ident
+            # Durable save first. search() builds missing embeddings lazily.
+            vector,model=(existing[1],existing[2]) if existing and existing[0]==text else (None,None)
             db.execute('INSERT OR REPLACE INTO personal_memory VALUES(?,?,?,?,?,?,?)',
-                (self.owner,ident,title[:120],text,vector,EMBED_MODEL if vector else None,now()))
+                (self.owner,ident,title[:120],text,vector,model,now()))
         return ident
 
     def sync_server(self,items):
@@ -60,20 +62,21 @@ class PersonalMemory:
         ids=set()
         enabled=self.embedding_enabled
         self.embedding_enabled=False
-        for item in items[:100]:
-            ident='server:'+str(item['id']);ids.add(ident)
-            try:self.put(item['text'],item.get('title','Bộ nhớ server'),ident)
-            except ValueError:continue
-        self.embedding_enabled=enabled
+        try:
+            for item in items[:100]:
+                ident='server:'+str(item['id']);ids.add(ident)
+                try:self.put(item['text'],item.get('title','Bộ nhớ server'),ident)
+                except ValueError:continue
+        finally:
+            self.embedding_enabled=enabled
         with self.store.connection() as db:
             rows=db.execute("SELECT id FROM personal_memory WHERE owner=? AND id LIKE 'server:%'",(self.owner,)).fetchall()
             for (ident,) in rows:
                 if ident not in ids:db.execute('DELETE FROM personal_memory WHERE owner=? AND id=?',(self.owner,ident))
 
     def capture_explicit(self,question):
-        match=re.match(r'^\s*(?:hãy\s+)?(?:ghi nhớ|nhớ rằng|lưu vào bộ nhớ)\s*[:,-]?\s*(.+)$',question,re.I|re.S)
-        if match:return self.put(match[1], 'Người dùng yêu cầu ghi nhớ')
-        return None
+        text=explicit_memory_text(question)
+        return self.put(text, 'Người dùng yêu cầu ghi nhớ') if text else None
 
     def search(self,question,limit=4):
         with self.store.connection() as db:

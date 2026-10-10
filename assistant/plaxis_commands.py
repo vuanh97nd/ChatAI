@@ -2,6 +2,7 @@
 import json
 import math
 import re
+from .plaxis_stage_guard import StageGuardError
 
 _NAME=re.compile(r'[A-Za-z][A-Za-z0-9_]*\Z')
 _INDEXED=re.compile(r'([A-Za-z][A-Za-z0-9_.]*)\[(\d{1,5})\]\Z')
@@ -98,12 +99,19 @@ def commands_from_json(raw):
         if cmd=='verify_model':
             if len(args)!=1:raise ValueError('verify_model cần một chuỗi JSON.')
             model_checks(args[0])
+        if cmd=='verify_stage':
+            from .plaxis_stage_guard import check_spec
+            if len(args)!=1:raise ValueError('verify_stage cần một chuỗi JSON.')
+            check_spec(args[0])
+        if cmd=='inspect_stage' and len(args)!=2:raise ValueError('inspect_stage cần phase và collection đối tượng.')
         if cmd=='new_project' and args:raise ValueError('new_project không nhận tham số.')
         if cmd=='read':
-            ref=_read_ref(args[0]) if len(args)==1 else None
-            if ref is None:
-                raise ValueError('read cần đúng một ref, ví dụ {"command":"read","args":[{"ref":"g.Phases"}]}.')
-            args=[ref];row['args']=args
+            ref=_read_ref(args[0]) if len(args) in (1,2) else None
+            phase=_read_ref(args[1]) if len(args)==2 else None
+            if ref is None or (len(args)==2 and phase is None):
+                raise ValueError('read cần một ref, hoặc ref thuộc tính kèm phase: '
+                                 '{"command":"read","args":[{"ref":"Soil_1_3.Active"},{"ref":"Phase_5"}]}.')
+            args=[ref]+([phase] if phase else []);row['args']=args
         if cmd=='summarize' and len(args)!=1:raise ValueError('summarize cần một mảng số hoặc ref tới kết quả getresults.')
         if cmd=='soilcontour':
             if len(args)!=4 or any(type(a) not in (int,float) for a in args):
@@ -488,6 +496,17 @@ def _phase_chain_hint(g,args):
             f'thường nối tiếp: phase [{{"ref":"{previous}"}}]. Nếu manual đúng là rẽ nhánh từ {start} thì giữ nguyên.')
 
 
+def _cluster_box(soil):
+    """' [x 50–65, y 0–10]' for a staged soil cluster (read from its parent's bounding
+    box). Without it the model picked the cluster outside the pit for an excavation."""
+    try:
+        box=soil.Parent.BoundingBox
+        x0,x1,y0,y1=(float(_value(getattr(box,k))) for k in ('xMin','xMax','yMin','yMax'))
+    except Exception:
+        return ''
+    return f' [x {x0:g}–{x1:g}, y {y0:g}–{y1:g}]'
+
+
 def _soils_without_material(g):
     """Names of soil regions whose material is positively read as unassigned. Anything
     that cannot be read is skipped, so this never blocks meshing on a guess."""
@@ -539,21 +558,36 @@ def execute_commands(server,g,rows,on_status=None,session=None):
         if isinstance(v,list):return [resolve(x) for x in v]
         return v
     for index,row in enumerate(rows):
-        started=False;method_on_object=False
+        started=False;method_on_object=False;stage_checked=None
         try:
             wait_automation()
             if _STOP.is_set():raise RuntimeError('Đã dừng điều khiển PLAXIS.')
             if on_status:on_status(f'PLAXIS: bước {index+1}/{len(rows)} · {row["command"]}')
+            from .plaxis_stage_guard import before_change, after_change, verify, check_spec, inspect
+            if row['command']=='verify_stage':session.pop('stage_permit',None)
+            stage_checked=before_change(g,resolve,row,session)
+            if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','commands','tabulate','echo'}:
+                session.pop('stage_permit',None)
             args=[resolve(v) for v in row.get('args',[])]
             if row['command']=='read':
-                result=args[0]
+                # A second argument reads a per-phase value (Active, Material) in that phase.
+                result=args[0][args[1]] if len(args)==2 else args[0]
                 ref=row['args'][0].get('ref','')
                 try:raw=result.value
                 except Exception:raw=result
                 explained=_explain_log(ref,raw)
                 if explained is not raw:result=explained
+            elif row['command']=='inspect_stage':
+                result=inspect(g,args[0],args[1])
+            elif row['command']=='verify_stage':
+                result=verify(g,resolve,check_spec(args[0]),session)
             elif row['command']=='verify_model':
                 checks=model_checks(args[0]);verified=[]
+                switched=False
+                if any(re.match(r'(?:g\.)?(?:Borehole|Soillayer|SoilLayer|Boreholes|Soillayers|SoilContour)',str(c.get('ref',''))) for c in checks) and not _has(g,'Boreholes'):
+                    # Boreholes and soil layers exist only in soil mode; switch there for the check.
+                    try:g.gotosoil();switched=True
+                    except Exception:pass
                 for check in checks:
                     observed=resolve(_read_ref(check['ref']))
                     if check.get('kind')=='count':actual=len(observed)
@@ -565,6 +599,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     match=(type(actual) in (int,float) and type(expected) in (int,float) and math.isfinite(actual) and abs(actual-expected)<=check.get('tolerance',1e-6)) or (type(actual)==type(expected) and actual==expected)
                     verified.append({'ref':check['ref'],'expected':expected,'actual':actual,'match':match})
                 result={'verified':all(c['match'] for c in verified),'checks':verified,'scope':'Chỉ kiểm tra các thuộc tính liệt kê; không xác nhận toàn bộ mô hình.'}
+                if switched:
+                    try:g.gotostages()
+                    except Exception:pass
                 if not result['verified']:
                     return {'ok':False,'results':results,'failed_step':index+1,'failed_command':'verify_model','not_executed':not results,
                             'error':'Mô hình chưa khớp điều kiện kiểm tra: '+json.dumps(verified,ensure_ascii=False)[:2000]}
@@ -631,8 +668,12 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                                          "đặt đối tượng làm tham số đầu tiên, ví dụ {\"command\":\"initializerectangular\",\"args\":[{\"ref\":\"g.SoilContour\"},0,0,5,4]}; "
                                          "dùng command 'signature' với tên lệnh để xem đúng cú pháp.")
                 else:method=getattr(g,row['command'])
+                wait_automation()
+                if _STOP.is_set():raise StageGuardError('Đã dừng trước khi gửi lệnh PLAXIS.')
                 started=True
                 result=method(*args)
+                if stage_checked:
+                    result={'api_result':plain(result),'stage_readback':after_change(g,stage_checked)}
             if row['command']=='new_project':
                 session['aliases'].clear();session['created'].clear()
                 aliases={'g':g}
@@ -642,7 +683,8 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     session['aliases'][row['result']]=result
                     session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
-            entry={'step':index+1,'command':row['command'],'value':plain(result),'truncated':truncated}
+            entry={'step':index+1,'command':row['command'],
+                   'value':result if row['command'] in {'inspect_stage','verify_stage'} else plain(result),'truncated':truncated}
             raw_args=row.get('args',[])
             if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
                     and isinstance(raw_args[0],dict) and str(raw_args[0].get('ref','')).endswith('.Active')):
@@ -661,13 +703,14 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 if hint:entry['phase_hint']=hint
             results.append(entry)
         except Exception as exc:
+            if isinstance(exc,StageGuardError):session.pop('stage_permit',None)
             if row['command']=='read':
                 # Reads observe state without changing it, so a bad one must not
                 # discard the model-building steps batched alongside it.
                 results.append({'step':index+1,'command':'read','value':None,'error':str(exc)[:500],
                                 'note':'Bước đọc lỗi, không ảnh hưởng mô hình; các bước sau vẫn chạy.'})
                 continue
-            if row['command']=='setproperties':
+            if row['command']=='setproperties' and not isinstance(exc,StageGuardError):
                 # Property writes are independent: one bad name must not silently drop the
                 # rest of a material (seen: Sand kept phi=0 after an unknown "m").
                 args=row.get('args',[])
@@ -755,7 +798,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
 _SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
            'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
 _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
-_CHANGES_READONLY={'read','info','signature','summarize','verify_model'}
+_CHANGES_READONLY={'read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
 
 
 def model_snapshot(g,limit=2400,session=None):
@@ -771,10 +814,12 @@ def model_snapshot(g,limit=2400,session=None):
         except Exception:continue
         if not items:continue
         names=[]
-        for item in items[:8]:
-            label=_label(item).split(' <')[0]
-            names.append(label[:40])
-        lines.append(f"{attr}: {len(items)} ({', '.join(names)}{', …' if len(items)>8 else ''})")
+        shown=items if attr=='Soils' else items[:8]
+        for item in shown:
+            label=_label(item).split(' <')[0][:40]
+            if attr=='Soils':label+=_cluster_box(item)
+            names.append(label)
+        lines.append(f"{attr}: {len(items)} ({', '.join(names)}{', …' if len(items)>len(shown) else ''})")
     changes=phase_changes(g,session) if any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
     for row in changes:
         parts=[]

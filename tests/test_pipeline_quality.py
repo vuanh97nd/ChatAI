@@ -31,7 +31,7 @@ class PipelineQualityTest(unittest.TestCase):
         state=self.store.load(self.cid);agent.start(state,'Tính 0.1+0.2','qwen2.5:7b')
         events=list(agent.run(state))
         self.assertFalse(state['running']);self.assertIsNone(state['pending'])
-        self.assertEqual(state['messages'][-1]['content'],'Kết quả: 0,3.')
+        self.assertEqual(state['messages'][-1]['content'],'Kết quả: 0,3.\nPhép tính đã thực hiện: `0.1+0.2`.')
         self.assertTrue(any('Đang tính bằng Python' in e.get('text','') for e in events))
 
     def test_complex_review_hides_draft_and_only_emits_checked_answer(self):

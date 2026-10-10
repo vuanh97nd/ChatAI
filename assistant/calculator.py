@@ -19,7 +19,9 @@ CALCULATOR_SCHEMA = {'type':'function','function':{'name':'calculate',
         'operation':{'type':'string','enum':['expression','statistics','convert','date_difference','now']},
         'expression':{'type':'string'},'values':{'type':'array','items':{'type':'number'},'maxItems':1000},
         'value':{'type':'number'},'from_unit':{'type':'string'},'to_unit':{'type':'string'},
-        'start':{'type':'string'},'end':{'type':'string'},'timezone':{'type':'string'}},
+        'start':{'type':'string'},'end':{'type':'string'},'timezone':{'type':'string'},
+        'number_format':{'type':'string','enum':['auto','vi','en','canonical'],
+            'description':'auto: từ chối số mơ hồ như 1.200; vi: 1.234,56; en: 1,234.56; canonical: dấu chấm thập phân, không phân nhóm. Chỉ chọn định dạng khi người dùng đã làm rõ.'}},
         'required':['operation'],'additionalProperties':False}}}
 
 # (đại lượng, hệ số về đơn vị gốc)
@@ -71,42 +73,83 @@ def plain(value):
     return '0' if text in ('-0','') else text
 
 
-def number(value):
+def number(value, number_format="auto"):
     if isinstance(value,bool):raise ValueError('Không nhận boolean làm số.')
-    if isinstance(value,str):value=normalize_expression(value)
+    if isinstance(value,str):value=normalize_expression(value, number_format)
     result=Decimal(str(value))
     if not result.is_finite() or abs(result)>Decimal('1e100'):
         raise ValueError('Số không hữu hạn hoặc vượt giới hạn 1e100.')
     return result
 
 
-def normalize_expression(text):
-    """Chuẩn hóa cách viết số kiểu Việt Nam và ký hiệu thông dụng sang cú pháp Python."""
+def normalize_expression(text, number_format='auto'):
+    """Normalize explicit locales; never guess a single ambiguous thousands group."""
+    if number_format not in ('auto','vi','en','canonical'):
+        raise ValueError('Định dạng số phải là auto, vi, en hoặc canonical.')
+    def normalize(match):
+        token=match.group(0)
+        parts=re.split(r'([eE][+-]?\d+)$',token,maxsplit=1)
+        value=parts[0];exponent=''.join(parts[1:])
+        fmt=number_format
+        if fmt=='canonical':
+            if ',' in value or value.count('.')>1:raise ValueError('Số canonical không có dấu phân nhóm.')
+            return value+exponent
+        if fmt=='auto':
+            if '.' in value and ',' in value:
+                fmt='vi' if value.rfind(',')>value.rfind('.') else 'en'
+            else:
+                sep=',' if ',' in value else '.'
+                groups=value.split(sep)
+                if len(groups)>2:
+                    if not (1<=len(groups[0])<=3 and all(len(g)==3 for g in groups[1:])):
+                        raise ValueError('Cách phân nhóm chữ số không hợp lệ.')
+                    return ''.join(groups)+exponent
+                if not exponent and len(groups)==2 and 1<=len(groups[0])<=3 and int(groups[0] or '0')!=0 and len(groups[1])==3:
+                    raise ValueError('Số '+token+' có thể là số thập phân hoặc hàng nghìn. Hãy xác nhận định dạng vi/en, hoặc viết số không phân nhóm.')
+                return value.replace(',','.')+exponent
+        grouping,decimal=('.',',') if fmt=='vi' else (',','.')
+        halves=value.split(decimal)
+        if len(halves)>2 or (len(halves)==2 and grouping in halves[1]):
+            raise ValueError('Dấu phân cách số không đúng định dạng '+fmt+'.')
+        integer=halves[0]
+        if grouping in integer:
+            groups=integer.split(grouping)
+            if not (1<=len(groups[0])<=3 and all(len(g)==3 for g in groups[1:])):
+                raise ValueError('Cách phân nhóm chữ số không hợp lệ.')
+            integer=''.join(groups)
+        return '.'.join([integer]+halves[1:])+exponent
     expr=str(text).strip()
     expr=re.sub(r'(?i)(đồng|vnđ|vnd|đ)\b','',expr)
     expr=expr.replace('×','*').replace('·','*').replace('÷','/').replace('−','-').replace('^','**').replace('√','sqrt')
-    expr=re.sub(r'(?<=\d)\s*[xX]\s*(?=\d)','*',expr)
-    expr=expr.rstrip('= ').strip()
-    # Nghìn kiểu VN: 1.200.000 -> 1200000 (ít nhất hai nhóm 3 chữ số)
-    expr=re.sub(r'(?<![\d.,])\d{1,3}(?:\.\d{3}){2,}(?![\d.,]*\d)',lambda m:m.group(0).replace('.',''),expr)
-    # Nghìn kiểu Anh: 1,200,000 -> 1200000
-    expr=re.sub(r'(?<![\d.,])\d{1,3}(?:,\d{3}){2,}(?![\d,]*\d)',lambda m:m.group(0).replace(',',''),expr)
-    # Thập phân dấu phẩy: 2,5 -> 2.5
-    expr=re.sub(r'(?<=\d),(?=\d)','.',expr)
-    # Phần trăm: 15% -> (15/100); giữ % là modulo khi phía sau là số/ngoặc
+    expr=re.sub(r'(?<=\d)\s*[xX]\s*(?=\d)','*',expr).rstrip('= ').strip()
+    expr=re.sub(r'(?<![\w.,])(?:\d+(?:[.,]\d+)*|\.\d+)(?:[eE][+-]?\d+)?',normalize,expr)
     expr=re.sub(r'(\d+(?:\.\d+)?)\s*%(?!\s*[\d(])',r'(\1/100)',expr)
     return expr
 
 
-def expression_value(expression):
+def ambiguous_input_question(text):
+    """Check the user's original numbers before an LLM can reinterpret separators."""
+    if re.search(r'định dạng\s+(?:vi|en|canonical)\b|(?:kiểu|định dạng)\s+(?:Việt Nam|tiếng Việt|Anh|Mỹ)|dấu (?:chấm|phẩy)\s+(?:là dấu\s+)?(?:thập phân|phân nhóm|hàng nghìn)',text,re.I):
+        return None
+    for token in re.findall(r'(?<![\w.,])\d+(?:[.,]\d+)+(?:[eE][+-]?\d+)?(?![\w.,])',text):
+        try:normalize_expression(token)
+        except ValueError as error:
+            if 'xác nhận' in str(error):
+                decimal=plain(Decimal(token.replace(',','.'))).replace('.',',')
+                integer=token.replace(',','').replace('.','')
+                return 'Số '+token+' còn mơ hồ: bạn muốn số '+integer+' hay số thập phân '+decimal+'? Hãy viết số không phân nhóm hoặc xác nhận định dạng vi/en trước khi tính.'
+    return None
+
+
+def expression_value(expression, number_format="auto"):
     if not isinstance(expression,str) or len(expression)>500:raise ValueError('Biểu thức tối đa 500 ký tự.')
-    source=normalize_expression(expression)
+    source=normalize_expression(expression, number_format)
     try:tree=ast.parse(source,mode='eval')
     except SyntaxError:raise ValueError(f'Biểu thức không hợp lệ: "{expression}". Chỉ dùng số và + - * / ** ( ), ví dụ "1200000*(1-15/100)".')
     if sum(1 for _ in ast.walk(tree))>100:raise ValueError('Biểu thức quá phức tạp.')
     def visit(node):
         if isinstance(node,ast.Constant) and type(node.value) in (int,float):
-            return number(ast.get_source_segment(source,node))
+            return number(ast.get_source_segment(source,node), "canonical")
         if isinstance(node,ast.UnaryOp) and isinstance(node.op,(ast.UAdd,ast.USub)):
             value=visit(node.operand);return value if isinstance(node.op,ast.UAdd) else -value
         if isinstance(node,ast.BinOp):
@@ -177,8 +220,8 @@ def calculate(operation, **args):
         context.prec=40
         if op=='expression':
             if not args.get('expression'):raise ValueError('Thiếu expression, ví dụ "0.1+0.2".')
-            value=expression_value(args['expression'])
-            return {'ok':True,'result':plain(value),'expression':args['expression'],'precision_digits':40}
+            value=expression_value(args['expression'], args.get('number_format','auto'))
+            return {'ok':True,'result':plain(value),'expression':args['expression'],'normalized_expression':normalize_expression(args['expression'],args.get('number_format','auto')),'precision_digits':40}
         if op=='statistics':
             values=args.get('values',[])
             if not isinstance(values,list) or not 1<=len(values)<=1000:raise ValueError('Cần 1–1000 giá trị.')

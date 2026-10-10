@@ -68,12 +68,13 @@ def bounded_context(messages, max_chars=9000):
         chosen.insert(0, turn)
         size += cost
     result = deepcopy([m for turn in chosen for m in turn])
+    latest_user = next((m for m in reversed(result) if m["role"]=="user"), None)
     # Lượt hiện tại cũng có thể lớn sau nhiều tool. Giữ nguyên protocol,
     # rút gọn content dài nhất, không thay đổi lịch sử SQLite.
     while context_cost(result) > max_chars:
-        eligible = [m for m in result if len(m.get("content", "")) > 500]
+        eligible = [m for m in result if m is not latest_user and len(m.get("content", "")) > 500]
         if not eligible:
-            raise ValueError("Tool arguments vượt ngữ cảnh. Hãy bắt đầu hội thoại mới, yêu cầu nhỏ hơn.")
+            raise ValueError("Yêu cầu mới nhất hoặc dữ liệu công cụ vượt ngữ cảnh. Hãy chia nhỏ yêu cầu hoặc chọn ngữ cảnh lớn hơn; chưa gửi dữ kiện bị cắt cho AI.")
         longest = max(eligible, key=lambda m: len(m["content"]))
         text = longest["content"]
         keep = max(300, len(text) // 2)
@@ -81,7 +82,8 @@ def bounded_context(messages, max_chars=9000):
             longest["content"] = dumps({"truncated_for_context": True,
                 "preview": text[:keep], "note": "Đọc range nhỏ để lấy dữ liệu chính xác."})
         else:
-            longest["content"] = text[:keep] + "\n[Nội dung đã rút gọn cho ngữ cảnh.]"
+            from .conversation_context import clip
+            longest["content"] = clip(text, keep)
     return result
 
 
@@ -259,6 +261,16 @@ class Agent:
                                                    bool(state.get("attached_documents")), model=intent_model,
                                                    keep_alive="10m",expert_mode=state.get("expert_mode",False))
             self.save(state)
+        if state['running'] and state['routing']['category']=='calculation':
+            from .calculator import ambiguous_input_question
+            question=next((m.get('content','') for m in reversed(state['messages']) if m['role']=='user'),'')
+            clarification=ambiguous_input_question(question)
+            if clarification:
+                state['messages'].append({'role':'assistant','content':clarification})
+                state.update(running=False,queue=[],pending=None)
+                self.save(state)
+                yield {'type':'token','text':clarification}
+                return
         if state['running'] and self.orchestrator:
             self.orchestrator.prepare(state,state['routing'])
             for event in self.orchestrator.vision_events(state):yield event
@@ -311,7 +323,9 @@ class Agent:
                         page.pop("units",None);page["text"]=page.get("text","")[:1200]
                         page["excerpt_only"]=True
                 self.save(state)
-        if state["routing"]["category"] == "conversation":
+        from .memory import explicit_memory_text
+        memory_question=next((m.get('content','') for m in reversed(state['messages']) if m['role']=='user'),'')
+        if state["routing"]["category"] == "conversation" and not explicit_memory_text(memory_question):
             self.personal_memories=[]
             state["memory_prepared"]=True
         if state["running"] and self.memory and not state.get("memory_prepared"):
@@ -320,12 +334,13 @@ class Agent:
             try:
                 remembered=self.memory.capture_explicit(question)
                 if remembered:
-                    state["memory_write_status"]="saved"
-                    yield {"type":"status","text":"Đã lưu ghi nhớ cho tài khoản này."}
+                    state["memory_write_status"]="local_saved"
+                    self.save(state)
+                    yield {"type":"status","text":"Đã lưu ghi nhớ trên máy cho tài khoản này; chưa lưu lên server."}
                 self.personal_memories=self.memory.search(question)
             except Exception:
-                state["memory_write_status"]="failed"
-                yield {"type":"status","text":"Chưa cập nhật được bộ nhớ; tiếp tục trả lời."}
+                if state.get("memory_write_status")!="local_saved":state["memory_write_status"]="failed"
+                yield {"type":"status","text":"Ghi nhớ đã lưu trên máy; chưa tra được ký ức liên quan." if state.get("memory_write_status")=="local_saved" else "Chưa cập nhật được bộ nhớ; tiếp tục trả lời."}
             state["memory_prepared"] = True
             self.save(state)
         if state["running"] and not state.get("rag_prepared"):
@@ -582,7 +597,7 @@ class Agent:
                 history=state['messages']
                 if self.orchestrator and not CHAT_MODELS.get(active_model,{}).get('vision'):
                     history=[{k:v for k,v in message.items() if k!='images'} for message in history]
-                context=bounded_context(history, max_chars=max(1800,min(6000,self.cfg['num_ctx']*2-len(instruction))))
+                context=bounded_context(history, max_chars=max(1800,self.cfg['num_ctx']*2-len(instruction)-len(dumps(schemas))))
                 if not CHAT_MODELS.get(active_model,{}).get('vision'):
                     for message in context:
                         if message.pop('images',None):message['content']+='\n[Ảnh ở lượt này không được gửi tới model văn bản.]'
@@ -618,7 +633,7 @@ class Agent:
                         if text:
                             pieces.append(text)
                             if not review_needed and not calculation_turn and not internal_stage and not document_turn and not self.orchestrator:
-                                if state["routing"]["category"] in ("conversation","writing_translation"):
+                                if state["routing"]["category"] in ("conversation","writing_translation") and not state.get("memory_write_status"):
                                     yield {"type":"token","text":text}
                                 else:
                                     display_buffer += text
@@ -645,7 +660,7 @@ class Agent:
                     if internal_stage:message['content']=''
                 if not message["content"] and not calls and not internal_stage:
                     message["content"] = "Model trả nội dung rỗng. Hãy thử lại với yêu cầu ngắn hơn."
-                    if not document_turn and not self.orchestrator:yield {"type": "token", "text": message["content"]}
+                    if not calculation_turn and not document_turn and not self.orchestrator:yield {"type": "token", "text": message["content"]}
                 if not review_needed and not calculation_turn and not internal_stage and not document_turn and display_buffer:
                     safe,issues=guard_answer(display_buffer,state,self.web_allowed(state),state["routing"]["category"])
                     guarded_issues.extend(issues)
@@ -667,20 +682,7 @@ class Agent:
                     self.save(state)
                     yield {'type':'status','text':'Chưa tạo được tài nguyên; chuyển sang AI lập trình với trạng thái chưa tạo.'}
                     continue
-                if not calls and calculation_turn:
-                    import json
-                    current=[]
-                    for item in reversed(state["messages"]):
-                        if item["role"] == "user":break
-                        current.append(item)
-                    computed=any(item.get("tool_name")=="calculate" and json.loads(item["content"]).get("ok") for item in current if item["role"]=="tool")
-                    if not computed:
-                        message["content"]="Chưa nhận được kết quả từ công cụ tính nên tôi chưa thể xác nhận đáp số. Hãy ghi rõ phép tính, số liệu và đơn vị để tính bằng Python."
-                    if not review_needed:
-                        message["content"],issues=guard_answer(message["content"],state,self.web_allowed(state),state["routing"]["category"])
-                        guarded_issues.extend(issues)
-                        if not self.orchestrator and not document_turn:yield {"type":"token","text":message["content"]}
-                if not calls and review_needed and message["content"]:
+                if not calls and review_needed and not calculation_turn and message["content"]:
                     yield {"type":"status","text":"Đang kiểm tra độ chính xác…"}
                     from .quality import review_answer
                     evidence=compact_evidence(state,(),2200)
@@ -697,6 +699,10 @@ class Agent:
                         message["content"] += "\n\nLưu ý: chưa hoàn tất lượt rà soát tự động; hãy kiểm chứng các chi tiết quan trọng."
                     message["content"],issues=guard_answer(message["content"],state,self.web_allowed(state),state["routing"]["category"])
                     guarded_issues.extend(issues)
+                    if not calculation_turn and not document_turn and not self.orchestrator:yield {"type":"token","text":message["content"]}
+                if not calls and calculation_turn:
+                    from .calculation_response import calculation_answer
+                    message["content"]=calculation_answer(state)
                     if not document_turn and not self.orchestrator:yield {"type":"token","text":message["content"]}
                 message["content"],issues=guard_answer(message["content"],state,self.web_allowed(state),state["routing"]["category"])
                 guarded_issues.extend(issues)
@@ -763,7 +769,7 @@ class Agent:
                     yield {'type':'status','text':'Chuyên gia gặp lỗi; đang dùng AI chung dự phòng…'}
                     continue
                 # Không thực thi tool nếu stream chưa hoàn tất.
-                partial = "" if locals().get("internal_stage",False) else "".join(pieces)
+                partial = "" if locals().get("internal_stage",False) or locals().get("calculation_turn",False) else "".join(pieces)
                 state["messages"].append({"role": "assistant", "content":
                     (partial + "\n\n" if partial else "") + text})
                 state.update(running=False, queue=[], model_error={"type":type(exc).__name__,"message":str(exc),"model":failed_model})

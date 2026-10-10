@@ -3,10 +3,11 @@ import json
 
 
 def review_answer(client, model, question, draft, evidence, cfg):
+    from .conversation_context import clip
     response=client.chat(model=model,stream=False,keep_alive='10m',messages=[
         {'role':'system','content': 'Kiểm tra sai sót thực tế trong bản nháp theo bằng chứng cung cấp và sửa nếu cần. Giữ cách diễn đạt tự nhiên của bản nháp, không áp dàn bài hay mẫu hỏi lại. Không bịa nguồn, số liệu hoặc kết quả thực thi. Chỉ trả câu trả lời.'},
-        {'role':'user','content':json.dumps({'question':question[:1600],
-            'draft':draft[:max(1600,min(5000,cfg['num_ctx']))],'evidence':evidence},ensure_ascii=False)}],
+        {'role':'user','content':json.dumps({'question':clip(question,1600),
+            'draft':clip(draft,max(1600,min(5000,cfg['num_ctx']))),'evidence':evidence},ensure_ascii=False)}],
         options={'temperature':.2,'num_ctx':cfg['num_ctx'],'num_predict':cfg['num_predict']})
     message=response['message'] if isinstance(response,dict) else response.message
     result=message['content'] if isinstance(message,dict) else message.content

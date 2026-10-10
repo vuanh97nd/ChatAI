@@ -66,7 +66,8 @@ def clean_target(text):
 
 
 def recent_conversation(messages):
-    recent=[{'role':m['role'],'content':str(m.get('content',''))[:1200]}
+    from .conversation_context import clip
+    recent=[{'role':m['role'],'content':clip(str(m.get('content','')),1200)}
             for m in messages if m.get('role') in ('user','assistant')][-20:]
     while sum(len(m['content']) for m in recent)>8000:
         largest=max(recent[:-1] or recent,key=lambda m:len(m['content']))
