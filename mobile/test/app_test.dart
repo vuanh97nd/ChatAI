@@ -61,7 +61,9 @@ void main() {
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(LoginPage), findsNothing);
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
-    final drawerScroll = find.descendant(of: find.byType(Drawer), matching: find.byType(Scrollable));
+    final drawerScroll = find.descendant(of: find.byKey(const ValueKey('drawer-history')),
+      matching: find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down));
+    expect(drawerScroll, findsOneWidget);
     await tester.scrollUntilVisible(find.text('Recent chat'), 160, scrollable: drawerScroll);
     expect(find.text('Recent chat'), findsOneWidget);
     expect(find.text('Quản trị'), findsNothing);
@@ -91,15 +93,12 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(Image), findsNothing);
   });
-  testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
-    await tester.pumpWidget(testApp(home: StartupScreen()));
-    expect(find.text('Chat AI'), findsOneWidget);
-    expect(find.text('Đang khởi động…'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    final logo = tester.widget<Image>(find.byType(Image));
-    expect((logo.image as AssetImage).assetName, 'assets/chat_ai.png');
-    expect(logo.semanticLabel, 'Logo ChatAI');
-    await tester.pumpWidget(testApp(home: SizedBox()));
+  testWidgets('Flutter startup does not repeat the native launch logo', (tester) async {
+    await tester.pumpWidget(testApp(home: const StartupScreen()));
+    expect(find.byType(Image), findsNothing);
+    expect(find.text('Đang khởi động…'), findsNothing);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pumpWidget(testApp(home: const SizedBox()));
   });
   testWidgets('first screen offers NVIDIA, login and required email registration', (tester) async {
     final api = ChatApi(); addTearDown(api.close);

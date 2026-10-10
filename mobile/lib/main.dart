@@ -14,7 +14,7 @@ import 'animated_logo.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.1');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.2');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -42,16 +42,9 @@ class ChatApp extends StatelessWidget {
 class StartupScreen extends StatelessWidget {
   const StartupScreen({super.key});
   @override
-  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: Center(child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-    const AnimatedChatLogo(size: 112),
-    const SizedBox(height: 24),
-    Text('Chat AI', style: Theme.of(context).textTheme.headlineMedium),
-    const SizedBox(height: 24),
-    const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
-    const SizedBox(height: 12), const Text('Đang khởi động…'),
-    const SizedBox(height: 8), const Text('Android $appVersion · Chat trước, đăng nhập sau'),
-  ]))));
+  Widget build(BuildContext context) => const Scaffold(body: SafeArea(
+    child: Align(alignment: Alignment.topCenter, child: LinearProgressIndicator(minHeight: 2)),
+  ));
 }
 
 class ChatWelcome extends StatelessWidget {
@@ -491,7 +484,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         const Expanded(child: Text('Chat AI', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600))),
         buildInfoButton(context),
       ])),
-      Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+      Expanded(child: ListView(key: const ValueKey('drawer-history'), padding: const EdgeInsets.symmetric(horizontal: 12), children: [
         ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Chat'),
           onTap: sending ? null : () {
             Navigator.pop(drawerContext); unawaited(voice.stop()); changed(() => tab = 0);
