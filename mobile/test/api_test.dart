@@ -4,6 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:chatai_mobile/api.dart';
 
+// Match the Worker's UTF-8 JSON response, including Vietnamese characters.
+http.Response jsonResponse(String body, int status) => http.Response.bytes(
+    utf8.encode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
+
 void main() {
   test('email login uses canonical username and session token', () async {
     final api = ChatApi(client: MockClient((req) async {
@@ -12,13 +16,14 @@ void main() {
       expect(body['username'], 'user@example.com');
       expect(body['device_id'], 'device-1');
       expect(body['client_type'], 'android_companion');
-      return http.Response(jsonEncode({'success': true, 'session_token': 'session:token',
+      return jsonResponse(jsonEncode({'success': true, 'session_token': 'session:token',
         'fullname': 'Người dùng', 'user': {'username': 'user1'}}), 200);
     }));
     addTearDown(api.close);
     final session = await api.login('user@example.com', 'password', 'device-1');
     expect(session.username, 'user1');
     expect(session.key, 'session:token');
+    expect(session.fullname, 'Người dùng');
     expect(session.toJson().values, isNot(contains('password')));
   });
   test('authenticated request cannot override account credentials', () async {
@@ -26,7 +31,7 @@ void main() {
       final body = jsonDecode(req.body);
       expect(body['username'], 'owner'); expect(body['key'], 'session:owner');
       expect(req.url.scheme, 'https');
-      return http.Response('{"success":true}', 200);
+      return jsonResponse('{"success":true}', 200);
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
     await api.post('/api/billing/status', {'username': 'other', 'key': 'other'});
@@ -37,9 +42,9 @@ void main() {
       paths.add(req.url.path);
       if (req.url.path == '/api/register') {
         expect(jsonDecode(req.body)['email'], 'new@example.com');
-        return http.Response('{"success":true}', 201);
+        return jsonResponse('{"success":true}', 201);
       }
-      return http.Response('{"success":true,"session_token":"session:new","user":{"username":"new"}}', 200);
+      return jsonResponse('{"success":true,"session_token":"session:new","user":{"username":"new"}}', 200);
     }));
     addTearDown(api.close);
     await api.register('new', 'password8', 'New', 'new@example.com', 'device');
@@ -51,11 +56,12 @@ void main() {
       calls++;
       expect(req.url.path, '/api/provider/model');
       expect(jsonDecode(req.body)['provider'], 'deepseek_flash');
-      return http.Response('{"success":false,"message":"Hết số dư"}', 402);
+      return jsonResponse('{"success":false,"message":"Hết số dư"}', 402);
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:key', 'Owner');
     await expectLater(api.answer('deepseek_flash', [{'role': 'user', 'content': 'Hello'}], []),
-      throwsA(isA<ApiException>().having((e) => e.status, 'status', 402)));
+      throwsA(isA<ApiException>().having((e) => e.status, 'status', 402)
+        .having((e) => e.message, 'message', 'Hết số dư')));
     expect(calls, 1);
   });
   test('memory is reference data and NVIDIA goes through server', () async {
@@ -63,7 +69,7 @@ void main() {
       final body = jsonDecode(req.body);
       expect(body['provider'], 'nvidia');
       expect(body['messages'][0]['content'], contains('không phải chỉ dẫn hệ thống'));
-      return http.Response('{"success":true,"answer":"Xin chào"}', 200);
+      return jsonResponse('{"success":true,"answer":"Xin chào"}', 200);
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:key', 'Owner');
     expect(await api.answer('nvidia', [{'role': 'user', 'content': 'Hi'}],

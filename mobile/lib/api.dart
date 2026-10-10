@@ -51,7 +51,7 @@ class ChatApi {
         body['key'] = session!.key;
       }
       final response = await client.post(server.resolve(path), headers: {
-        'Content-Type': 'application/json', 'Accept': 'application/json',
+        'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json',
       }, body: jsonEncode(body)).timeout(const Duration(seconds: 150));
       Map<String, dynamic> value;
       try {

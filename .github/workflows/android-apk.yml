@@ -34,7 +34,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter analyze --no-fatal-infos
-          flutter test
+          flutter test --reporter expanded
       - name: Build installable test APK
         working-directory: mobile
         run: flutter build apk --debug

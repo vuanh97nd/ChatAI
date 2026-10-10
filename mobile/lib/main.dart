@@ -252,10 +252,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         TextField(controller: text, maxLength: 4000, maxLines: 5, decoration: const InputDecoration(labelText: 'Nội dung')),
       ])), actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy')),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Lưu'))]));
-    if (save == true) await guard(() async {
-      await api.post('/api/memory/personal/put', {'id': uuid.v4(), 'title': title.text,
-        'text': text.text, 'confirm': true}); await refresh();
-    });
+    if (save == true) {
+      await guard(() async {
+        await api.post('/api/memory/personal/put', {'id': uuid.v4(), 'title': title.text,
+          'text': text.text, 'confirm': true}); await refresh();
+      });
+    }
     // Dialog controllers are retained until the closing animation finishes.
   }
   Widget chat() => Column(children: [

@@ -74,7 +74,9 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     'desktop_id': link!['desktop_id'], 'mobile_secret': link!['mobile_secret']};
   void schedule() {
     timer?.cancel();
-    if (mounted && active && link != null) timer = Timer(Duration(seconds: delay), refresh);
+    if (mounted && active && link != null) {
+      timer = Timer(Duration(seconds: delay), refresh);
+    }
   }
   Future<void> refresh() async {
     if (!mounted || !active || widget.api.session?.username != owner) return;
