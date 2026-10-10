@@ -3098,7 +3098,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['machine_auto_ai']=self.machine_auto.isChecked()
         proposed['machine_profile_selected']=self.cfg.get('machine_profile_selected',False) or self.machine_profile.currentData()!=self.cfg.get('machine_profile','medium')
         self.apply_machine_choices(proposed)
-        for provider,field in self.api_model_fields.items():proposed[provider+'_model']=field.text().strip()
+        for provider,field in self.api_model_fields.items():
+            value=field.text().strip()
+            if value:proposed[provider+'_model']=value
         proposed['theme']=self.settings_theme.currentData()
         proposed['auto_python']=self.auto_python_check.isChecked()
         if hasattr(self,'ai_tools_auto_check'):proposed['ai_tools_auto_execute']=self.ai_tools_auto_check.isChecked()
@@ -3251,6 +3253,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def balance_panels(self, index=None):
         if hasattr(self,'settings_button'):self.settings_button.setChecked(self.tabs.currentIndex()==3)
+        current=self.tabs.currentIndex()
+        for button,section in getattr(self,'settings_nav_buttons',{}).values():
+            button.setChecked(current==3 and section==getattr(self,'active_settings_section',None))
+        for title,button in getattr(self,'settings_page_buttons',{}).items():
+            button.setChecked(self.tabs.tabText(current)==title)
         # Keep navigation stable while the right-hand page changes.
         if hasattr(self, 'sidebar'):
             collapsed=getattr(self,'sidebar_collapsed',False)
@@ -3282,20 +3289,10 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for label,section in [('Chung',None),('Cấu hình máy và AI','Cấu hình máy và AI'),('Giao diện','Giao diện'),('Office và công cụ','Office và thư mục'),('Điều khiển ứng dụng','Điều khiển ứng dụng'),('Tài khoản và đăng nhập','Tài khoản'),('Lịch sử và dữ liệu','Lịch sử và dữ liệu'),('Cập nhật','Cập nhật Chat AI'),('Nâng cao','Nâng cao')]:
             button=self.button(layout,label,lambda checked=False,n=section:self.open_settings_section(n))
             button.setCheckable(True);self.settings_nav_buttons[label]=(button,section)
-        def _clear_section_buttons():
-            for btn,_ in self.settings_nav_buttons.values():btn.setChecked(False)
-            for btn in self.settings_extra_nav_buttons.values():btn.setChecked(False)
-        def _nav_memory():
-            _clear_section_buttons()
-            self.settings_extra_nav_buttons['memory'].setChecked(True)
-            self.memory_dialog()
-        def _nav_model_download():
-            _clear_section_buttons()
-            self.settings_extra_nav_buttons['model_download'].setChecked(True)
-            self.settings_navigation_guard=True;self.tabs.setCurrentIndex(1);self.settings_navigation_guard=False
-        memory_btn=self.button(layout,'Bộ nhớ cá nhân',_nav_memory);memory_btn.setCheckable(True)
-        model_btn=self.button(layout,'Tải mô hình',_nav_model_download);model_btn.setCheckable(True)
-        self.settings_extra_nav_buttons={'memory':memory_btn,'model_download':model_btn}
+        self.settings_page_buttons={}
+        for title,callback in [('Bộ nhớ cá nhân',self.memory_dialog),('Tải mô hình',lambda:self.tabs.setCurrentIndex(1))]:
+            button=self.button(layout,title,callback);button.setCheckable(True)
+            self.settings_page_buttons[title]=button
         layout.addStretch(1)
 
     def copy_performance_report(self):
@@ -3413,9 +3410,9 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def open_settings_section(self, name):
         if getattr(self,'sidebar_collapsed',False):self.toggle_sidebar()
+        self.active_settings_section=name
         self.settings_heading.setText(name or 'Cài đặt chung')
         for button,section in self.settings_nav_buttons.values():button.setChecked(section==name)
-        for btn in getattr(self,'settings_extra_nav_buttons',{}).values():btn.setChecked(False)
         for title,widget in self.settings_sections.items():
             widget.setVisible(name is None or title==name)
         self.tabs.setCurrentIndex(3)
@@ -3423,6 +3420,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.api_key_group.setVisible(admin_session(self.server_session) and name in (None,'Cấu hình máy và AI'))
         scroll=self.tabs.widget(3)
         scroll.verticalScrollBar().setValue(0)
+        self.balance_panels()
 
     def show_audit(self):
         dialog = QDialog(self); dialog.setWindowTitle('Nhật ký thao tác'); dialog.resize(820, 600)

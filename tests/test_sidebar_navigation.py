@@ -22,6 +22,16 @@ class SidebarNavigationTest(unittest.TestCase):
         u.settings_button=QPushButton();u.settings_button.setCheckable(True)
         u.main_splitter=QSplitter();u.settings_last_tab=0
         u.profile_page_index=4;u.memory_page_index=5;u.work_support_page_index=6;u.help_page_index=7;u.admin_page_index=8
+        u.tabs.setTabText(1,'Tải mô hình');u.tabs.setTabText(5,'Bộ nhớ cá nhân')
+        u.active_settings_section='Nâng cao'
+        u.settings_nav_buttons={}
+        for title,section in [('Chung',None),('Nâng cao','Nâng cao')]:
+            button=QPushButton();button.setCheckable(True);u.settings_nav_buttons[title]=(button,section)
+            self.addCleanup(button.deleteLater)
+        u.settings_page_buttons={}
+        for title in ['Bộ nhớ cá nhân','Tải mô hình']:
+            button=QPushButton();button.setCheckable(True);u.settings_page_buttons[title]=button
+            self.addCleanup(button.deleteLater)
         u.tabs.currentChanged.connect(u.balance_panels)
         self.addCleanup(u.tabs.deleteLater);self.addCleanup(u.sidebar.deleteLater)
         self.addCleanup(u.sidebar_stack.deleteLater);self.addCleanup(u.settings_button.deleteLater);self.addCleanup(u.main_splitter.deleteLater)
@@ -38,6 +48,7 @@ class SidebarNavigationTest(unittest.TestCase):
         self.assertIsNone(u.profile_page_index)
         self.assertIs(u.tabs.widget(u.work_support_page_index),work)
         self.assertEqual(u.sidebar_stack.currentIndex(),0)
+
         u.remove_dynamic_page('memory_page_index')
         self.assertIs(u.tabs.widget(u.work_support_page_index),work)
         self.assertIs(u.tabs.widget(u.help_page_index),help_page)
@@ -48,3 +59,16 @@ class SidebarNavigationTest(unittest.TestCase):
         self.assertIs(u.tabs.widget(u.admin_page_index),admin)
         u.balance_panels()
         self.assertEqual(u.sidebar_stack.currentIndex(),0)
+
+    def test_highlight_follows_actual_memory_and_model_page(self):
+        u=self.ui
+        u.tabs.setCurrentIndex(3)
+        self.assertTrue(u.settings_nav_buttons['Nâng cao'][0].isChecked())
+        for index,title in [(5,'Bộ nhớ cá nhân'),(1,'Tải mô hình')]:
+            u.tabs.setCurrentIndex(index)
+            self.assertTrue(u.settings_page_buttons[title].isChecked())
+            self.assertFalse(u.settings_nav_buttons['Nâng cao'][0].isChecked())
+            self.assertEqual(sum(b.isChecked() for b in u.settings_page_buttons.values()),1)
+        u.tabs.setCurrentIndex(3)
+        self.assertTrue(u.settings_nav_buttons['Nâng cao'][0].isChecked())
+        self.assertFalse(any(b.isChecked() for b in u.settings_page_buttons.values()))

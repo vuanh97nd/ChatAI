@@ -86,6 +86,12 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(saved['api_temperature'],.1)
         self.assertNotEqual(saved['num_predict'],3072)
 
+    def test_blank_optional_provider_model_does_not_block_leaving_settings(self):
+        u=self.ui
+        u.api_model_fields={'groq':Text('')}
+        self.assertNotIn('groq_model',u.cfg)
+        self.assertFalse(u.settings_dirty())
+
     def test_creativity_save_does_not_send_blank_or_unchanged_provider_models(self):
         u=self.ui;u.server_session['username']='admin';u.server_session['role']='system';u.server_session['key']='test-session'
         u.api_model_fields={'deepseek':Text(u.cfg['deepseek_model']),'groq':Text('')}
