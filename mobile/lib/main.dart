@@ -407,7 +407,8 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) => Scaffold(body: SafeArea(child: Center(
     child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 440), child: Column(children: [
-        const Icon(Icons.smart_toy, size: 64), const SizedBox(height: 16),
+        Image.asset('assets/chat_ai.png', width: 80, height: 80, semanticLabel: 'Logo ChatAI'),
+        const SizedBox(height: 16),
         Text(register ? 'Đăng ký Chat AI' : 'Đăng nhập Chat AI', style: Theme.of(context).textTheme.headlineSmall),
         const Text('AI trực tuyến · NVIDIA mặc định'), const SizedBox(height: 24),
         TextField(controller: name, decoration: const InputDecoration(labelText: 'Email hoặc tên đăng nhập')),

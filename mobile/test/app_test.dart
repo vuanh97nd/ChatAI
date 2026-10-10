@@ -18,9 +18,11 @@ void main() {
     final api = ChatApi(); addTearDown(api.close);
     await tester.pumpWidget(MaterialApp(home: LoginPage(api: api, device: 'test', onLogin: (_) async {})));
     expect(find.text('AI trực tuyến · NVIDIA mặc định'), findsOneWidget);
+    expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
     expect(find.text('Đăng nhập'), findsOneWidget);
     await tester.tap(find.text('Tạo tài khoản')); await tester.pumpAndSettle();
     expect(find.text('Email bắt buộc'), findsOneWidget);
+    expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
     expect(find.text('Đăng ký và đăng nhập'), findsOneWidget);
     expect(find.text('Họ và tên'), findsOneWidget);
   });
