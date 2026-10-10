@@ -79,6 +79,16 @@ def commands_from_json(raw):
         cmd=row.get('command','')
         if not isinstance(cmd,str) or not _NAME.fullmatch(cmd) or cmd.casefold() in _BLOCKED:
             raise ValueError('Cần tên lệnh API PLAXIS; không nhận shell/Python hoặc lệnh truy cập tệp.')
+        if cmd=='verify_model':
+            # Accept the checks however the model writes them (it failed four times on the
+            # "one JSON string" form): a string, a bare list of checks, a list or a single check.
+            checks=row.get('args',[])
+            if isinstance(checks,str):checks=[checks]
+            elif isinstance(checks,dict):checks=[json.dumps([checks])]
+            elif isinstance(checks,list) and checks and all(isinstance(c,dict) and 'expected' in c for c in checks):checks=[json.dumps(checks)]
+            elif isinstance(checks,list) and len(checks)==1 and isinstance(checks[0],(list,dict)):
+                checks=[json.dumps(checks[0] if isinstance(checks[0],list) else [checks[0]])]
+            row['args']=checks
         args=row.get('args',[])
         if not isinstance(args,list) or len(args)>1000:raise ValueError('args phải là mảng tham số.')
         if cmd=='read':args=_join_read_args(args);row['args']=args
@@ -413,6 +423,19 @@ def _property_hint(g,target,name,exc):
         return 'Rinter chỉ đặt được sau InterfaceStrengthDetermination="Manual"; đặt thuộc tính đó trước rồi đặt lại Rinter.'
     if re.search(r'read-only property K0NC',text):
         return 'K0NC do PLAXIS tự tính khi K0Determination="Automatic". Giữ Automatic như manual, không đổi sang Manual để né lỗi này.'
+    if 'Invalid parameters' in text and target is not None and name:
+        # Enumerated properties (DeformCalcType, DrainageType...) take PLAXIS's own spelling.
+        shown=''
+        try:
+            table=str(g.tabulate(target,name)).replace('\r','').split('\n')
+            shown=table[1].split('\t')[-1] if len(table)>1 else ''
+        except Exception:pass
+        if not shown:
+            try:shown=str(_value(getattr(target,name)))
+            except Exception:shown=''
+        if shown:
+            return (f'Giá trị không hợp lệ cho {name}; giá trị hiện tại: {shown}. Thuộc tính dạng danh mục nhận đúng chữ PLAXIS dùng '
+                    '(như trong tabulate, ví dụ "Plastic") hoặc số trong ngoặc của giá trị đó; đọc tabulate đối tượng cùng loại để xem giá trị hợp lệ.')
     if 'Unknown property' not in text:return ''
     key=re.sub(r'[^a-z0-9]','',str(name).lower())
     guess=_PROPERTY_ALIASES.get(key)
@@ -579,6 +602,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     results.append({'step':index+1,'command':row['command'],'value':plain(aliases[name]),'truncated':False,
                                     'skipped':f"Đã tạo '{name}' bằng đúng lệnh này ở lần trước; dùng lại, không tạo trùng."})
                     continue
+                if row['command']=='calculate' and not _has(g,'calculate'):
+                    # calculate exists only in staged construction; switch instead of failing.
+                    g.gotostages()
                 if row['command']=='calculate':
                     empty=_empty_phases(g,session)
                     # Warn once per identical set; a deliberate repeat (e.g. a water-level-only

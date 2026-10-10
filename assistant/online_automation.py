@@ -332,6 +332,7 @@ CHƯA CHẠY THỬ trên máy này — dùng, và nếu lỗi tra signature ngay
 - Mực nước theo phase (đào ngập nước, hạ nước): làm theo đúng mục của manual; tra signature của lệnh mực nước trước khi gọi.
 - Trước calculate: mỗi phase Plastic phải bật/tắt hoặc đổi vật liệu ít nhất một đối tượng; model_state ghi "KHÔNG THAY ĐỔI GÌ" là phase rỗng.
 - Tính: {"command":"calculate","args":[]}; kết quả đọc bằng target output (Chat AI tự mở Output).
+- Đối chiếu với manual trước khi tính: {"command":"verify_model","args":[{"ref":"Borehole_1.Head","expected":18},{"ref":"g.Soillayers","expected":2,"kind":"count"},{"ref":"Sand.phi","expected":32,"tolerance":0.01}]} (mỗi phép kiểm tra là một đối tượng ref/expected; giá trị lấy từ manual).
 - Đọc kết quả (plaxis_commands với "target":"output"; đã chạy đúng trên máy này):
   {"command":"getresults","args":[{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Soil.Uy"},"node"],"result":"uy"} (N = số thứ tự phase cuối, đọc g.Phases) rồi {"command":"summarize","args":[{"ref":"uy"}]} (min/max/max_abs).
   Ux: g.ResultTypes.Soil.Ux; nội lực tường: getresults [{"ref":"Plate_1"},{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Plate.M2D"},"node"] (tra signature nếu lỗi); hệ số an toàn: đọc Reached.SumMsf của phase Safety.
@@ -502,6 +503,30 @@ def checklist_gaps(state,args):
     if not gaps:return None
     state['checklist_warned']=last_user
     return 'Chưa tính: so với bảng kiểm của manual, '+'; '.join(gaps)+'. Bổ sung rồi mới calculate (nếu đã kiểm tra là không cần, gọi lại calculate).'
+
+
+def turn_progress(state):
+    """What this turn already achieved, so an error at a late extra step does not hide it
+    (tutorial 3: five phases calculated and results read, yet the reply was only the error)."""
+    messages=state.get('messages',[])
+    last_user=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
+    calculated=False;results=[]
+    for i,message in enumerate(messages[last_user+1:],last_user+1):
+        if message.get('role')!='assistant' or not message.get('tool_calls'):continue
+        fn=message['tool_calls'][0].get('function',{})
+        if fn.get('name')!='plaxis_commands':continue
+        reply=messages[i+1] if i+1<len(messages) and messages[i+1].get('role')=='tool' else {}
+        try:value=json.loads(reply.get('content') or '{}')
+        except ValueError:continue
+        for row in value.get('results',[]) if isinstance(value,dict) else []:
+            if not isinstance(row,dict) or 'error' in row:continue
+            if row.get('command')=='calculate':calculated=True
+            if row.get('command')=='summarize' and isinstance(row.get('value'),dict):results.append(row['value'])
+    if not calculated:return ''
+    text='Đã tính xong các phase của mô hình trong lượt này'
+    if results:
+        text+='; kết quả đã đọc: '+'; '.join(f"min {r.get('min'):.4g}, max {r.get('max'):.4g}" for r in results[:4] if isinstance(r.get('min'),(int,float)))
+    return text+'. Bước sau đó gặp lỗi:\n'
 
 
 def provider_problem(error):
@@ -1212,7 +1237,7 @@ class OnlineAutomation:
                         state['queue']=[];self.save(state)
                         yield {'type':'status','text':'AI đang sửa kế hoạch theo lỗi kiểm tra; thao tác chưa được thực hiện…'}
                         continue
-                    text='Chưa thực hiện được: '+str(exc)
+                    text=turn_progress(state)+'Chưa thực hiện được: '+str(exc)
                     state['messages'].append({'role':'assistant','content':text})
                     state.update(running=False,queue=[]);self.save(state)
                     yield {'type':'token','text':text};return
@@ -1314,7 +1339,9 @@ class OnlineAutomation:
                               "và lấy mọi số liệu từ đó. Khi xác nhận tên bài với người dùng, ghi rõ 'theo mục lục manual'. "
                               "Chỉ nói đã xong bài khi đã làm MỌI phase/bước tính trong manual (kể cả phân tích an toàn) và đã đọc kết quả "
                               "mà manual nêu (ví dụ hệ số an toàn, độ lún), rồi so với giá trị manual. Nếu mới xong một phần, mở đầu bằng "
-                              "'Đã làm xong phần …; còn thiếu …' và liệt kê các bước còn lại.")
+                              "'Đã làm xong phần …; còn thiếu …' và liệt kê các bước còn lại. "
+                              "Chỉ làm các mục trong bảng kiểm của bài; không tự thêm phase, phân tích an toàn hay bước khác "
+                              "ngoài manual trừ khi người dùng yêu cầu.")
                 if tutorial.get('steps'):
                     volatile+=('\nCÁC MỤC CỦA BÀI TRONG MANUAL (bảng kiểm; mỗi mục phải có lệnh tương ứng đã chạy thành công, '
                                   'đặc biệt từng Phase: bật/tắt đúng đối tượng; khi báo kết quả, đánh dấu mục đã làm/chưa làm):\n- '

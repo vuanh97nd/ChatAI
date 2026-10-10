@@ -890,3 +890,42 @@ class UncalculatedPhaseTests(unittest.TestCase):
         self.assertIsNone(calculate_unverified(state, calc))  # once per turn
         state2 = {'tutorial': {'title': 'x'}, 'messages': [{'role': 'user', 'content': 'tính'}, {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True, 'model_verified': True})}]}
         self.assertIsNone(calculate_unverified(state2, calc))
+
+
+class RoundFiveTests(unittest.TestCase):
+    def test_verify_model_written_as_plain_checks(self):
+        from assistant.plaxis_commands import commands_from_json
+        checks = [{'ref': 'Borehole_1.Head', 'expected': 18}, {'ref': 'g.Soillayers', 'expected': 2, 'kind': 'count'}]
+        for args in (checks, [checks], json.dumps(checks)):
+            rows = commands_from_json(json.dumps([{'command': 'verify_model', 'args': args}]))
+            self.assertEqual(json.loads(rows[0]['args'][0]), checks)
+
+    def test_calculate_switches_to_stages(self):
+        from unittest.mock import Mock
+        from assistant.plaxis_commands import execute_commands
+        from assistant import windows_apps
+        windows_apps.resume_automation()
+        class G:
+            def __init__(self): self.stages = False; self.Phases = []
+            def gotostages(self): self.stages = True
+            def __getattr__(self, name):
+                if name == 'calculate' and self.__dict__.get('stages'): return lambda: 'OK'
+                raise AttributeError(f"Requested attribute '{name}' is not present")
+        g = G()
+        result = execute_commands(Mock(), g, [{'command': 'calculate', 'args': []}], session={'aliases': {}, 'created': {}, 'empty_warned': []})
+        self.assertTrue(result['ok'], result); self.assertTrue(g.stages)
+
+    def test_enum_value_hint_shows_current_value(self):
+        from assistant.plaxis_commands import _property_hint
+        class G:
+            def tabulate(self, target, name): return 'Object\tDeformCalcType\nPhase_6\tPlastic (4)'
+        hint = _property_hint(G(), object(), 'DeformCalcType', RuntimeError('Unsuccessful command:\nInvalid parameters.'))
+        self.assertIn('Plastic (4)', hint)
+
+    def test_failure_after_calculation_reports_progress(self):
+        from assistant.online_automation import turn_progress
+        calc = {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'plaxis_commands', 'arguments': {}}}]}
+        state = {'messages': [{'role': 'user', 'content': 'tính bài 3'}, calc,
+                              {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True, 'results': [{'command': 'calculate', 'value': 'OK'}, {'command': 'summarize', 'value': {'min': 0.0, 'max': 0.0372}}]})}]}
+        self.assertIn('Đã tính xong', turn_progress(state)); self.assertIn('0.0372', turn_progress(state))
+        self.assertEqual(turn_progress({'messages': [{'role': 'user', 'content': 'x'}]}), '')
