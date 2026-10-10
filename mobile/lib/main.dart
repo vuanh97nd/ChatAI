@@ -27,6 +27,20 @@ class ChatApp extends StatelessWidget {
   );
 }
 
+class StartupScreen extends StatelessWidget {
+  const StartupScreen({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(body: SafeArea(child: Center(child: Column(
+    mainAxisSize: MainAxisSize.min, children: [
+    Image.asset('assets/chat_ai.png', width: 112, height: 112, semanticLabel: 'Logo ChatAI'),
+    const SizedBox(height: 24),
+    Text('Chat AI', style: Theme.of(context).textTheme.headlineMedium),
+    const SizedBox(height: 24),
+    const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+    const SizedBox(height: 12), const Text('Đang khởi động…'),
+  ]))));
+}
+
 class Home extends StatefulWidget {
   const Home({super.key});
   @override
@@ -323,7 +337,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (loading) return const StartupScreen();
     if (api.session == null) return LoginPage(api: api, device: device, onLogin: authenticated);
     return Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
       IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {

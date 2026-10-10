@@ -4,6 +4,16 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/main.dart';
 
 void main() {
+  testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: StartupScreen()));
+    expect(find.text('Chat AI'), findsOneWidget);
+    expect(find.text('Đang khởi động…'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    final logo = tester.widget<Image>(find.byType(Image));
+    expect((logo.image as AssetImage).assetName, 'assets/chat_ai.png');
+    expect(logo.semanticLabel, 'Logo ChatAI');
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+  });
   testWidgets('first screen offers NVIDIA, login and required email registration', (tester) async {
     final api = ChatApi(); addTearDown(api.close);
     await tester.pumpWidget(MaterialApp(home: LoginPage(api: api, device: 'test', onLogin: (_) async {})));

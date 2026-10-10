@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.5
+# ChatAI Android — bản thử nghiệm 0.6
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -126,3 +126,11 @@ Phạm vi hiện tại chưa có cấu hình ngân hàng/webhook, email/Resend, 
 AI hoặc đào tạo bộ nhớ chung từ Android. Các chức năng đó vẫn quản lý trên desktop.
 Trước phát hành: thử tài khoản thường không thấy/truy cập được quản trị; kiểm tra
 nạp mất mạng không cộng hai lần, khóa/khôi phục, thông báo và giá 0 đ trên máy thật.
+
+## Logo và khởi động
+
+Logo robot dùng chung bản Windows, đóng gói trong assets/chat_ai.png. Script
+prepare_android tạo icon thường, adaptive icon (Android 8+) và splash nền tối
+cho cả giao diện sáng/tối, bao gồm Android 12+. Khi Flutter đã mở mà còn đang
+khôi phục đăng nhập, hiện logo, tên Chat AI và chỉ báo tải, không trì hoãn cố định.
+Cần build APK mới để đổi icon/splash; cập nhật source không đổi APK đã cài.
