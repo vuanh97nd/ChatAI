@@ -842,3 +842,51 @@ class Tutorial3RoundThreeTests(unittest.TestCase):
              patch('threading.Event.wait', return_value=False):
             self.assertEqual(client.chat('m', [{'role': 'user', 'content': 'x'}])['message']['content'], 'OK')
         self.assertEqual(len(calls), 2)
+
+
+class UncalculatedPhaseTests(unittest.TestCase):
+    def staged(self):
+        from unittest.mock import MagicMock
+        def phase(name, prev=None, pending=True):
+            p = MagicMock(); p.Name.value = name; p.DeformCalcType.value = 4; p.ShouldCalculate.value = pending
+            p.PreviousPhase.value = prev; return p
+        initial = phase('InitialPhase', pending=False); p1 = phase('Phase_1', initial, False); p2 = phase('Phase_2', p1)
+        def obj(name, states):
+            o = MagicMock(); o.Name.value = name
+            o.Active.__getitem__.side_effect = lambda ph: MagicMock(value=states.get(ph.Name.value, False)); return o
+        # What PLAXIS reported before calculation: Phase_2 shows the wall "off" (not inherited)
+        # and the excavated soil still "on".
+        wall = obj('Plate_1_1', {'Phase_1': True}); soil = obj('Soil_1_1', {'InitialPhase': True, 'Phase_1': True, 'Phase_2': True})
+        g = MagicMock(); g.Phases = [initial, p1, p2]; g.Plates = [wall]; g.Soils = [soil]
+        for attr in ('NodeToNodeAnchors', 'FixedEndAnchors', 'LineLoads', 'PointLoads', 'LineDisplacements',
+                     'PointDisplacements', 'Interfaces', 'EmbeddedBeams', 'Geogrids'):
+            setattr(g, attr, [])
+        return g
+
+    def test_uncalculated_phase_uses_logged_commands(self):
+        from assistant.plaxis_commands import phase_changes
+        session = {'phase_log': {'Phase_2': {'Soil_1_1': ('active', False)}}}
+        row = [r for r in phase_changes(self.staged(), session) if r['phase'] == 'Phase_2'][0]
+        self.assertEqual((row['on'], row['off']), ([], ['Soil_1_1']))
+        self.assertTrue(row['explicit'])
+
+    def test_set_active_is_logged(self):
+        from unittest.mock import Mock, MagicMock
+        from assistant.plaxis_commands import execute_commands
+        from assistant import windows_apps
+        windows_apps.resume_automation()
+        prop = MagicMock(); prop.__getitem__.return_value = Mock(value=False)
+        soil = Mock(); soil.Active = prop; phase = Mock(); phase.Name.value = 'Phase_2'
+        g = Mock(); g.Soil_1_1 = soil; g.Phase_2 = phase
+        session = {'aliases': {}, 'created': {}}
+        execute_commands(Mock(), g, [{'command': 'set', 'args': [{'ref': 'Soil_1_1.Active'}, {'ref': 'Phase_2'}, False]}], session=session)
+        self.assertEqual(session['phase_log'], {'Phase_2': {'Soil_1_1': ('active', False)}})
+
+    def test_calculate_requires_one_verification(self):
+        from assistant.online_automation import calculate_unverified
+        state = {'tutorial': {'title': 'Submerged construction of an excavation'}, 'messages': [{'role': 'user', 'content': 'tính bài 3'}]}
+        calc = {'commands': json.dumps([{'command': 'calculate', 'args': []}])}
+        self.assertIn('verify_model', calculate_unverified(state, calc))
+        self.assertIsNone(calculate_unverified(state, calc))  # once per turn
+        state2 = {'tutorial': {'title': 'x'}, 'messages': [{'role': 'user', 'content': 'tính'}, {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True, 'model_verified': True})}]}
+        self.assertIsNone(calculate_unverified(state2, calc))

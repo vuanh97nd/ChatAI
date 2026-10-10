@@ -322,9 +322,15 @@ def _value(item):
     except Exception:return item
 
 
-def phase_changes(g):
+def phase_changes(g,session=None):
     """Per calculation phase: what it switches on/off or re-assigns relative to its
-    previous phase. Empty for objects whose per-phase state cannot be read."""
+    previous phase. Empty for objects whose per-phase state cannot be read.
+
+    Before a phase is calculated PLAXIS reports objects the phase did not set explicitly
+    with un-inherited values (seen: Phase_2 "switched off" the wall and load it never
+    touched, and missed the soil it did switch off). For such phases the explicit
+    activations/materials logged from this session's commands are used instead."""
+    log=(session or {}).get('phase_log',{})
     try:phases=list(g.Phases)
     except Exception:return []
     objects=[]
@@ -356,20 +362,28 @@ def phase_changes(g):
         except Exception:kind=None
         try:pending=bool(_value(phase.ShouldCalculate))
         except Exception:pending=True
+        explicit=pending and session is not None
+        if explicit:
+            entries=log.get(name,{})
+            on=sorted(k for k,v in entries.items() if v==('active',True))
+            off=sorted(k for k,v in entries.items() if v==('active',False))
+            mats=sorted(k for k,v in entries.items() if v[0]=='material')
+            after=entries
         rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'on':on,'off':off,'materials':mats,
-                     'state':tuple(sorted(after.items()))})
+                     'explicit':explicit,'state':tuple(sorted(after.items()))})
     return rows
 
 
-def _empty_phases(g):
+def _empty_phases(g,session=None):
     """Problems in Plastic phases about to be calculated: a phase that changes nothing,
     phases whose whole activation state is identical (tutorial 3, second attempt: five
     phases all started from InitialPhase and switching on the same wall and load)."""
-    rows=[r for r in phase_changes(g) if r['kind']==4]
+    rows=[r for r in phase_changes(g,session) if r['kind']==4]
     pending=[r for r in rows if r['pending']]
     problems=[f"{r['phase']} không thay đổi gì so với {r['previous']}" for r in pending if not (r['on'] or r['off'] or r['materials'])]
     groups={}
-    for r in pending:groups.setdefault(r['state'],[]).append(r['phase'])
+    for r in pending:
+        if r['state']:groups.setdefault(r['state'],[]).append(r['phase'])
     problems+=['các phase '+', '.join(names)+' có trạng thái bật/tắt giống hệt nhau' for names in groups.values() if len(names)>1]
     starts={}
     for r in pending:starts.setdefault(r['previous'],[]).append(r['phase'])
@@ -417,6 +431,21 @@ def _property_hint(g,target,name,exc):
     hint=f'Thuộc tính "{name}" không tồn tại'+(f'; dùng "{guess}"' if guess else '')+'.'
     if columns:hint+=' Tên hợp lệ của đối tượng này: '+', '.join(columns[:60])
     return hint
+
+
+def _log_phase_change(session,row,args):
+    """Remember explicit per-phase activations and materials set by this session."""
+    try:
+        raw=row.get('args',[])
+        if row['command']=='set' and len(raw)==3 and isinstance(raw[2],bool) and isinstance(raw[0],dict) and str(raw[0].get('ref','')).endswith('.Active'):
+            obj=str(raw[0]['ref'])[:-len('.Active')].split('.')[-1]
+            phase=str(_value(args[1].Name))
+            session.setdefault('phase_log',{}).setdefault(phase,{})[obj]=('active',raw[2])
+        elif row['command']=='setmaterial' and len(raw)==3:
+            obj=_label(args[0]).split(' <')[0];phase=str(_value(args[1].Name))
+            session.setdefault('phase_log',{}).setdefault(phase,{})[obj]=('material',_label(args[2]).split(' <')[0])
+    except Exception:
+        pass
 
 
 def _phase_chain_hint(g,args):
@@ -551,7 +580,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                                     'skipped':f"Đã tạo '{name}' bằng đúng lệnh này ở lần trước; dùng lại, không tạo trùng."})
                     continue
                 if row['command']=='calculate':
-                    empty=_empty_phases(g)
+                    empty=_empty_phases(g,session)
                     # Warn once per identical set; a deliberate repeat (e.g. a water-level-only
                     # phase this check cannot see) is then allowed.
                     if empty and session.get('empty_warned')!=empty:
@@ -600,6 +629,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                         entry['readback_warning']=f"Đọc lại {raw_args[0]['ref']} ở phase này = {bool(actual)}, khác giá trị vừa đặt."
                 except Exception as exc:
                     entry['readback']=f'không đọc lại được: {str(exc)[:80]}'
+            _log_phase_change(session,row,args)
             if row['command']=='phase':
                 hint=_phase_chain_hint(g,args)
                 if hint:entry['phase_hint']=hint
@@ -702,7 +732,7 @@ _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
 _CHANGES_READONLY={'read','info','signature','summarize','verify_model'}
 
 
-def model_snapshot(g,limit=2400):
+def model_snapshot(g,limit=2400,session=None):
     """Compact view of what the open PLAXIS model already holds, so the model can see
     duplicates and what a failed batch left behind without guessing."""
     lines=[]
@@ -719,13 +749,14 @@ def model_snapshot(g,limit=2400):
             label=_label(item).split(' <')[0]
             names.append(label[:40])
         lines.append(f"{attr}: {len(items)} ({', '.join(names)}{', …' if len(items)>8 else ''})")
-    changes=phase_changes(g) if any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
+    changes=phase_changes(g,session) if any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
     for row in changes:
         parts=[]
         if row['on']:parts.append('bật '+', '.join(row['on'][:6]))
         if row['off']:parts.append('tắt '+', '.join(row['off'][:6]))
         if row['materials']:parts.append('đổi vật liệu '+', '.join(row['materials'][:4]))
-        lines.append(f"{row['phase']} (từ {row['previous']}): "+('; '.join(parts) if parts else 'KHÔNG THAY ĐỔI GÌ'))
+        label=' [chưa tính; theo lệnh đã đặt]' if row.get('explicit') else ''
+        lines.append(f"{row['phase']} (từ {row['previous']}){label}: "+('; '.join(parts) if parts else 'KHÔNG THAY ĐỔI GÌ'))
     missing=_soils_without_material(g)
     if missing:
         lines.append('CHƯA CÓ VẬT LIỆU: '+', '.join(missing[:10])+' (chỉ các khối này cần gán; khối khác đã có vật liệu)')
@@ -759,7 +790,7 @@ def run_batch(server,g,rows,on_status=None,port=None):
     # First contact with this project: show what is already there before anything is built.
     if first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
         try:
-            result['model_state']=model_snapshot(g)
+            result['model_state']=model_snapshot(g,session=session)
             result['model_state_note']=('model_state là trạng thái thật của PLAXIS sau lệnh này. Trước khi tạo borehole, lớp đất, '
                                         'vật liệu hay hình học, kiểm tra ở đây và dùng lại đối tượng đã có; không tạo trùng.')
         except Exception as exc:result['model_state']='Chưa đọc được trạng thái mô hình: '+str(exc)[:200]

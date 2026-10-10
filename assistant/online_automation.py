@@ -316,6 +316,8 @@ MẪU LỆNH plaxis_commands ĐÃ CHẠY ĐÚNG trên PLAXIS 2D 2024.2 (dùng tr
 - Hình học (chế độ structures): plate/line/lineload/linedispl [x1,y1,x2,y2]; polygon [[x,y],...]; n2nanchor [x1,y1,x2,y2]
 - Lưới: gotomesh rồi {"command":"mesh","args":[0.06]}
 - Phase: gotostages; {"command":"phase","args":[{"ref":"g.InitialPhase"}],"result":"p1"}; kích hoạt: {"command":"set","args":[{"ref":"Tên_tải.Active"},{"ref":"p1"},true]}
+- Phase mới KẾ THỪA trạng thái bật/tắt và vật liệu của phase gốc: chỉ đặt những gì thay đổi ở phase đó (ví dụ tắt khối đất đào, bật neo); KHÔNG bật lại mọi đối tượng. Phase sau tạo từ phase ngay trước: phase [{"ref":"Phase_3"}] cho Phase_4.
+- Trạng thái phase chưa tính trong model_state ghi "[chưa tính; theo lệnh đã đặt]": chỉ liệt kê lệnh bạn đã đặt; giá trị thật của từng lệnh xem ở readback.
 - Gán vật liệu cho khối đất vẽ bằng polygon (chế độ structures/soil): {"command":"setmaterial","args":[{"ref":"g.Polygon_2.Soil"},{"ref":"emb"}]} (qua thuộc tính .Soil, không truyền polygon).
 - THỨ TỰ: gán vật liệu cho MỌI vùng đất (lớp đất và polygon) TRƯỚC khi chia lưới. Chia lưới khi còn vùng chưa có vật liệu sẽ làm phase ban đầu lỗi "Soil with no material".
 - CHẾ ĐỘ PHASE (sau gotostages): đối tượng đổi tên thành khối đất Soil_1_1, Soil_2_Soil_3_1… (đọc g.Soils để biết tên), không còn Polygon_x. Thuộc tính phụ thuộc phase nên luôn kèm phase:
@@ -448,6 +450,27 @@ def geometry_off_manual(state,call,result):
     if not stray:return None
     return ('Các điểm sau không có trong trang manual của bài: '+', '.join(stray[:8])+
             '. Đối chiếu lại tọa độ trong manual (ví dụ đầu mút tường, tải, neo, đường đào) và sửa nếu sai.')
+
+
+def calculate_unverified(state,args):
+    """Before calculating a manual tutorial, require one verify_model pass against the
+    manual's key values (DeepSeek set Head=-2 instead of 18 and swapped the layer order,
+    then calculated)."""
+    tutorial=state.get('tutorial')
+    if not tutorial:return None
+    try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
+    except ValueError:return None
+    if not any(isinstance(r,dict) and r.get('command')=='calculate' for r in rows):return None
+    if any(isinstance(r,dict) and r.get('command')=='verify_model' for r in rows):return None
+    messages=state.get('messages',[])
+    last_user=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
+    if state.get('calc_verify_demanded')==last_user:return None
+    if any(m.get('role')=='tool' and '"model_verified": true' in str(m.get('content','')) for m in messages[last_user+1:]):return None
+    state['calc_verify_demanded']=last_user
+    return ('Chưa tính: trước khi calculate bài "'+tutorial.get('title','')+'", chạy một lần verify_model đối chiếu với manual: '
+            'mực nước (bh.Head), cao độ đỉnh/đáy từng lớp và vật liệu gán cho lớp, các thông số chính trong bảng vật liệu '
+            '(gamma, E50Ref/EoedRef/EURRef, cRef, phi, Rinter), tọa độ tường/neo/tải. Lấy giá trị từ manual, không từ trí nhớ. '
+            'Sửa chỗ lệch rồi mới calculate.')
 
 
 def checklist_gaps(state,args):
@@ -1166,6 +1189,8 @@ class OnlineAutomation:
                         if stuck:raise RuntimeError(stuck)
                         gaps=checklist_gaps(state,args)
                         if gaps:raise RuntimeError(gaps)
+                        unchecked=calculate_unverified(state,args)
+                        if unchecked:raise RuntimeError(unchecked)
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
