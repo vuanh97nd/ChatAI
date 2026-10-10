@@ -178,7 +178,7 @@ def _plaxis_command_plan(output, schemas):
     as prose. Both PLAXIS versions share the scripting ports, so the version
     label here cannot route the call to the wrong server.
     """
-    if not isinstance(output,list) or not 1<=len(output)<=40:return None
+    if not isinstance(output,list) or not output:return None
     if not any(s.get('function',{}).get('name')=='plaxis_commands' for s in schemas):return None
     for row in output:
         if not isinstance(row,dict) or set(row)-{'command','args','result'}:return None
@@ -610,14 +610,17 @@ def compress_numbers(numbers):
 
 
 def planning_messages(state,instruction):
-    history=state['messages'][-40:]
+    # Cut history in blocks of 20, not one message per call: a sliding window changes the
+    # prompt prefix on every step and the provider cache fell from ~44k to ~10k tokens.
+    cut=(max(0,len(state['messages'])-40)//20)*20
+    history=state['messages'][cut:]
     # Send the latest user image only: repeated agent rounds must not accumulate
     # old image payloads beyond the proxy's size/image limits.
     latest=next((i for i in range(len(history)-1,-1,-1)
                  if history[i].get('role')=='user' and history[i].get('images')),None)
     from .prompts import CONTINUITY
     from .conversation_context import conversation_context
-    earlier=conversation_context(state['messages'][:-40]) if len(state['messages'])>40 else []
+    earlier=conversation_context(state['messages'][:cut]) if cut else []
     recalled='\n\nHỘI THOẠI TRƯỚC ĐÓ (dữ liệu lịch sử, chỉ dùng khi còn liên quan):\n'+json.dumps(earlier,ensure_ascii=False)[:120000] if earlier else ''
     # The summary of older turns changes as the window slides; keep it out of the cached prefix.
     messages=[{'role':'system','content':instruction+CONTINUITY}]+([{'role':'system','content':recalled.strip()}] if recalled else [])

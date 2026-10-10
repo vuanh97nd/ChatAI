@@ -48,7 +48,7 @@ def _join_read_args(args):
 
 
 def commands_from_json(raw):
-    if not isinstance(raw,str) or len(raw)>50000:raise ValueError('commands cần là chuỗi JSON tối đa 50000 ký tự.')
+    if not isinstance(raw,str):raise ValueError('commands cần là chuỗi JSON.')
     try:rows=json.loads(raw)
     except json.JSONDecodeError as error:
         # '..."mat"}]}]' instead of '..."mat"]}]': only the closing tail is wrong.
@@ -60,7 +60,7 @@ def commands_from_json(raw):
             near=raw[max(0,error.pos-60):error.pos+20]
             raise ValueError(f'commands không phải JSON hợp lệ ({error.msg}) gần: …{near}… '
                              'Kiểm tra cặp ngoặc: mảng args đóng bằng ], lệnh đóng bằng }.') from None
-    if not isinstance(rows,list) or not 1<=len(rows)<=40:raise ValueError('Mỗi lượt cần 1–40 lệnh PLAXIS.')
+    if not isinstance(rows,list) or not rows:raise ValueError('commands cần ít nhất một lệnh PLAXIS.')  # no batch-size cap
     def value(v,depth=0):
         if depth>12:raise ValueError('Tham số lồng quá sâu.')
         if isinstance(v,dict):
@@ -299,9 +299,9 @@ def _signature(listing,name):
 
 
 def model_checks(raw):
-    if not isinstance(raw,str) or len(raw)>30000:raise ValueError('verify_model cần chuỗi JSON các phép kiểm tra.')
+    if not isinstance(raw,str):raise ValueError('verify_model cần chuỗi JSON các phép kiểm tra.')
     checks=json.loads(raw)
-    if not isinstance(checks,list) or not 1<=len(checks)<=100:raise ValueError('verify_model cần 1–100 phép kiểm tra.')
+    if not isinstance(checks,list) or not checks:raise ValueError('verify_model cần ít nhất một phép kiểm tra.')
     for check in checks:
         if not isinstance(check,dict) or set(check)-{'ref','expected','kind','tolerance'}:raise ValueError('Phép kiểm tra chỉ có ref, expected, kind, tolerance.')
         if _read_ref(check.get('ref')) is None:raise ValueError('ref kiểm tra không hợp lệ.')
@@ -378,6 +378,47 @@ def _empty_phases(g):
     return problems
 
 
+# Manual labels and common guesses -> PLAXIS 2D API property names (seen in real runs).
+_PROPERTY_ALIASES={
+    'weight':'w','w':'w','drainagetype':'DrainageType','drainage':'DrainageType','type':'DrainageType',
+    'unsaturatedunitweight':'gammaUnsat','gammaunsat':'gammaUnsat','saturatedunitweight':'gammaSat','gammasat':'gammaSat',
+    'axialstiffness':'EA1','axialstiffnessea1':'EA1','ea':'EA1','bendingstiffness':'EI','ei':'EI',
+    'm':'PowerM','power':'PowerM','powerm':'PowerM','c':'cRef','cref':'cRef','cohesion':'cRef',
+    'phi':'phi','frictionangle':'phi','psi':'psi','dilatancyangle':'psi','nu':'nu','poissonsratio':'nu',
+    'nuur':'nuUR','e50ref':'E50Ref','e50':'E50Ref','eoedref':'EoedRef','eoed':'EoedRef','eurref':'EURRef','eur':'EURRef',
+    'lspacing':'Lspacing','outofplanespacing':'Lspacing','rinter':'Rinter','strengthreductionfactor':'Rinter',
+    'k0determination':'K0Determination','ocr':'OCR','pop':'POP','kx':'PermHorizontalPrimary','ky':'PermVertical',
+}
+
+
+def _property_hint(g,target,name,exc):
+    """Explain a failed setproperties: the real property name, or the order a
+    read-only property needs (Rinter after manual strength, K0NC is computed)."""
+    text=str(exc)
+    if re.search(r'read-only property Rinter',text):
+        return 'Rinter chỉ đặt được sau InterfaceStrengthDetermination="Manual"; đặt thuộc tính đó trước rồi đặt lại Rinter.'
+    if re.search(r'read-only property K0NC',text):
+        return 'K0NC do PLAXIS tự tính khi K0Determination="Automatic". Giữ Automatic như manual, không đổi sang Manual để né lỗi này.'
+    if 'Unknown property' not in text:return ''
+    key=re.sub(r'[^a-z0-9]','',str(name).lower())
+    guess=_PROPERTY_ALIASES.get(key)
+    columns=[]
+    try:columns=str(g.tabulate(target)).replace('\r','').split('\n')[0].split('\t')[1:]
+    except Exception:pass
+    if columns and guess not in columns:
+        if guess and guess.lower() in {c.lower() for c in columns}:guess=next(c for c in columns if c.lower()==guess.lower())
+        elif guess and guess.rstrip('0123456789') in columns:guess=guess.rstrip('0123456789')  # anchors use EA, plates EA1
+        elif key in {re.sub(r'[^a-z0-9]','',c.lower()) for c in columns}:guess=None
+    if (not guess or guess not in columns) and columns:
+        import difflib
+        lowered={re.sub(r'[^a-z0-9]','',c.lower()):c for c in columns}
+        match=difflib.get_close_matches(key,list(lowered),n=1,cutoff=0.5)
+        guess=lowered[match[0]] if match else None
+    hint=f'Thuộc tính "{name}" không tồn tại'+(f'; dùng "{guess}"' if guess else '')+'.'
+    if columns:hint+=' Tên hợp lệ của đối tượng này: '+', '.join(columns[:60])
+    return hint
+
+
 def _soils_without_material(g):
     """Names of soil regions whose material is positively read as unassigned. Anything
     that cannot be read is skipped, so this never blocks meshing on a guess."""
@@ -409,7 +450,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
     PLAXIS project, so a later call can refer to objects created earlier."""
     from .windows_apps import _STOP,wait_automation
     session=session if session is not None else {'aliases':{},'created':{}}
-    aliases={**session['aliases'],'g':g};results=[];started=False
+    aliases={**session['aliases'],'g':g};results=[];started=False;failed_properties=[]
     def resolve(v):
         if isinstance(v,dict):
             parts=v['ref'].split('.')
@@ -537,10 +578,38 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 results.append({'step':index+1,'command':'read','value':None,'error':str(exc)[:500],
                                 'note':'Bước đọc lỗi, không ảnh hưởng mô hình; các bước sau vẫn chạy.'})
                 continue
+            if row['command']=='setproperties':
+                # Property writes are independent: one bad name must not silently drop the
+                # rest of a material (seen: Sand kept phi=0 after an unknown "m").
+                args=row.get('args',[])
+                try:target=resolve(args[0])
+                except Exception:target=None
+                names=[args[i] for i in range(1,len(args),2) if isinstance(args[i],str)]
+                hint=_property_hint(g,target,names[0] if names else '',exc) if target is not None else ''
+                failed_properties.append({'step':index+1,'properties':names[:6],'error':str(exc)[:300],**({'hint':hint} if hint else {})})
+                results.append({'step':index+1,'command':'setproperties','value':None,'error':str(exc)[:300],**({'hint':hint} if hint else {})})
+                continue
+            remaining=[r.get('command','?')+json.dumps(r.get('args',[]),ensure_ascii=False)[:70] for r in rows[index+1:]]
             failure={'ok':False,'results':results,'failed_step':index+1,'failed_command':row['command'],
                     'error':str(exc)[:2000],'command_started':started,'uncertain':started,
                     'not_executed':not results and not started,
                     'note':'Đã dừng tại bước lỗi. Không chạy lại những bước đã thực hiện; đọc trạng thái hiện tại trước khi sửa.'}
+            if remaining:
+                # The model treated a stopped batch as done and skipped the wall interfaces,
+                # excavation lines and strut; name what never ran.
+                failure['not_run']=remaining[:40]
+                failure['note']+=f' {len(remaining)} lệnh sau bước lỗi CHƯA chạy (xem not_run); gửi lại các lệnh đó sau khi sửa.'
+            if row['command']=='set' and len(row.get('args',[]))==3 and isinstance(row['args'][2],bool):
+                ref=row['args'][0].get('ref','') if isinstance(row['args'][0],dict) else ''
+                if not ref.endswith('.Active'):
+                    failure['activation_hint']=('Kích hoạt theo phase phải đặt thuộc tính Active của đối tượng, dùng tên đối tượng: '
+                        'set [{"ref":"Plate_1_1.Active"},{"ref":"p1"},true]. Đọc tên ở g.Plates/g.LineLoads/g.Interfaces trong model_state.')
+            if row['command'] in ('posinterface','neginterface'):
+                try:target=_label(resolve(row.get('args',[None])[0]))
+                except Exception:target=''
+                if re.search(r'<Plate\b',target):
+                    failure['object_hint']=('Mặt phân cách tạo trên ĐƯỜNG hình học của tường, không trên tấm: '
+                        'posinterface [{"ref":"Line_1"}] (đọc g.Lines để biết tên đường của tường).')
             if row['command'] in ('setmaterial','set','activate','deactivate') and re.search(
                     r'Tried executing, but failed|Cannot apply the properties|Requested attribute .(?:Soil|Active|Material). is not present',str(exc)):
                 # The model guessed for 20 rounds here: in staged construction these
@@ -576,6 +645,11 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     'không dùng chuỗi "Borehole_1".')
                 except Exception:pass
             return failure
+    if failed_properties:
+        return {'ok':False,'results':results,'failed_command':'setproperties','command_started':True,'uncertain':False,
+                'not_executed':False,'failed_properties':failed_properties,
+                'error':f'{len(failed_properties)} lệnh setproperties lỗi; các lệnh khác trong nhóm đã chạy.',
+                'note':'Chỉ sửa và gửi lại các thuộc tính trong failed_properties (xem hint), không gửi lại cả nhóm.'}
     answer={'ok':True,'results':results,
             'note':'Các lệnh đã trả kết quả. Hãy chạy tiếp bước kế tiếp của bài; chỉ kết luận mô hình đúng tài liệu '
                    'hoặc tính toán hội tụ sau khi đọc trạng thái pha và kết quả Output. Kết quả lệnh chưa phải bằng chứng hội tụ.'}

@@ -719,3 +719,61 @@ class TokenSavingTests(unittest.TestCase):
         self.assertIn('plaxis_commands', _PLAXIS_TOOLSET); self.assertNotIn('word_create_open', _PLAXIS_TOOLSET)
         self.assertTrue(_OTHER_APP_REQUEST.search('mở Word viết báo cáo'))
         self.assertFalse(_OTHER_APP_REQUEST.search('làm tiếp bài 2'))
+
+
+class BatchRobustnessTests(unittest.TestCase):
+    def run_rows(self, g, rows):
+        from unittest.mock import Mock
+        from assistant.plaxis_commands import execute_commands
+        from assistant import windows_apps
+        windows_apps.resume_automation()
+        return execute_commands(Mock(), g, rows)
+
+    def test_bad_property_does_not_drop_the_rest(self):
+        from unittest.mock import Mock
+        sand = Mock(); set_values = []
+        def setproperties(*args):
+            if args[0] == 'm': raise RuntimeError('Unsuccessful command:\nUnknown property: m')
+            set_values.append(args[0])
+        sand.setproperties.side_effect = setproperties
+        g = Mock(); g.sand = sand; g.tabulate.return_value = 'Object\tIdentification\tPowerM\tphi\tRinter\nSand\t"Sand"\t0.5\t0\t1'
+        g.setproperties.side_effect = lambda obj, *a: obj.setproperties(*a)
+        result = self.run_rows(g, [{'command': 'setproperties', 'args': [{'ref': 'g.sand'}, 'm', 0.5]},
+                                   {'command': 'setproperties', 'args': [{'ref': 'g.sand'}, 'phi', 32]},
+                                   {'command': 'setproperties', 'args': [{'ref': 'g.sand'}, 'Rinter', 0.67]}])
+        self.assertFalse(result['ok']); self.assertEqual(set_values, ['phi', 'Rinter'])
+        self.assertIn('"PowerM"', result['failed_properties'][0]['hint'])
+
+    def test_label_names_map_to_api_names(self):
+        from assistant.plaxis_commands import _property_hint
+        self.assertIn('"w"', _property_hint(None, object(), 'Weight', RuntimeError('Unknown property: Weight')))
+        self.assertIn('Manual', _property_hint(None, object(), 'Rinter', RuntimeError('Cannot set read-only property Rinter')))
+
+    def test_stopped_batch_lists_commands_not_run(self):
+        from unittest.mock import Mock
+        g = Mock(); g.posinterface.side_effect = RuntimeError('Unsuccessful command:\nInvalid parameters.')
+        g.commands.return_value = 'posinterface (pi)\n  Line\''
+        result = self.run_rows(g, [{'command': 'posinterface', 'args': [1]}, {'command': 'line', 'args': [50, 18, 65, 18]},
+                                   {'command': 'fixedendanchor', 'args': [50, 19]}])
+        self.assertEqual(len(result['not_run']), 2); self.assertIn('fixedendanchor', result['not_run'][1])
+
+    def test_activation_hint_for_object_instead_of_active(self):
+        from unittest.mock import Mock
+        g = Mock(); g.set.side_effect = RuntimeError('Unsuccessful command:\nInvalid parameters.')
+        g.commands.return_value = "set\n  PlxObject'"
+        result = self.run_rows(g, [{'command': 'set', 'args': [{'ref': 'g.Plates', 'index': 0}, {'ref': 'g.InitialPhase'}, True]}])
+        self.assertIn('.Active', result['activation_hint'])
+
+    def test_large_batches_are_accepted(self):
+        from assistant.plaxis_commands import commands_from_json
+        self.assertEqual(len(commands_from_json(json.dumps([{'command': 'gotosoil', 'args': []}] * 120))), 120)
+
+    def test_history_is_cut_in_blocks(self):
+        from assistant.online_automation import planning_messages
+        def build(n):
+            return {'messages': [{'role': 'user' if i % 2 == 0 else 'assistant', 'content': 'm%d' % i} for i in range(n)]}
+        firsts = set()
+        for n in range(61, 80):
+            messages = [m for m in planning_messages(build(n), 'X') if m['role'] != 'system']
+            firsts.add(messages[0]['content'])
+        self.assertEqual(len(firsts), 1)  # the same first history message for 19 consecutive calls
