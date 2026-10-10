@@ -27,7 +27,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsNothing);
     expect(find.byType(ChatWelcome), findsOneWidget);
-    expect(find.text('Dùng thử NVIDIA · còn 3/3 lượt trên thiết bị này'), findsOneWidget);
+    expect(find.textContaining('Dùng thử NVIDIA · còn'), findsNothing);
     for (var i = 1; i <= 3; i++) {
       await tester.enterText(find.byType(TextField), 'Question $i');
       await tester.tap(find.byIcon(Icons.send)); await tester.pumpAndSettle();
@@ -46,6 +46,12 @@ void main() {
     expect(find.text('Tôi có thể giúp gì cho bạn?'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
+  });
+  testWidgets('welcome scrolls in the small space left by the keyboard without overflow', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(
+      body: SizedBox(height: 70, child: ChatWelcome()))));
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
   testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: StartupScreen()));

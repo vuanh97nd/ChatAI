@@ -13,7 +13,7 @@ import 'notifications.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.2');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.3');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -56,14 +56,14 @@ class StartupScreen extends StatelessWidget {
 class ChatWelcome extends StatelessWidget {
   const ChatWelcome({super.key});
   @override
-  Widget build(BuildContext context) => Center(child: Column(
+  Widget build(BuildContext context) => Center(child: SingleChildScrollView(child: Column(
     mainAxisSize: MainAxisSize.min, children: [
       Image.asset('assets/chat_ai.png', width: 96, height: 96, semanticLabel: 'Logo ChatAI'),
       const SizedBox(height: 20),
       Text('Xin chào bạn!', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 8), const Text('Tôi có thể giúp gì cho bạn?'),
     ],
-  ));
+  )));
 }
 
 class Home extends StatefulWidget {
@@ -267,7 +267,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     buildInfoButton(context),
     TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))]),
     body: SafeArea(child: Column(children: [
-      Padding(padding: const EdgeInsets.all(12), child: Text('Dùng thử NVIDIA · còn $guestRemaining/3 lượt trên thiết bị này')),
       if (error != null) Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
       if (guestRemaining == 0) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập / Đăng ký để tiếp tục')),
       Expanded(child: chat()),
