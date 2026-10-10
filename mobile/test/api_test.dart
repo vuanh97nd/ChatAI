@@ -9,6 +9,39 @@ http.Response jsonResponse(String body, int status) => http.Response.bytes(
     utf8.encode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
 void main() {
+  test('AI decides to search, receives snippets and answer includes verified source URLs', () async {
+    final paths = <String>[];
+    var modelCalls = 0;
+    final api = ChatApi(client: MockClient((request) async {
+      paths.add(request.url.path);
+      if (request.url.path == '/api/chat/search') {
+        expect(jsonDecode(request.body)['text'], 'PLAXIS API documentation');
+        return jsonResponse(jsonEncode({'success': true, 'answer': 'Official API snippet',
+          'sources': [{'title': 'Manual', 'url': 'https://example.org/manual'}]}), 200);
+      }
+      modelCalls++;
+      if (modelCalls == 1) return jsonResponse(jsonEncode({'success': true,
+        'answer': '{"action":"web_search","query":"PLAXIS API documentation"}'}), 200);
+      expect(jsonDecode(request.body)['messages'].first['content'], contains('Official API snippet'));
+      return jsonResponse('{"success":true,"answer":"According to the manual [1]"}', 200);
+    }));
+    addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
+    final answer = await api.answer('nvidia', [{'role': 'user', 'content': 'Find PLAXIS API'}], []);
+    expect(paths, ['/api/provider/model', '/api/chat/search', '/api/provider/model']);
+    expect(answer, contains('https://example.org/manual'));
+  });
+  test('search failure is surfaced without another chargeable model call', () async {
+    var calls = 0;
+    final api = ChatApi(client: MockClient((request) async {
+      calls++;
+      if (request.url.path == '/api/chat/search') return jsonResponse('{"success":false,"message":"Search unavailable"}', 503);
+      return jsonResponse(jsonEncode({'success': true, 'answer': '{"action":"web_search","query":"latest API"}'}), 200);
+    }));
+    addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
+    await expectLater(api.answer('nvidia', [{'role': 'user', 'content': 'Latest API?'}], []), throwsA(isA<ApiException>()));
+    expect(calls, 2);
+  });
+
   test('attachment image reaches the selected provider with the user question', () async {
     final api = ChatApi(client: MockClient((request) async {
       final body = jsonDecode(request.body);

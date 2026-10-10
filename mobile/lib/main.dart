@@ -18,7 +18,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.4');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.5');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -565,13 +565,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
         if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
           title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
-        SwitchListTile(secondary: const Icon(Icons.brightness_6_outlined), title: const Text('Chế độ tối'),
-          value: Theme.of(context).brightness == Brightness.dark,
-          onChanged: (dark) async {
-            appThemeMode.value = dark ? ThemeMode.dark : ThemeMode.light;
-            try { await storage.write(key: 'theme_mode', value: dark ? 'dark' : 'light'); }
+        ListTile(leading: const Icon(Icons.brightness_6_outlined), title: const Text('Giao diện'),
+          trailing: DropdownButton<ThemeMode>(value: appThemeMode.value, items: const [
+            DropdownMenuItem(value: ThemeMode.system, child: Text('Theo thiết bị')),
+            DropdownMenuItem(value: ThemeMode.light, child: Text('Sáng')),
+            DropdownMenuItem(value: ThemeMode.dark, child: Text('Tối')),
+          ], onChanged: (mode) async {
+            if (mode == null) return;
+            appThemeMode.value = mode;
+            try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
-          }),
+          })),
         const Divider(height: 32),
         const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: Text('Gần đây', style: TextStyle(color: Colors.grey))),
         if (api.session != null) TextField(onChanged: (v) => changed(() => historyQuery = v),

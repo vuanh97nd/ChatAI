@@ -210,3 +210,19 @@ Văn bản trích xuất được gửi cho AI được chọn, dưới nhãn d�
 lưu trong hội thoại. Ảnh được gửi dạng dữ liệu ảnh; cần mô hình hỗ trợ đọc ảnh.
 Ảnh gốc chưa lưu để mở lại hoặc gửi lại trong các lượt sau. File chỉ gửi khi bấm
 Gửi, có thể gỡ bằng nút x trên chip tên file; không tự gửi khi chọn file.
+
+## Android 0.9.5 (build 18): tra cứu tự động
+
+Sau đăng nhập, AI được phép yêu cầu tìm kiếm web khi cần thông tin mới hoặc
+nguồn tài liệu/API. Câu trả lời thông thường không gọi tìm kiếm. App thực hiện
+một lần tra cứu, gửi các trích đoạn và nguồn trở lại mô hình, rồi thêm đường dẫn
+nguồn vào câu trả lời. Chưa đọc toàn văn trang web. Không tự lặp khi tìm kiếm lỗi.
+Server cần cấu hình `BRAVE_SEARCH_API_KEY`; thiếu cấu hình sẽ báo lỗi tra cứu.
+Lượt dùng thử chưa đăng nhập vẫn chỉ hỏi mô hình, chưa tra web.
+
+Khi cần tra, có hai lần gọi mô hình (quyết định tra và tổng hợp kết quả); phí token
+được tính theo các lần gọi thực tế. Không đưa nội dung riêng của file/bộ nhớ vào
+query; mô hình được hướng dẫn chỉ dùng từ khóa công khai.
+
+Giao diện có ba lựa chọn: **Theo thiết bị / Sáng / Tối**. Mặc định Theo thiết bị
+và tự đổi theo hệ thống; lựa chọn được lưu cho lần mở sau.
