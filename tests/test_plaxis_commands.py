@@ -171,3 +171,17 @@ class PlaxisCommandTests(unittest.TestCase):
     def test_verify_model_rejects_expression_and_invalid_tolerance(self):
         for check in [{'ref':'g.Soils[0].__class__()','expected':0}, {'ref':'g.Soils','expected':1,'tolerance':-1}]:
             with self.assertRaises(ValueError):commands_from_json(json.dumps([{'command':'verify_model','args':[json.dumps([check])]}]))
+
+    def test_raw_coordinate_args_pass_through_without_ref_wrapping(self):
+        # prescribeddisplacement_line and similar geometry commands take raw coordinates
+        for cmd,args in [('prescribeddisplacement_line',[0,0,10,10]),
+                         ('linedispl',[0,0,10,10]),
+                         ('polycurve',[0,0,10,10,20,0]),
+                         ('line',[0,0,10,10]),
+                         ('plate',[0,0,10,10])]:
+            rows=commands_from_json(json.dumps([{'command':cmd,'args':args}]))
+            self.assertEqual(rows[0]['args'],args)
+        # dict with non-ref keys is rejected with a helpful message
+        with self.assertRaises(ValueError) as ctx:
+            commands_from_json(json.dumps([{'command':'prescribeddisplacement_line','args':[{'x':0,'y':0},{'x':10,'y':10}]}]))
+        self.assertIn('trực tiếp',str(ctx.exception))

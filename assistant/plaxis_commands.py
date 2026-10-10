@@ -54,7 +54,9 @@ def commands_from_json(raw):
     def value(v,depth=0):
         if depth>12:raise ValueError('Tham số lồng quá sâu.')
         if isinstance(v,dict):
-            if set(v)-{'ref','index'} or not isinstance(v.get('ref'),str):raise ValueError('Đối tượng tham số chỉ hỗ trợ ref và index.')
+            if set(v)-{'ref','index'} or not isinstance(v.get('ref'),str):raise ValueError(
+                'Đối tượng tham số chỉ hỗ trợ {"ref":"..."} hoặc {"ref":"...","index":n}. '
+                'Toạ độ và số dùng trực tiếp, không gói vào đối tượng: ví dụ [x1,y1,x2,y2] thay vì [{"x":x1,"y":y1},...].')
             if not all(_NAME.fullmatch(p) for p in v['ref'].split('.')):raise ValueError('ref phải là tên đối tượng/property PLAXIS, không phải biểu thức Python.')
             if 'index' in v and (type(v['index']) is not int or not 0<=v['index']<100000):raise ValueError('index không hợp lệ.')
         elif isinstance(v,list):
