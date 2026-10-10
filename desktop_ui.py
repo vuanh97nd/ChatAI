@@ -719,7 +719,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.new_btn.setEnabled(False); self.delete_btn.setEnabled(False); self.history.setEnabled(False); self.model.setEnabled(False); self.chat_mode.setEnabled(False)
         self.image_btn.setEnabled(False); self.video_btn.setEnabled(False); self.web_btn.setEnabled(False);self.deep_btn.setEnabled(False)
         self.sync_send_button(False); self.resume_btn.setEnabled(False)
-        self.apply_settings_button.setEnabled(False)
+        self.apply_settings_button.setVisible(False)
         self.sync_welcome()
         worker.start()
 
@@ -2392,7 +2392,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         layout.addWidget(advanced)
         self.settings_sections={'Giao diện':appearance,'Nâng cao':advanced,'Cấu hình máy và AI':group,'Office và thư mục':files,'Điều khiển ứng dụng':automation,'Lịch sử và dữ liệu':history,'Tài khoản':account,'Cập nhật Chat AI':updates}
         self.apply_settings_button=self.button(layout,'Lưu cài đặt',self.save_settings)
-        self.apply_settings_button.setEnabled(False)
+        self.apply_settings_button.setVisible(False)
         for field in self.settings_fields.values():
             (field.currentTextChanged if isinstance(field,QComboBox) else field.valueChanged).connect(self.account_settings_changed)
         self.settings_theme.currentIndexChanged.connect(self.account_settings_changed)
@@ -3193,7 +3193,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
                 forget_login();self.cid=self.store.create(persist=False)
             self.select_ai(PROVIDER_NAMES.get(cfg['chat_provider'],cfg['default_model']))
             for f in self.api_key_fields.values():f.clear()
-            self.apply_theme(cfg['theme'],cfg['font_size']);self.html_cache.clear();self.render();self.status.setText('Đã lưu cài đặt.')
+            self.apply_theme(cfg['theme'],cfg['font_size']);self.html_cache.clear();self.render();self.status.setText('Đã lưu cài đặt.');self.account_settings_changed()
             QMessageBox.information(self,'Chat AI','Đã lưu cài đặt.')
             if target_index is not None:
                 self.settings_navigation_guard=True;self.tabs.setCurrentIndex(target_index);self.settings_navigation_guard=False;self.settings_last_tab=target_index
@@ -3282,14 +3282,20 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for label,section in [('Chung',None),('Cấu hình máy và AI','Cấu hình máy và AI'),('Giao diện','Giao diện'),('Office và công cụ','Office và thư mục'),('Điều khiển ứng dụng','Điều khiển ứng dụng'),('Tài khoản và đăng nhập','Tài khoản'),('Lịch sử và dữ liệu','Lịch sử và dữ liệu'),('Cập nhật','Cập nhật Chat AI'),('Nâng cao','Nâng cao')]:
             button=self.button(layout,label,lambda checked=False,n=section:self.open_settings_section(n))
             button.setCheckable(True);self.settings_nav_buttons[label]=(button,section)
-        def _nav_memory():
+        def _clear_section_buttons():
             for btn,_ in self.settings_nav_buttons.values():btn.setChecked(False)
+            for btn in self.settings_extra_nav_buttons.values():btn.setChecked(False)
+        def _nav_memory():
+            _clear_section_buttons()
+            self.settings_extra_nav_buttons['memory'].setChecked(True)
             self.memory_dialog()
         def _nav_model_download():
-            for btn,_ in self.settings_nav_buttons.values():btn.setChecked(False)
+            _clear_section_buttons()
+            self.settings_extra_nav_buttons['model_download'].setChecked(True)
             self.tabs.setCurrentIndex(1)
-        self.button(layout,'Bộ nhớ cá nhân',_nav_memory)
-        self.button(layout,'Tải mô hình',_nav_model_download)
+        memory_btn=self.button(layout,'Bộ nhớ cá nhân',_nav_memory);memory_btn.setCheckable(True)
+        model_btn=self.button(layout,'Tải mô hình',_nav_model_download);model_btn.setCheckable(True)
+        self.settings_extra_nav_buttons={'memory':memory_btn,'model_download':model_btn}
         layout.addStretch(1)
 
     def copy_performance_report(self):
@@ -3409,6 +3415,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if getattr(self,'sidebar_collapsed',False):self.toggle_sidebar()
         self.settings_heading.setText(name or 'Cài đặt chung')
         for button,section in self.settings_nav_buttons.values():button.setChecked(section==name)
+        for btn in getattr(self,'settings_extra_nav_buttons',{}).values():btn.setChecked(False)
         for title,widget in self.settings_sections.items():
             widget.setVisible(name is None or title==name)
         self.tabs.setCurrentIndex(3)
