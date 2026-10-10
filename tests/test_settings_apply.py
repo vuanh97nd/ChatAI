@@ -70,6 +70,7 @@ class SettingsTest(unittest.TestCase):
         u.model=Combo('Cloudflare AI');u.status=Text('');u.html_cache={};u.draw=lambda:None;u.render=lambda:None;u.busy=lambda:False
         u.view=Text('');u.colored_widget=Text('');u.colored_widget.setStyleSheet('color:#a8c7fa;background:#282a2c;');u.paint_timer=object()
         u.findChildren=lambda cls:[u.view,u.colored_widget];u.setStyleSheet=lambda css:setattr(u,'stylesheet',css)
+        u.account_settings_changed=lambda:None
         u.work=lambda fn,callback:callback(fn(lambda event:None))
 
     def tearDown(self):
