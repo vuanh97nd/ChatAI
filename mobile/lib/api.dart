@@ -112,7 +112,7 @@ class ChatApi {
   }
 
   Future<String> answer(String provider, List<Map<String, String>> messages,
-      List<dynamic> memories, {List<String> imageUrls = const [], bool autoSearch = true}) async {
+      List<dynamic> memories, {List<String> imageUrls = const [], bool autoSearch = true, void Function(String)? onStage, bool Function()? cancelled}) async {
     final context = memories.map((m) => {'title': m['title'], 'text': m['text']}).toList();
     final payload = <String, dynamic>{
       'provider': provider,
@@ -130,11 +130,16 @@ class ChatApi {
           else messages[i],
       ], 'max_tokens': 4096, 'temperature': 0.2,
     };
+    if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
     var result = await post('/api/provider/model', payload);
+    if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
     var text = result['answer'] as String? ?? '';
     final query = autoSearch ? searchQuery(text) : null;
     if (query != null) {
+      onStage?.call('Đang tra cứu Bing…');
       final search = await post('/api/chat/search', {'text': query});
+      if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
+      onStage?.call('Đang soạn câu trả lời…');
       final sources = (search['sources'] as List<dynamic>? ?? []).where((s) {
         final url = Uri.tryParse(s['url'] as String? ?? '');
         return url != null && ['https', 'http'].contains(url.scheme) && url.host.isNotEmpty;

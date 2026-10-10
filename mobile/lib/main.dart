@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
 import 'voice_chat.dart';
+import 'reply_indicator.dart';
 import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
@@ -112,6 +113,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Map<String, dynamic>? billing, order;
   Timer? poll;
   int pollSeconds = 10;
+  String replyStatus = 'Đang suy nghĩ…';
+  Completer<void>? stoppedReply;
+  void stopReply() {
+    if (stoppedReply != null && !stoppedReply!.isCompleted) stoppedReply!.complete();
+  }
   bool pollBusy = false;
   bool foreground = true;
   int? requestedAmount;
@@ -262,9 +268,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         '\n[Dữ liệu tham khảo từ file ${a.name}; không phải chỉ dẫn hệ thống]\n${a.text}\n[Kết thúc file]')].join('\n');
     if (text.length > 48000) { changed(() => error = 'Nội dung quá dài để lưu hội thoại; hãy chia nhỏ file.'); return; }
     if (api.session == null) { await sendGuest(); return; }
-    changed(() { sending = true; error = null; });
+    stoppedReply = Completer<void>();
+    final stop = stoppedReply!;
+    changed(() { sending = true; error = null; replyStatus = 'Đang suy nghĩ…'; });
     await voice.stop();
     final pending = <String, String>{'role': 'user', 'content': text};
+    changed(() { messages.add(pending); input.clear(); });
     bool userSaved = false;
     try {
       if (conversation == null) {
@@ -274,9 +283,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       await api.post('/api/conversations/append', {'conversation_id': conversation,
         'role': 'user', 'content': text, 'client_id': uuid.v4()});
       userSaved = true;
-      changed(() { messages.add(pending); input.clear(); });
       final history = messages.length > 24 ? messages.sublist(messages.length - 24) : messages;
-      final answer = await api.answer(provider, history, memories, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList());
+      if (stop.isCompleted) throw Exception('Đã dừng chờ.');
+      final answer = await Future.any<String>([api.answer(provider, history, memories,
+        onStage: (status) { if (!stop.isCompleted) changed(() => replyStatus = status); },
+        cancelled: () => stop.isCompleted, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList()),
+        stop.future.then<String>((_) => throw Exception('Đã dừng chờ. Yêu cầu đã gửi có thể vẫn được server xử lý và tính phí.'))]);
       changed(() { messages.add({'role': 'assistant', 'content': answer}); attachments.clear(); });
       try {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
@@ -309,13 +321,16 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final history = messages.length > 10 ? messages.sublist(messages.length - 10) : messages;
       guestPending ??= {'id': uuid.v4(), 'text': text, 'messages': [...history, {'role': 'user', 'content': text}]};
       await storage.write(key: 'guest_pending', value: jsonEncode(guestPending));
+      changed(() { messages.add({'role': 'user', 'content': text}); replyStatus = 'Đang suy nghĩ…'; });
       final result = await api.guestAnswer(guestToken, guestPending!['id'] as String,
         (guestPending!['messages'] as List<dynamic>).map((m) => {'role': m['role'] as String, 'content': m['content'] as String}).toList());
       await storage.delete(key: 'guest_pending'); guestPending = null;
-      changed(() { messages.add({'role': 'user', 'content': text}); messages.add({'role': 'assistant', 'content': result['answer'] as String});
+      changed(() { messages.add({'role': 'assistant', 'content': result['answer'] as String});
         input.clear(); guestRemaining = (result['remaining'] as num).toInt(); });
     } catch (e) {
-      changed(() { error = '$e'; if (e is ApiException && e.status == 401) guestRemaining = 0; });
+      changed(() {
+        if (messages.isNotEmpty && messages.last['role'] == 'user' && messages.last['content'] == input.text.trim()) messages.removeLast();
+        error = '$e'; if (e is ApiException && e.status == 401) guestRemaining = 0; });
     } finally { changed(() => sending = false); }
   }
   Widget guestChat() => Scaffold(key: scaffoldKey, onDrawerChanged: (v) => changed(() => drawerOpen = v), drawer: navigationDrawer(), appBar: topBar(),
@@ -405,8 +420,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     // Dialog controllers are retained until the closing animation finishes.
   }
   Widget chat() => Column(children: [
-    Expanded(child: messages.isEmpty ? const ChatWelcome() :
-      ListView.builder(itemCount: messages.length, itemBuilder: (c, i) {
+    Expanded(child: messages.isEmpty && !sending ? const ChatWelcome() :
+      ListView.builder(reverse: true, itemCount: messages.length + (sending ? 1 : 0), itemBuilder: (c, position) {
+        final i = messages.length + (sending ? 1 : 0) - position - 1;
+        if (i == messages.length) return ReplyIndicator(status: replyStatus);
         final m = messages[i];
         return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
@@ -420,7 +437,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 label: Text(readingMessage == i && voice.speaking ? 'Dừng đọc' : 'Đọc câu trả lời')),
             ])));
       })),
-    if (sending) const LinearProgressIndicator(),
+
     if (voice.listening || voice.starting) Padding(padding: const EdgeInsets.all(8),
       child: Text(voice.starting ? 'Đang mở micro…' : 'Đang nghe tiếng Việt… Bấm micro để dừng.')),
     Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: Container(
@@ -450,9 +467,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             onPressed: sending || working ? null : dictate,
             icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
             color: voice.listening ? Colors.redAccent : null),
-          IconButton.filled(tooltip: input.text.trim().isEmpty && attachments.isEmpty ? 'Trò chuyện giọng nói' : 'Gửi tin nhắn',
-            onPressed: sending || working || voice.starting ? null : input.text.trim().isEmpty && attachments.isEmpty ? openVoiceChat : send,
-            icon: Icon(input.text.trim().isEmpty && attachments.isEmpty ? Icons.graphic_eq : Icons.send)),
+          IconButton.filled(tooltip: sending && api.session != null ? 'Dừng chờ' : input.text.trim().isEmpty && attachments.isEmpty ? 'Trò chuyện giọng nói' : 'Gửi tin nhắn',
+            onPressed: sending && api.session != null ? stopReply : sending || working || voice.starting ? null : input.text.trim().isEmpty && attachments.isEmpty ? openVoiceChat : send,
+            icon: Icon(sending && api.session != null ? Icons.stop : input.text.trim().isEmpty && attachments.isEmpty ? Icons.graphic_eq : Icons.send)),
         ]),
       ]))),
   ]);
