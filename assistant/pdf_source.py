@@ -19,9 +19,27 @@ class PDFSource:
         self.windows,self.files,self.audit=windows,files,audit
         self.pdf_ocr=pdf_ocr
 
+    def _existing_pdf(self,raw):
+        """The allowed path, or — when the folder is wrong (NVIDIA invented
+        "/mnt/data/<file>") — the single allowed file with that name."""
+        try:return self.files.path(raw)
+        except (OSError,ValueError) as error:
+            import re
+            name=re.split(r'[\\/]',str(raw))[-1]
+            if not name or not name.lower().endswith('.pdf'):raise
+            matches=[]
+            for root in self.files.roots:
+                direct=root/name
+                if direct.is_file():matches.append(direct)
+                else:matches+=[p for p in root.glob('*/'+name) if p.is_file()]
+            unique={str(p.resolve()).lower():p for p in matches}
+            if len(unique)!=1:
+                raise ValueError(f'Không tìm thấy {raw}. Dùng đúng tên tệp đã đọc trước đó (chỉ tên, ví dụ "{name}"), không tự thêm thư mục.') from error
+            return self.files.path(str(next(iter(unique.values()))))
+
     def prepare(self,name,args):
         if name=='pdf_read':
-            path=self.files.path(args['path'])
+            path=self._existing_pdf(args['path'])
             if path.suffix.lower()!='.pdf':raise ValueError('Chỉ đọc PDF.')
             start=int(str(args.get('start') or '0').strip())
             if start<0:raise ValueError('start phải không âm.')

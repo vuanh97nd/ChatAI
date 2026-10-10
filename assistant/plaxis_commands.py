@@ -419,6 +419,23 @@ def _property_hint(g,target,name,exc):
     return hint
 
 
+def _phase_chain_hint(g,args):
+    """A new phase started from an earlier phase than the last one (tutorial 3: phases 4
+    and 5 were both created from Phase_2). Staged construction normally continues from the
+    last phase."""
+    try:
+        phases=list(g.Phases)
+        start=str(_value(args[0].Name)) if args else ''
+        names=[str(_value(p.Name)) for p in phases]
+    except Exception:
+        return ''
+    if len(names)<3 or start not in names:return ''
+    previous=names[-2]  # the phase just created is last; the one before it was the newest
+    if start in (previous,names[-1]) or start in ('InitialPhase',):return ''
+    return (f'Phase mới tạo từ {start}, trong khi phase mới nhất trước đó là {previous}. Thi công theo giai đoạn '
+            f'thường nối tiếp: phase [{{"ref":"{previous}"}}]. Nếu manual đúng là rẽ nhánh từ {start} thì giữ nguyên.')
+
+
 def _soils_without_material(g):
     """Names of soil regions whose material is positively read as unassigned. Anything
     that cannot be read is skipped, so this never blocks meshing on a guess."""
@@ -570,7 +587,23 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     session['aliases'][row['result']]=result
                     session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
-            results.append({'step':index+1,'command':row['command'],'value':plain(result),'truncated':truncated})
+            entry={'step':index+1,'command':row['command'],'value':plain(result),'truncated':truncated}
+            raw_args=row.get('args',[])
+            if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
+                    and isinstance(raw_args[0],dict) and str(raw_args[0].get('ref','')).endswith('.Active')):
+                # Read the value back: a model state that wrongly said "no change" made the
+                # model repeat the same deactivation ten times.
+                try:
+                    actual=_value(args[0][args[1]])
+                    entry['readback']=bool(actual)
+                    if bool(actual)!=raw_args[2]:
+                        entry['readback_warning']=f"Đọc lại {raw_args[0]['ref']} ở phase này = {bool(actual)}, khác giá trị vừa đặt."
+                except Exception as exc:
+                    entry['readback']=f'không đọc lại được: {str(exc)[:80]}'
+            if row['command']=='phase':
+                hint=_phase_chain_hint(g,args)
+                if hint:entry['phase_hint']=hint
+            results.append(entry)
         except Exception as exc:
             if row['command']=='read':
                 # Reads observe state without changing it, so a bad one must not
@@ -604,6 +637,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 if not ref.endswith('.Active'):
                     failure['activation_hint']=('Kích hoạt theo phase phải đặt thuộc tính Active của đối tượng, dùng tên đối tượng: '
                         'set [{"ref":"Plate_1_1.Active"},{"ref":"p1"},true]. Đọc tên ở g.Plates/g.LineLoads/g.Interfaces trong model_state.')
+            if re.search(r"Requested attribute 'Phase_\d+' is not present|Requested attribute 'Phases' is not present",str(exc)):
+                failure['mode_hint']=('Phase chỉ có ở chế độ Staged construction: gọi gotostages trước, rồi đọc g.Phases để lấy tên phase thật. '
+                                      'Nếu g.Phases chỉ có InitialPhase, dự án hiện tại chưa có các phase đó (có thể là dự án mới).')
             if row['command'] in ('posinterface','neginterface'):
                 try:target=_label(resolve(row.get('args',[None])[0]))
                 except Exception:target=''

@@ -777,3 +777,68 @@ class BatchRobustnessTests(unittest.TestCase):
             messages = [m for m in planning_messages(build(n), 'X') if m['role'] != 'system']
             firsts.add(messages[0]['content'])
         self.assertEqual(len(firsts), 1)  # the same first history message for 19 consecutive calls
+
+
+class Tutorial3RoundThreeTests(unittest.TestCase):
+    def test_active_value_is_read_back(self):
+        from unittest.mock import Mock, MagicMock
+        from assistant.plaxis_commands import execute_commands
+        from assistant import windows_apps
+        windows_apps.resume_automation()
+        prop = MagicMock(); prop.__getitem__.return_value = Mock(value=True)  # PLAXIS still reports active
+        soil = Mock(); soil.Active = prop
+        g = Mock(); g.Soil_1_2 = soil; g.p4 = Mock()
+        result = execute_commands(Mock(), g, [{'command': 'set', 'args': [{'ref': 'Soil_1_2.Active'}, {'ref': 'g.p4'}, False]}])
+        self.assertIs(result['results'][0]['readback'], True)
+        self.assertIn('khác giá trị vừa đặt', result['results'][0]['readback_warning'])
+
+    def test_phase_branching_from_older_phase_is_flagged(self):
+        from unittest.mock import Mock
+        from assistant.plaxis_commands import _phase_chain_hint
+        phases = [Mock() for _ in range(5)]
+        for p, n in zip(phases, ['InitialPhase', 'Phase_1', 'Phase_2', 'Phase_3', 'Phase_4']): p.Name.value = n
+        g = Mock(); g.Phases = phases
+        self.assertIn('Phase_3', _phase_chain_hint(g, [phases[2]]))
+        self.assertEqual(_phase_chain_hint(g, [phases[3]]), '')
+
+    def test_missing_phase_suggests_staged_mode(self):
+        from unittest.mock import Mock
+        from assistant.plaxis_commands import execute_commands
+        class G:
+            def __getattr__(self, name): raise AttributeError(f"Requested attribute '{name}' is not present")
+        result = execute_commands(Mock(), G(), [{'command': 'set', 'args': [{'ref': 'Phase_1.ShouldCalculate'}, True]}])
+        self.assertIn('gotostages', result['mode_hint'])
+
+    def test_repeated_successful_write_is_stopped(self):
+        from assistant.online_automation import stuck_command
+        rows = [{'command': 'set', 'args': [{'ref': 'Soil_1_2.Active'}, {'ref': 'p4'}, False]}]
+        call = {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'plaxis_commands', 'arguments': {'commands': json.dumps(rows)}}}]}
+        ok = {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True})}
+        state = {'messages': [{'role': 'user', 'content': 'tính bài 3'}, call, ok, call, ok]}
+        self.assertIn('đã chạy thành công 2 lần', stuck_command(state, {'commands': json.dumps(rows)}))
+
+    def test_invented_pdf_folder_resolves_to_allowed_file(self):
+        from assistant.pdf_source import PDFSource
+        from assistant.files import FileTools
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / 'workspace'; root.mkdir(); (root / 'manual.pdf').write_bytes(b'%PDF-1.4')
+        files = FileTools([str(root)], Path(tmp.name) / 'backups', lambda *a: None)
+        source = PDFSource(None, files, lambda *a: None)
+        self.assertEqual(source._existing_pdf('/mnt/data/manual.pdf').name, 'manual.pdf')
+        with self.assertRaises(ValueError):
+            source._existing_pdf('/mnt/data/other.pdf')
+
+    def test_overloaded_provider_is_retried(self):
+        from unittest.mock import patch
+        from assistant.cloud import ServerApiClient
+        from assistant.accounts import AccountAPIError
+        calls = []
+        def request(*a, **k):
+            calls.append(1)
+            if len(calls) == 1: raise AccountAPIError('Service temporarily overloaded', 503)
+            return {'success': True, 'answer': 'OK'}
+        client = ServerApiClient({'username': 'u', 'key': 'k', 'endpoint': 'https://example.org'}, 'deepseek_flash')
+        with patch('assistant.accounts.request_account', side_effect=request), patch('time.sleep'), \
+             patch('threading.Event.wait', return_value=False):
+            self.assertEqual(client.chat('m', [{'role': 'user', 'content': 'x'}])['message']['content'], 'OK')
+        self.assertEqual(len(calls), 2)

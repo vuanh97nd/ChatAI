@@ -393,6 +393,25 @@ def stuck_command(state,args):
     for command,error in _failed_commands(messages[last_user+1:]):
         counts[(command,error)]=counts.get((command,error),0)+1
     planned={r.get('command') for r in rows if isinstance(r,dict)}
+    # Identical write batches that already succeeded: repeating them changes nothing
+    # (seen: the same deactivation sent ten times because the state looked unchanged).
+    writes={r.get('command') for r in rows if isinstance(r,dict)}-{'read','info','tabulate','signature','commands','summarize','verify_model'}
+    if writes:
+        key=json.dumps(rows,sort_keys=True,ensure_ascii=False)
+        repeats=0
+        turn=messages[last_user+1:]
+        for i,message in enumerate(turn[:-1]):
+            if message.get('role')!='assistant' or not message.get('tool_calls'):continue
+            fn=message['tool_calls'][0].get('function',{})
+            if fn.get('name')!='plaxis_commands':continue
+            try:previous=json.loads(fn['arguments']['commands']) if isinstance(fn['arguments'].get('commands'),str) else fn['arguments'].get('commands')
+            except (ValueError,TypeError,KeyError):continue
+            reply=turn[i+1] if turn[i+1].get('role')=='tool' else {}
+            if json.dumps(previous,sort_keys=True,ensure_ascii=False)==key and '"ok": true' in str(reply.get('content','')):repeats+=1
+        if repeats>=2:
+            return (f'Nhóm lệnh ghi này đã chạy thành công {repeats} lần trong lượt; gửi lại không thay đổi gì. Xem readback trong kết quả: '
+                    'nếu giá trị đã đúng thì chuyển sang bước tiếp; nếu model_state vẫn báo không đổi, kiểm tra phase gốc (phase sau phải nối tiếp phase trước) '
+                    'và đúng tên đối tượng, hoặc đọc lại mục của manual.')
     for (command,error),count in counts.items():
         if command in planned and count>=3:
             return (f"Lệnh {command} đã thất bại {count} lần trong lượt này với cùng lỗi ({error[:120]}). Không thử thêm biến thể đoán mò: "

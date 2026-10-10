@@ -416,7 +416,10 @@ class ServerApiClient:
                     body['max_tokens']=min(8192 if body.get('format') else 4096,max(2048,int(body['max_tokens'])*2))
                     if self.on_status:self.on_status('AI trả nội dung rỗng; đang tự khôi phục phản hồi một lần…')
                     continue
-                if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)!='nvidia' or error.status!=429 or error.code=='QUOTA_EXHAUSTED' or attempt==self.retry_limit-1:raise
+                # 503 "overloaded / request limit reached" is temporary for any provider (seen from NVIDIA);
+                # 429 keeps its NVIDIA-only retry.
+                retryable=error.status==503 or (error.status==429 and CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)=='nvidia')
+                if not retryable or error.code=='QUOTA_EXHAUSTED' or attempt==attempts-1:raise
                 delay=(attempt+1)*15+random.uniform(0,2)
                 if error.retry_after:
                     try:delay=max(0,float(error.retry_after))
@@ -425,10 +428,10 @@ class ServerApiClient:
                             from email.utils import parsedate_to_datetime
                             delay=max(0,parsedate_to_datetime(str(error.retry_after)).timestamp()-time.time())
                         except (ValueError,TypeError,OverflowError):pass
-                if delay>60:raise CloudError('NVIDIA yêu cầu chờ hơn 60 giây. Hãy thử lại sau hoặc chọn AI khác.') from None
-                if self.on_status:self.on_status(f'NVIDIA đang giới hạn yêu cầu · chờ {int(delay+0.99)} giây · thử lại {attempt+1}/2…')
+                if delay>60:raise CloudError('Dịch vụ AI yêu cầu chờ hơn 60 giây. Hãy thử lại sau hoặc chọn AI khác.') from None
+                if self.on_status:self.on_status(f'Dịch vụ AI đang quá tải hoặc giới hạn yêu cầu · chờ {int(delay+0.99)} giây · thử lại {attempt+1}/{attempts-1}…')
                 if cancel.wait(delay):raise CloudError('Đã dừng yêu cầu.')
-                if self.on_status:self.on_status('Đang kết nối lại NVIDIA AI…')
+                if self.on_status:self.on_status('Đang kết nối lại dịch vụ AI…')
         if not result.get('success') or not result.get('answer'):raise CloudError(result.get('message','AI trên server chưa trả nội dung.'))
         if result.get('truncated') and model=='document-small':raise CloudError('Đoạn tổng hợp bị giới hạn token, chưa tổng hợp đầy đủ.')
         return {'message':{'role':'assistant','content':result['answer']},'truncated':bool(result.get('truncated')),'usage':result.get('usage') or {}}
