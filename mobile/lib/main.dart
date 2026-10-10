@@ -404,6 +404,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             label: Text(a.name), onDeleted: sending ? null : () => changed(() => attachments.remove(a)))),
         ])),
         Row(children: [
+          IconButton(tooltip: 'Đính kèm file', onPressed: sending || working ? null : pickAttachment, icon: const Icon(Icons.add)),
           Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
             child: DropdownButtonHideUnderline(child: DropdownButton<String>(
@@ -413,7 +414,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA', overflow: TextOverflow.ellipsis)),
                 DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek', overflow: TextOverflow.ellipsis)),
               ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))))),
-          IconButton(tooltip: 'Đính kèm file', onPressed: sending || working ? null : pickAttachment, icon: const Icon(Icons.add)),
           IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
             onPressed: sending || working ? null : dictate,
             icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
