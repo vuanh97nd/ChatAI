@@ -160,13 +160,18 @@ class Agent:
             self.store.audit(self.cid,'specialist_handoff',{'from':call['function']['name'],'to':'coder',
                              'status':plan['media_status'],'artifacts':artifacts})
         if self.orchestrator:self.orchestrator.observe_tool(state,call["function"]["name"],result)
-        content = dumps(result)
+        from .windows_visual import tool_message
+        recorded = tool_message(call['function']['name'], result)
+        content = recorded['content']
         if len(content) > 10000:
             # JSON hợp lệ và nhãn rõ ràng, không giả vờ trả đủ dữ liệu.
             content = dumps({"truncated": True, "preview": content[:8500],
                              "note": "Kết quả quá dài. Đọc range nhỏ hơn để lấy đủ dữ liệu."})
-        state["messages"].append({"role": "tool", "tool_name": call["function"]["name"],
-                                  "content": content})
+        recorded['content'] = content
+        if recorded.get('images'):
+            for previous in state['messages']:
+                if previous.get('role') == 'tool':previous.pop('images', None)
+        state['messages'].append(recorded)
         state["queue"].pop(0)
         self.save(state)
         return artifacts
@@ -346,7 +351,7 @@ class Agent:
                 if not state['pending'].get('decision_started') and task_tools_authorized(self.cfg):
                     self.approve(state,True)
                     continue
-                if not state['pending'].get('decision_started') and action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                if not state['pending'].get('decision_started') and action in {'windows_list_apps','windows_open','windows_inspect','windows_action','windows_list_windows','windows_attach','windows_capture','windows_input','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
                     yield {'type':'app_activity','text':'Đang thực hiện: '+action}
                     self.approve(state,True)
                     continue
@@ -411,7 +416,7 @@ class Agent:
                             self.store.audit(self.cid,'task_tool_authorized',{'name':name})
                             self.approve(state,True)
                             continue
-                        if name in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
+                        if name in {'windows_list_apps','windows_open','windows_inspect','windows_action','windows_list_windows','windows_attach','windows_capture','windows_input','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'} and self.cfg.get('windows_apps_auto_execute') and self.capabilities and self.capabilities.windows.check().get('windows_apps_auto_execute'):
                             self.approve(state,True)
                             continue
                         if name in {'python_run','python_search'} and self.cfg.get('auto_python',True):
@@ -504,6 +509,12 @@ class Agent:
                                     'Chrome cũng có thể được viết là chorme. Không đoán đường dẫn hoặc nói đã mở khi chưa có kết quả công cụ. '
                                     'Tìm thông tin dùng web_search khi khả dụng; việc mở trình duyệt không tự cấp quyền tìm web. '
                                     'Không hứa thao tác trình duyệt mà các công cụ UIA không hỗ trợ.')
+                from .windows_visual import WINDOWS_VISUAL_INSTRUCTION
+                from .tunnel_reference import TUNNEL_REFERENCE
+                if any(t['function']['name']=='windows_capture' for t in self.schemas):
+                    instruction += WINDOWS_VISUAL_INSTRUCTION
+                if any(t['function']['name']=='plaxis_commands' for t in self.schemas):
+                    instruction += TUNNEL_REFERENCE
                 if not self.web_allowed(state):
                     instruction += "\nTrạng thái công cụ: web_enabled=false."
                 from .context import compact_evidence
@@ -565,6 +576,9 @@ class Agent:
                     elif plan['stage']=='vision':schemas=[]
                     else:schemas=[t for t in schemas if t['function']['name'] not in {'image_generate','video_generate'}]
                     if not CHAT_MODELS.get(active_model,{}).get('tools'):schemas=[]
+                if not CHAT_MODELS.get(active_model,{}).get('vision'):
+                    schemas=[s for s in schemas if s['function']['name']!='windows_input']
+                    instruction+='\nModel hiện tại không đọc được ảnh: không dùng windows_input; dùng UIA/API hoặc chọn model có vision.'
                 history=state['messages']
                 if self.orchestrator and not CHAT_MODELS.get(active_model,{}).get('vision'):
                     history=[{k:v for k,v in message.items() if k!='images'} for message in history]

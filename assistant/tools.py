@@ -535,3 +535,16 @@ EXTRA_TOOLS.append(('cdm_layout',schema('cad_cdm_fill_boundary',
      'spacing_x_m':{'type':'number'},'spacing_y_m':{'type':'number'},'edge_clearance_m':{'type':'number'},'angle_deg':{'type':'number'},
      'grid_origin':{'type':'array','items':{'type':'number'},'minItems':2,'maxItems':2}},
     ['app','path','handle','drawing_units','diameter_m','spacing_x_m','spacing_y_m'])))
+
+
+# Visual fallback keeps a selected existing window, with a fresh observation per action.
+from .windows_visual import VISUAL_TOOLS
+WRITES.update(VISUAL_TOOLS)
+EXTRA_TOOLS.extend([
+    ('windows', schema('windows_list_windows', 'Liệt kê các cửa sổ đang mở của EXE được phép; không khởi động thêm tiến trình. Chọn window thực được trả về.', {'path': TEXT}, ['path'])),
+    ('windows', schema('windows_attach', 'Gắn vào đúng cửa sổ hiện có từ windows_list_windows, không mở dự án hoặc tạo trùng ứng dụng.', {'path': TEXT, 'window': TEXT}, ['path', 'window'])),
+    ('windows', schema('windows_capture', 'Chụp riêng cửa sổ đã chọn. Ảnh JPEG được gửi tới AI đang dùng; trả observation và kích thước pixel. Chỉ dùng model đọc được ảnh. Không đoán nếu ảnh đen/trống.', {'session': TEXT}, ['session'])),
+    ('windows', schema('windows_input', 'Dự phòng khi UIA không hỗ trợ: một click chuột trái, một press_key (ví dụ TAB, ENTER, CTRL+A), hoặc type_text Unicode nguyên văn. Cần observation mới từ ảnh windows_capture hoặc ảnh sau windows_input. x/y là pixel tương đối trong ảnh, không phải tọa độ desktop. Tự chụp lại sau thao tác; phải đọc ảnh hoặc mô hình để xác minh trước bước tiếp theo. Không ghi đè dự án, không sửa số liệu manual, không mở shell.',
+        {'session': TEXT, 'observation': TEXT, 'operation': {'type': 'string', 'enum': ['click', 'press_key', 'type_text']},
+         'x': {'type': 'number'}, 'y': {'type': 'number'}, 'key': TEXT, 'text': TEXT}, ['session', 'observation', 'operation'])),
+])

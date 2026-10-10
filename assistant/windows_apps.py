@@ -1,4 +1,4 @@
-"""Explicitly approved Windows UI Automation; no shell or global mouse/keyboard."""
+"""Approved Windows UIA and selected-window visual input; no shell execution."""
 from contextlib import contextmanager, nullcontext
 import hashlib
 import importlib.util
@@ -116,7 +116,8 @@ class WindowsBackend:
         process = psutil.Process(session['pid'])
         if process.create_time() != session['started'] or Path(process.exe()).resolve() != session['path']:
             raise PermissionError('Tiến trình đã thay đổi; mở lại app bằng công cụ.')
-        return Desktop(backend='uia').windows(process=session['pid'])
+        windows = Desktop(backend='uia').windows(process=session['pid'])
+        return [w for w in windows if w.handle == session['hwnd']] if 'hwnd' in session else windows
 
     def describe(self, control):
         info = control.element_info
@@ -148,6 +149,8 @@ class WindowsApps:
         self.cfg, self.audit, self.owner = cfg, audit, owner
         self.policy_path = policy_path
         self.backend = backend or WindowsBackend()
+        from .windows_visual import VisualWindows
+        self.visual = VisualWindows(self)
 
     def check(self):
         wait_automation()
@@ -185,6 +188,9 @@ class WindowsApps:
         return session
 
     def prepare(self, name, args):
+        from .windows_visual import VISUAL_TOOLS
+        if name in VISUAL_TOOLS:
+            return self.visual.prepare(name, args)
         self.check()
         if name=='windows_list_apps':
             return {'action':name,'query':args.get('query',''),
@@ -229,6 +235,9 @@ class WindowsApps:
     def _commit(self, plan):
         self.check()
         action = plan['action']
+        from .windows_visual import VISUAL_TOOLS
+        if action in VISUAL_TOOLS:
+            return self.visual.commit(plan)
         if action=='windows_list_apps':
             from .installed_apps import authorized_apps
             rows=authorized_apps(self.check());query=plan.get('query','').casefold().strip()
@@ -297,6 +306,8 @@ class WindowsApps:
             if target is None:
                 raise PermissionError('Control không còn thuộc giao diện app; đọc lại trước khi thao tác.')
             self.check()
+            session.pop('observation', None)
+            session['controls'] = {}
             self.backend.action(target, plan['operation'], plan['text'])
             session['controls'] = {}  # Every next action requires a fresh inspected target.
             self.audit('windows_action', {'pid': session['pid'], 'operation': plan['operation']})

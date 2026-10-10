@@ -49,7 +49,7 @@ Thêm EXE **Foxit PDF Reader** vào danh sách ứng dụng được phép và L
 
 ## Phạm vi hỗ trợ
 
-Với UIA: chỉ Windows desktop đang đăng nhập, app cung cấp control UIA chuẩn và cửa sổ thuộc chính tiến trình đã mở. Có thể hiện cửa sổ hoặc hộp thoại; không bảo đảm chạy ngầm. App single-instance chuyển yêu cầu sang tiến trình có sẵn, launcher mở tiến trình con, UWP, game, cửa sổ quản trị/UAC hoặc giao diện custom có thể chưa được hỗ trợ. Chrome dùng công cụ Playwright riêng ở trên để tránh giới hạn single-instance. Chưa có click theo tọa độ, phím tắt toàn hệ thống, OCR màn hình hoặc điều khiển ứng dụng tùy ý qua hình ảnh.
+Với UIA: chỉ Windows desktop đang đăng nhập, app cung cấp control UIA chuẩn và cửa sổ thuộc chính tiến trình đã mở. Có thể hiện cửa sổ hoặc hộp thoại; không bảo đảm chạy ngầm. App single-instance chuyển yêu cầu sang tiến trình có sẵn, launcher mở tiến trình con, UWP, game, cửa sổ quản trị/UAC hoặc giao diện custom có thể chưa được hỗ trợ. Chrome dùng công cụ Playwright riêng ở trên để tránh giới hạn single-instance. Có dự phòng theo ảnh trong cửa sổ đã chọn như phần dưới; không có phím WIN, macro/shell hoặc OCR độc lập. Cửa sổ không chụp được bằng PrintWindow phải chuyển sang UIA/API.
 
 Công cụ không tự sao lưu dữ liệu của app bên ngoài. Trước khi duyệt nút gửi/lưu/xóa/đóng, kiểm tra mục tiêu và nội dung. Thử với app/tài liệu thử nghiệm trước. Tài liệu trong app có thể xuất hiện trong lịch sử ChatAI khi bạn duyệt đọc giao diện. Không dùng công cụ để nhập mật khẩu.
 
@@ -115,3 +115,37 @@ UI không nạp Ollama để cài bộ lọc tiếng Việt lúc khởi động;
 Menu tài khoản/dấu ba chấm → **Sao chép thời gian khởi động/đăng nhập** trả báo cáo `startup-login-3`. Báo cáo chỉ chứa tên giai đoạn và số giây: nạp Qt, import desktop, cấu hình, SQLite, trạng thái module, dựng/hiện cửa sổ; khôi phục/lưu DPAPI, chờ header HTTPS, đọc response, tùy chọn model, chuyển chat khách, render hoàn tất worker và áp dụng giao diện. `startup.total` đo từ mã Python app.py, không gồm thời gian Windows nạp python.exe trước đó. `login.network_wait_headers` gồm DNS/proxy/TLS và chờ server, không được xem riêng là thời gian server. Báo cáo giữ trong RAM, tối đa 64 dòng, không ghi mật khẩu/token/nội dung chat và không đọc/ghi thêm file trên Google Drive. Chạy app.py để có đủ số đo khởi động, rồi dán báo cáo để xác định bước chậm; không cần Deploy lại server cho thay đổi này.
 
 Đọc và giải mã đăng nhập đã ghi nhớ (DPAPI) cũng chạy nền, không chặn event loop; kết quả đọc muộn không thay tài khoản đã đăng nhập. Số đo `startup.crash_log` tách việc mở nhật ký trên Drive khỏi nạp Qt.
+
+
+## Dự phòng bằng ảnh cho Tunnel designer
+
+- `windows_list_windows(path)`: tìm cửa sổ đang mở của EXE đã được cấp quyền.
+- `windows_attach(path, window)`: chọn token cửa sổ từ danh sách, gắn vào tiến trình hiện có. Không mở thêm PLAXIS.
+- `windows_capture(session)`: chụp riêng cửa sổ bằng PrintWindow, trả ảnh JPEG (tối đa 1 MiB), kích thước pixel và `observation`. Không chụp desktop hoặc các ứng dụng chồng lên cửa sổ.
+- `windows_input(session, observation, operation, ...)`: một click trái với `x/y` tương đối trong ảnh; một tổ hợp `press_key` như `TAB`, `ENTER`, `CTRL+A`; hoặc `type_text` Unicode nguyên văn. Ký tự xuống dòng/Tab phải gửi riêng. Mỗi thao tác tự chụp lại, trả token mới. AI phải đọc ảnh mới hoặc mô hình trước khi tiếp tục.
+
+Token hết hạn sau 120 giây; một lần nhập tiêu thụ token ngay cả khi chỉ thực hiện được một phần. Cửa sổ đổi vị trí, đổi tiến trình, bị thu nhỏ, có modal chặn hoặc mất focus thì dừng bước nhập. Không tự phát lại thao tác lỗi. Cửa sổ modal riêng cần chọn lại bằng danh sách cửa sổ. Tạm dừng/Kết thúc giữ cơ chế hiện có; nhập chữ kiểm tra dừng và focus giữa các gói Unicode. Không cưỡng ép đóng PLAXIS. Lệnh Windows/UIA đang xử lý và PrintWindow có thể phải trả về trước khi worker kết thúc.
+
+Ảnh được đưa vào lịch sử ChatAI và gửi tới **model/nhà cung cấp đang được chọn**, theo cơ chế duyệt công cụ hoặc quyền tự thực hiện đã lưu. Dùng model nhận ảnh; model local văn bản không được cấp `windows_input`. Model online không nhận ảnh có thể trả lỗi; không được bỏ ảnh để đoán tọa độ. Chỉ giữ ảnh công cụ mới nhất trong lịch sử đang xử lý. Ảnh cũ đã đồng bộ trước đó không tự bị xóa trên server.
+
+### Tham chiếu chính thức
+
+Bentley có [ví dụ tunnel bằng Python cho PLAXIS 2D/3D](https://bentleysystems.service-now.com/community?id=kb_article_view&sysparm_article=KB0108335) (ghi phiên bản 2023.2), và hướng dẫn [Help → Scripting reference](https://bentleysystems.service-now.com/community?id=kb_article&sysparm_article=KB0109018). Đối chiếu phiên bản cài đặt và Command reference trước khi áp dụng. Không chạy nguyên ví dụ vào dự án đang làm.
+
+Với bài hiện tại: đọc `Tunnel_1` đã có, xác định phần chưa hoàn tất; không tạo tunnel trùng, không ghi đè dự án, không thay dữ liệu manual bằng giá trị từ ví dụ. Một thuộc tính/collection chưa tìm thấy không chứng minh toàn bộ API không hỗ trợ tunnel.
+
+### Kiểm thử và tiếp tục bài đang làm
+
+1. Chạy unit test `test_windows_visual`, `test_windows_apps`, cùng kiểm thử online và Stop/Pause.
+2. Trước khi thao tác dự án thật, kiểm tra ảnh, click, gửi phím, nhập tiếng Việt trên cửa sổ thử có ô văn bản; xác nhận dừng giữa lúc nhập và ảnh sau thao tác. Không dùng ô số liệu manual để thử nhập.
+3. Chọn lại cửa sổ PLAXIS đang mở, đọc mô hình và ảnh Tunnel designer. Chỉ sau khi kiểm thử điều khiển thực tế đạt mới tiếp tục phần thiếu của `Tunnel_1`; kiểm tra lại sau mỗi nhóm thao tác.
+
+Kiểm thử giả lập không thay cho kiểm thử Windows thật. Bản sửa không tự khởi động lại ChatAI hoặc tự tiếp tục dự án.
+
+
+### Kết quả kiểm tra bản sửa ngày 10/10/2026
+
+- 123 kiểm thử liên quan đạt: Windows UIA/visual, mã hóa SendInput giả lập, ảnh trong kế hoạch online, điều khiển Pause/Stop, và hồi quy tính toán trước đó.
+- Runtime đóng gói có đủ Pillow, pywin32, pywinauto, psutil, comtypes; 7 tệp Python thay đổi kiểm tra cú pháp đạt; `git diff --check` không báo lỗi.
+- Một lần chạy bộ rộng hơn (116 test) còn 7 lỗi ngoài phần visual: 5 lỗi test gán PosixPath trên Windows, 2 lỗi PLAXIS về kỳ vọng parser/định tuyến Output theo môi trường. Chưa sửa các test/mã PLAXIS đó trong công việc này.
+- Chưa kiểm thử Windows thật: công cụ computer-use báo `js execution timed out; kernel reset, rerun your request`, vẫn lỗi sau reset. Không coi unit test là xác nhận điều khiển thực tế; chưa tiếp tục hoặc sửa dự án `Tunnel_1`.

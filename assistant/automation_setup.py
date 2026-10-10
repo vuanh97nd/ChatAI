@@ -8,7 +8,7 @@ import sys
 import time
 from .windows_apps import _STOP
 
-PACKAGES={'pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
+PACKAGES={'PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
           'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
 
 

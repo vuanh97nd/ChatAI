@@ -4,6 +4,8 @@ import re
 from pathlib import PureWindowsPath
 from .tools import EXTRA_TOOLS, validate_call
 from .experience import repeated_failure, task_record
+from .windows_visual import VISUAL_TOOLS, WINDOWS_VISUAL_INSTRUCTION, tool_message
+from .tunnel_reference import TUNNEL_REFERENCE
 
 # A full tutorial model (materials, geometry, anchors, staged phases, mesh,
 # calculate, read Output) needs far more than a dozen tool calls; runaway loops
@@ -340,7 +342,7 @@ Mỗi lần đổi thứ gì, đọc model_state và tránh tạo trùng đối 
 
 
 _PLAXIS_TOOLSET={'plaxis_commands','plaxis_run_problem','plaxis_generate_script','pdf_read','pdf_local_open','pdf_source_open',
-                 'document_read','browser_search','browser_run','windows_list_apps','windows_open','windows_inspect','windows_action'}
+                 'document_read','browser_search','browser_run','windows_list_apps','windows_open','windows_inspect','windows_action'} | VISUAL_TOOLS
 _READING_TOOLS={'pdf_read','pdf_local_open','pdf_source_open','document_read','browser_search','browser_run'}
 _OTHER_APP_REQUEST=re.compile(r'\b(?:word|excel|autocad|cad|cdm|geo[ -]?slope|geostudio|slope/w|foxit|chrome)\b|vẽ|trắc dọc',re.I)
 
@@ -684,7 +686,7 @@ def planning_messages(state,instruction):
     # Send the latest user image only: repeated agent rounds must not accumulate
     # old image payloads beyond the proxy's size/image limits.
     latest=next((i for i in range(len(history)-1,-1,-1)
-                 if history[i].get('role')=='user' and history[i].get('images')),None)
+                 if history[i].get('images')),None)
     from .prompts import CONTINUITY
     from .conversation_context import conversation_context
     earlier=conversation_context(state['messages'][:cut]) if cut else []
@@ -696,7 +698,10 @@ def planning_messages(state,instruction):
             last_user=max((j for j,m in enumerate(history) if m.get('role')=='user'),default=-1)
             historical=i<last_user
             label='KẾT QUẢ CÔNG CỤ LỊCH SỬ (không phải thao tác vừa chạy trong lượt này)' if historical else 'KẾT QUẢ CÔNG CỤ LƯỢT HIỆN TẠI'
-            messages.append({'role':'assistant' if historical else 'user','content':label+' '+message.get('tool_name','tool')+': '+message['content'][:24000]})
+            content=label+' '+message.get('tool_name','tool')+': '+message['content'][:24000]
+            if i==latest and not historical:
+                content=image_message_content(content,message['images'][0])
+            messages.append({'role':'assistant' if historical else 'user','content':content})
         elif i==latest:
             messages.append({'role':'user','content':image_message_content(message.get('content',''),message['images'][0])})
         elif message.get('content'):
@@ -1112,7 +1117,7 @@ class OnlineAutomation:
             port=detect_ports(version).get('input')
             if port and port_open(port):
                 result={'ok':True,'already_running':True,'not_executed':True,'port':port,
-                        'note':f'PLAXIS Input đang chạy, remote scripting server ở localhost:{port}; không mở thêm. Dùng plaxis_commands (target input), không dùng windows_inspect/windows_open cho PLAXIS.'}
+                        'note':f'PLAXIS Input đang chạy, remote scripting server ở localhost:{port}; không mở thêm. Ưu tiên plaxis_commands (target input). Nếu cần Tunnel designer, dùng windows_list_windows rồi windows_attach vào cửa sổ hiện có; không mở thêm PLAXIS.'}
             else:
                 try:
                     result=self.component(name).commit(pending['plan'])
@@ -1120,7 +1125,7 @@ class OnlineAutomation:
                     deadline=time.monotonic()+90
                     while time.monotonic()<deadline and not detect_ports(version).get('input'):time.sleep(1)
                     port=detect_ports(version).get('input')
-                    result.update(scripting_ready=bool(port),port=port,note=(f'PLAXIS đã sẵn sàng, remote scripting server ở localhost:{port}. Dùng plaxis_commands; tiến trình khởi động có thể đã thoát nên không dùng windows_inspect.' if port else
+                    result.update(scripting_ready=bool(port),port=port,note=(f'PLAXIS đã sẵn sàng, remote scripting server ở localhost:{port}. Ưu tiên plaxis_commands; nếu cần giao diện, windows_list_windows và windows_attach chọn đúng cửa sổ đang có.' if port else
                         'Đã mở PLAXIS nhưng sau 90 giây chưa thấy remote scripting server. Cần bật Expert → Configure remote scripting server → Start; không mở PLAXIS thêm lần nữa.'))
                 except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
         elif allowed:
@@ -1158,7 +1163,10 @@ class OnlineAutomation:
         from .procedure_memory import ProcedureMemory
         ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
         self.store.audit(self.cid,'online_automation_result',{'name':name,'ok':result.get('ok',False)})
-        state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(result,ensure_ascii=False)})
+        if result.get('_screenshot'):
+            for previous in state['messages']:
+                if previous.get('role')=='tool':previous.pop('images',None)
+        state['messages'].append(tool_message(name,result))
         state['queue']=[];state['pending']=None
         answer=direct_drawing_answer(state,name,result)
         if answer:
@@ -1360,6 +1368,8 @@ class OnlineAutomation:
             if self.cfg.get('windows_apps_auto_execute') or task_tools_authorized(self.cfg):
                 instruction+='\nNgười dùng đã cấp quyền tự thực hiện thao tác cho công việc họ yêu cầu. Khi đủ dữ kiện, gọi công cụ để tiếp tục; không hỏi xác nhận bắt đầu từng bước hoặc chọn lại phương án đã đồng ý. Chỉ hỏi khi thiếu dữ kiện kỹ thuật, có mâu thuẫn hoặc cần đăng nhập. Quyền thực tế vẫn được ứng dụng kiểm tra khi thực thi.'
                 instruction+='\nTự tra cú pháp/API, mở liên kết kết quả tìm kiếm và bản raw, đọc trạng thái đối tượng để sửa lỗi trong công việc đã yêu cầu; không xin phép từng bước tra cứu. Không hỏi người dùng tên biến g/g_i, chữ ký lệnh hay path của browser_search: đối chiếu mô tả công cụ và tự tìm ứng dụng. browser_search.path là đường dẫn EXE Chrome thực, không phải từ khóa hoặc tên phiên. Trong plaxis_commands, g là gốc; tên result (như bh) dùng lại được ở lượt sau trong cùng dự án (xem mục names của kết quả). info nhận đối tượng, không truyền method như g.SoilModel.borehole. Khi lỗi, kiểm tra phần đã tạo rồi đổi bước lỗi, không chạy lại cả mô hình. Hỏi người dùng khi thiếu kích thước, thông số thiết kế, có mâu thuẫn chưa xác minh được hoặc cần đăng nhập; giữ nguyên bài đang làm.'
+            instruction+=WINDOWS_VISUAL_INSTRUCTION
+            if plaxis_context:instruction+=TUNNEL_REFERENCE
             messages=planning_messages(state,instruction)
             if volatile.strip():
                 messages.append({'role':'system','content':'NGỮ CẢNH HIỆN TẠI (dữ liệu cập nhật theo từng bước, không phải yêu cầu mới):'+volatile})
