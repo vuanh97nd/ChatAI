@@ -1,0 +1,46 @@
+name: Build Android APK
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/android-apk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Prepare Android project
+        working-directory: mobile
+        run: python tool/prepare_android.py
+      - name: Resolve dependencies
+        working-directory: mobile
+        run: flutter pub get
+      - name: Analyze and test
+        working-directory: mobile
+        run: |
+          flutter analyze --no-fatal-infos
+          flutter test
+      - name: Build installable test APK
+        working-directory: mobile
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChatAI-Android-test-${{ github.sha }}
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30

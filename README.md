@@ -71,3 +71,10 @@ Bộ cài mặc định vào `%LOCALAPPDATA%/Programs/Chat-AI`, có Start Menu v
 ## Điều khiển ứng dụng Windows
 
 Có thể cho AI local mở EXE được phép và thao tác control UI Automation sau khi duyệt từng bước. Bật trong Cài đặt → Điều khiển ứng dụng. Cần thư viện tùy chọn; xem [hướng dẫn và phạm vi hỗ trợ](WINDOWS_AUTOMATION.md). Không bảo đảm mọi app hoặc chạy hoàn toàn trong nền.
+
+## Android (APK thử nghiệm)
+
+Bản Flutter trong [`mobile/`](mobile/README.md) dùng chung tài khoản, bộ nhớ cá nhân
+và ví server; mặc định NVIDIA trực tuyến. GitHub Actions **Build Android APK**
+kiểm thử và xuất APK cài thử khi cập nhật `mobile/`. Xem hướng dẫn tải/build/ký
+APK và phạm vi chức năng trong tài liệu Android; bản này chưa chạy PLAXIS/GeoStudio.
