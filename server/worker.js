@@ -1319,6 +1319,12 @@ export default {
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
    await ensureRuntimeSchema(env.DB);
+   if(['/api/mobile/guest/status','/api/mobile/guest/chat'].includes(path)){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    if(!await throttle(env.DB,request.headers.get('CF-Connecting-IP')||'unknown','mobile-guest',10))return respond(fail('Vui lòng đợi trước khi thử lại.',429));
+    return respond(await mobileGuestAPI(env,path,body));
+   }
+
    if(path.startsWith('/api/remote/')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -2526,4 +2532,36 @@ export async function remoteAPI(env,actor,path,body,request){
  }
  if(path==='/api/remote/desktop/ack')return fail('Unknown desktop action.',404);
  return fail('Không có chức năng kết nối này.',404);
+}
+
+// Android text-only NVIDIA trial. Other APIs still require authenticated accounts.
+export async function mobileGuestAPI(env,path,body,execute=providerAPI){
+ const token=body.guest_token;
+ if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return fail('Mã thiết bị dùng thử không hợp lệ.');
+ const db=env.DB;
+ await db.prepare("CREATE TABLE IF NOT EXISTS mobile_guest_turns(id TEXT PRIMARY KEY,guest TEXT NOT NULL,digest TEXT NOT NULL,state TEXT NOT NULL,response TEXT,created INTEGER NOT NULL)").run();
+ await db.prepare('CREATE INDEX IF NOT EXISTS mobile_guest_count ON mobile_guest_turns(guest)').run();
+ const guest=await remoteHash(token);
+ const used=async()=>Number((await db.prepare('SELECT COUNT(*) AS n FROM mobile_guest_turns WHERE guest=?').bind(guest).first()).n);
+ if(path.endsWith('/status'))return reply({success:true,remaining:Math.max(0,3-await used())});
+ if(!remoteId(body.request_id)||!Array.isArray(body.messages)||!body.messages.length||body.messages.length>12||body.messages.some(m=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string')||body.messages.at(-1).role!=='user'||!body.messages.at(-1).content.trim()||JSON.stringify(body.messages).length>16000)return fail('Tin nhắn dùng thử không hợp lệ hoặc quá dài.');
+ const digest=await remoteHash(JSON.stringify(body.messages));
+ const existing=await db.prepare('SELECT * FROM mobile_guest_turns WHERE id=?').bind(body.request_id).first();
+ if(existing){
+  if(existing.guest!==guest||existing.digest!==digest)return fail('Mã yêu cầu đã dùng cho nội dung khác.',409);
+  if(existing.response)return reply(JSON.parse(existing.response));
+  return fail('Lượt trước chưa xác minh kết quả. Không tự chạy lại; đăng nhập để tiếp tục.',409);
+ }
+ // A single atomic statement reserves a turn. Failed/uncertain upstream calls also use it.
+ const reserved=await db.prepare("INSERT OR IGNORE INTO mobile_guest_turns(id,guest,digest,state,created) SELECT ?,?,?,'pending',? WHERE (SELECT COUNT(*) FROM mobile_guest_turns WHERE guest=?)<3 RETURNING id").bind(body.request_id,guest,digest,Date.now(),guest).first();
+ if(!reserved)return reply({success:false,code:'LOGIN_REQUIRED',message:'Đã dùng 3 lượt thử. Đăng nhập hoặc đăng ký để tiếp tục.'},401);
+ try{
+  const response=await execute(env,'/api/provider/model',{provider:'nvidia',messages:[{role:'system',content:'Bạn là ChatAI. Trả lời bằng tiếng Việt.'},...body.messages],max_tokens:1024,temperature:0.2,stream:false});
+  const value=await response.json();
+  const result=response.ok&&value.success===true&&typeof value.answer==='string'&&value.answer.trim()?{success:true,answer:value.answer,remaining:Math.max(0,3-await used())}:{success:false,message:'Dịch vụ AI dùng thử chưa trả được câu trả lời. Lượt đã được ghi nhận; đăng nhập để tiếp tục.',remaining:Math.max(0,3-await used())};
+  await db.prepare("UPDATE mobile_guest_turns SET state='finished',response=? WHERE id=?").bind(JSON.stringify(result),body.request_id).run();
+  return reply(result);
+ }catch{
+  return fail('Lượt dùng thử đã gửi nhưng chưa xác minh kết quả. Không tự chạy lại; đăng nhập để tiếp tục.',502);
+ }
 }

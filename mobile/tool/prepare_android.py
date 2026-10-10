@@ -16,6 +16,7 @@ def branding(android):
     logo = res / 'drawable-nodpi/chatai_logo.png'
     logo.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'assets/chat_ai.png', logo)
+    resource('drawable/chatai_notification.xml', '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M4,3h16v14H8l-4,4z"/></vector>''')
     resource('values/chatai_colors.xml', '<resources><color name="chatai_background">#202020</color></resources>')
     resource('drawable/chatai_launch.xml', '''<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/chatai_background"/>
@@ -59,6 +60,8 @@ def configure(android):
     text = manifest.read_text()
     text = text.replace('android:label="chatai_mobile"', 'android:label="Chat AI"')
     text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@mipmap/chatai_launcher"')
+    if 'android.permission.POST_NOTIFICATIONS' not in text:
+        text = text.replace('<application', '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application', 1)
     if 'android.permission.INTERNET' not in text:
         text = text.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
     if 'android.permission.RECORD_AUDIO' not in text:
@@ -95,6 +98,11 @@ def configure(android):
 '''
     if 'create("chataiRelease")' not in text:
         text = text.replace(marker, signing + marker)
+    text = text.replace('JavaVersion.VERSION_11', 'JavaVersion.VERSION_17').replace('jvmTarget = JavaVersion.VERSION_11', 'jvmTarget = JavaVersion.VERSION_17')
+    if 'isCoreLibraryDesugaringEnabled = true' not in text:
+        text = text.replace('    compileOptions {', '    compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+    if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs' not in text:
+        text += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
     build.write_text(text)
     branding(android)
 

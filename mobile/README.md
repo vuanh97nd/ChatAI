@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.6
+# ChatAI Android — bản thử nghiệm 0.8
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -134,3 +134,30 @@ prepare_android tạo icon thường, adaptive icon (Android 8+) và splash nề
 cho cả giao diện sáng/tối, bao gồm Android 12+. Khi Flutter đã mở mà còn đang
 khôi phục đăng nhập, hiện logo, tên Chat AI và chỉ báo tải, không trì hoãn cố định.
 Cần build APK mới để đổi icon/splash; cập nhật source không đổi APK đã cài.
+
+## Dùng thử không đăng nhập
+
+Mở thẳng màn hình Chat; mỗi mã thiết bị lưu trong Keystore có 3 lượt gửi tin nhắn
+NVIDIA, từ lượt tiếp theo yêu cầu đăng nhập/đăng ký. Lượt đã gửi đến dịch vụ, kể cả
+lỗi hoặc mất phản hồi, vẫn tính để tránh chạy lại tốn API. Thử lại cùng mã/nội dung
+chỉ đọc phản hồi đã lưu, không gọi nhà cung cấp lần hai. Chưa đăng nhập không dùng
+DeepSeek, ví, bộ nhớ, Admin hay điều khiển máy tính. Tin nhắn khách hiển thị trong
+phiên hiện tại, không tự nhập vào lịch sử tài khoản sau đăng nhập.
+
+Giới hạn theo mã lưu của bản cài, không phải nhận dạng phần cứng chống giả mạo;
+xóa dữ liệu/cài lại có thể tạo mã khác. Server còn giới hạn tần suất theo IP.
+Cần Worker và APK mới để dùng. Chưa có thông báo đẩy ngoài ứng dụng.
+
+## Thông báo và quyền Android
+
+Tài khoản → Bật thông báo điện thoại: xin POST_NOTIFICATIONS trên Android 13+,
+tạo kênh Thông báo ChatAI và đăng ký kiểm tra nền bằng WorkManager (khoảng 15 phút,
+cần mạng). Android có thể trì hoãn vì tiết kiệm pin; không phải push tức thời FCM.
+Tắt trong app hủy công việc nền; đăng xuất cũng hủy và xóa thông báo đang hiện.
+Không đọc nội dung của tài khoản khác, không tự gửi thông báo cũ ngay khi bật.
+Mở app/làm mới sẽ kiểm tra thêm; người dùng vẫn đọc toàn bộ trong Bộ nhớ.
+
+Quyền cần thiết: Internet, Micro khi bấm nói, Camera khi quét QR, Thông báo khi
+bấm bật. Không yêu cầu đọc toàn bộ bộ nhớ máy hoặc trợ năng để điều khiển Windows.
+Chế độ khách không đăng ký nhận thông báo tài khoản. Cần thử trên Android thật:
+cấp/từ chối quyền, tài khoản khác, logout, nền/khởi động lại, tiết kiệm pin.

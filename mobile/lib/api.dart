@@ -71,6 +71,9 @@ class ChatApi {
     }
   }
 
+  Future<Map<String, dynamic>> guestAnswer(String token, String requestId, List<Map<String, String>> messages) =>
+      post('/api/mobile/guest/chat', {'guest_token': token, 'request_id': requestId, 'messages': messages}, authenticated: false);
+
   Future<Session> login(String name, String password, String device) async {
     final value = await post('/api/login', {
       'username': name.trim(), 'key': password, 'device_id': device,

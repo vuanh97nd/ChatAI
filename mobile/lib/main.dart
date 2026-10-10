@@ -9,6 +9,7 @@ import 'api.dart';
 import 'voice.dart';
 import 'computer.dart';
 import 'admin.dart';
+import 'notifications.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
@@ -55,7 +56,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   String device = '', provider = 'nvidia';
   bool loading = true, sending = false, working = false;
   String? error;
-  int tab = 0;
+  int tab = 0, guestRemaining = 3;
+  String guestToken = '';
+  Map<String, dynamic>? guestPending;
   List<Map<String, String>> messages = [];
   List<dynamic> memories = [], notifications = [], conversations = [];
   String? conversation;
@@ -112,10 +115,20 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     try {
       device = await storage.read(key: 'device') ?? uuid.v4();
       await storage.write(key: 'device', value: device);
+      guestToken = await storage.read(key: 'guest_token') ?? '${uuid.v4()}${uuid.v4()}'.replaceAll('-', '');
+      await storage.write(key: 'guest_token', value: guestToken);
+      final pendingRaw = await storage.read(key: 'guest_pending');
+      if (pendingRaw != null) {
+        guestPending = jsonDecode(pendingRaw) as Map<String, dynamic>;
+        input.text = guestPending!['text'] as String;
+      }
       final raw = await storage.read(key: 'session');
       if (raw != null) {
         api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         await refresh();
+      } else {
+        final status = await api.post('/api/mobile/guest/status', {'guest_token': guestToken}, authenticated: false);
+        guestRemaining = (status['remaining'] as num).toInt();
       }
     } catch (e) { changed(() => error = '$e'); }
     finally { changed(() => loading = false); }
@@ -137,6 +150,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       api.post('/api/notifications/list', {}),
       api.post('/api/conversations/list', {}),
     ]);
+    try { await showAccountNotifications(api, values[2]['notifications'] as List<dynamic>); } catch (_) {}
     changed(() {
       billing = values[0]; memories = values[1]['items'] as List<dynamic>;
       notifications = values[2]['notifications'] as List<dynamic>;
@@ -145,22 +159,25 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     });
   }
   Future<void> authenticated(Session session) async {
+    changed(() { messages = []; conversation = null; provider = 'nvidia'; });
     await storage.write(key: 'session', value: jsonEncode(session.toJson()));
     changed(() { loading = false; error = null; });
     await guard(refresh);
   }
   Future<void> signOut() async {
     poll?.cancel(); await voice.stop();
+    try { await disableAccountNotifications(api); } catch (_) {}
     // Local logout always completes, including when the server is unavailable.
     try { await api.post('/api/logout', {'client_type': 'android_companion'}); } catch (_) {}
     await storage.delete(key: 'session');
     api.session = null;
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
-      conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; });
+      conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; provider = 'nvidia'; });
   }
   Future<void> send() async {
     final text = input.text.trim();
     if (text.isEmpty || sending || working) return;
+    if (api.session == null) { await sendGuest(); return; }
     changed(() { sending = true; error = null; });
     await voice.stop();
     final pending = <String, String>{'role': 'user', 'content': text};
@@ -187,6 +204,44 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       changed(() => error = '$e${userSaved ? '\nCâu hỏi đã lưu; chưa có câu trả lời. Có thể gửi yêu cầu tiếp theo.' : ''}');
     } finally { changed(() => sending = false); }
   }
+  Future<void> openLogin() async {
+    await voice.stop();
+    if (!mounted) return;
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (c) => LoginPage(
+      api: api, device: device, onLogin: (session) async {
+        await authenticated(session);
+        if (c.mounted) Navigator.pop(c);
+      })));
+  }
+  Future<void> sendGuest() async {
+    if (guestRemaining <= 0 && guestPending == null) { await openLogin(); return; }
+    await voice.stop();
+    changed(() { sending = true; error = null; });
+    try {
+      final text = input.text.trim();
+      if (guestPending != null && guestPending!['text'] != text) {
+        throw ApiException('Lượt trước chưa rõ kết quả. Thử lại đúng nội dung hoặc đăng nhập.');
+      }
+      final history = messages.length > 10 ? messages.sublist(messages.length - 10) : messages;
+      guestPending ??= {'id': uuid.v4(), 'text': text, 'messages': [...history, {'role': 'user', 'content': text}]};
+      await storage.write(key: 'guest_pending', value: jsonEncode(guestPending));
+      final result = await api.guestAnswer(guestToken, guestPending!['id'] as String,
+        (guestPending!['messages'] as List<dynamic>).map((m) => {'role': m['role'] as String, 'content': m['content'] as String}).toList());
+      await storage.delete(key: 'guest_pending'); guestPending = null;
+      changed(() { messages.add({'role': 'user', 'content': text}); messages.add({'role': 'assistant', 'content': result['answer'] as String});
+        input.clear(); guestRemaining = (result['remaining'] as num).toInt(); });
+    } catch (e) {
+      changed(() { error = '$e'; if (e is ApiException && e.status == 401) guestRemaining = 0; });
+    } finally { changed(() => sending = false); }
+  }
+  Widget guestChat() => Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
+    TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))]),
+    body: SafeArea(child: Column(children: [
+      Padding(padding: const EdgeInsets.all(12), child: Text('Dùng thử NVIDIA · còn $guestRemaining/3 lượt trên thiết bị này')),
+      if (error != null) Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
+      if (guestRemaining == 0) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập / Đăng ký để tiếp tục')),
+      Expanded(child: chat()),
+    ])));
   Future<void> openConversation(Map<String, dynamic> item) async {
     await voice.stop();
     await guard(() async {
@@ -266,9 +321,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       DropdownButton<String>(value: provider, items: const [
         DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA · Miễn phí')),
         DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek · Tính phí token')),
-      ], onChanged: sending ? null : (v) => changed(() => provider = v!)),
+      ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!)),
     ])),
-    Expanded(child: messages.isEmpty ? const Center(child: Text('Xin chào! Tôi có thể giúp gì cho bạn?')) :
+    Expanded(child: messages.isEmpty ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Image.asset('assets/chat_ai.png', width: 80, height: 80, semanticLabel: 'Logo ChatAI'),
+      const SizedBox(height: 16), const Text('Xin chào! Tôi có thể giúp gì cho bạn?'),
+    ])) :
       ListView.builder(itemCount: messages.length, itemBuilder: (c, i) {
         final m = messages[i];
         return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
@@ -301,6 +359,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Text(api.session!.fullname, style: Theme.of(context).textTheme.headlineSmall),
       Text(api.session!.username), const SizedBox(height: 20),
+      ListTile(leading: const Icon(Icons.notifications_active_outlined), title: const Text('Bật thông báo điện thoại'),
+        subtitle: const Text('Kiểm tra nền khoảng 15 phút/lần; có thể chậm khi tiết kiệm pin'),
+        onTap: working ? null : () => guard(() async {
+          final allowed = await enableAccountNotifications(api);
+          changed(() => error = allowed ? 'Đã bật thông báo. Bạn có thể quản lý quyền trong Cài đặt Android.' : 'Chưa được cấp quyền. Bật Thông báo trong Cài đặt Android nếu muốn nhận.');
+        })),
+      TextButton(onPressed: working ? null : () => guard(() async { await disableAccountNotifications(api); changed(() => error = 'Đã tắt thông báo điện thoại.'); }), child: const Text('Tắt thông báo điện thoại')),
       if (api.session!.admin) ListTile(leading: const Icon(Icons.admin_panel_settings),
         title: const Text('Quản trị'), subtitle: const Text('Người dùng · token · thông báo · thanh toán'),
         onTap: () async {
@@ -340,7 +405,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (loading) return const StartupScreen();
-    if (api.session == null) return LoginPage(api: api, device: device, onLogin: authenticated);
+    if (api.session == null) return guestChat();
     return Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
       IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {
         await voice.stop(); changed(() { messages = []; conversation = null; tab = 0; }); }, icon: const Icon(Icons.add_comment_outlined)),

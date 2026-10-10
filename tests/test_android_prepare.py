@@ -16,7 +16,7 @@ class AndroidPrepareTests(unittest.TestCase):
             manifest.parent.mkdir(parents=True)
             manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n<application\n android:label="chatai_mobile" android:icon="@mipmap/ic_launcher">\n</application></manifest>')
             build = android / 'app/build.gradle.kts'
-            build.write_text('android {\n minSdk = flutter.minSdkVersion\n    buildTypes {\n release { signingConfig = signingConfigs.getByName("debug") }\n }\n}')
+            build.write_text('android {\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_11 }\n minSdk = flutter.minSdkVersion\n    buildTypes {\n release { signingConfig = signingConfigs.getByName("debug") }\n }\n}')
             prepare.configure(android)
             before = (manifest.read_text(), build.read_text())
             resources_before = {str(p.relative_to(android)): p.read_bytes() for p in android.rglob('*') if p.is_file()}
@@ -46,6 +46,11 @@ class AndroidPrepareTests(unittest.TestCase):
             self.assertIn('android:usesCleartextTraffic="false"', before[0])
             self.assertIn('android:label="Chat AI"', before[0])
             self.assertIn('minSdk = 23', before[1])
+            self.assertEqual(before[0].count('android.permission.POST_NOTIFICATIONS'), 1)
+            self.assertNotIn('android.permission.MANAGE_EXTERNAL_STORAGE', before[0])
+            self.assertIn('isCoreLibraryDesugaringEnabled = true', before[1])
+            self.assertIn('desugar_jdk_libs:2.1.4', before[1])
+            self.assertIn('JavaVersion.VERSION_17', before[1])
             self.assertIn('System.getenv("ANDROID_KEYSTORE")', before[1])
             self.assertNotIn('signingConfigs.getByName("debug")', before[1])
 

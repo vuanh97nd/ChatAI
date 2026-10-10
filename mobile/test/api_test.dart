@@ -9,6 +9,18 @@ http.Response jsonResponse(String body, int status) => http.Response.bytes(
     utf8.encode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
 void main() {
+  test('guest chat uses public trial endpoint with persistent request ID', () async {
+    final api = ChatApi(client: MockClient((request) async {
+      final body = jsonDecode(request.body);
+      expect(request.url.path, '/api/mobile/guest/chat');
+      expect(body['request_id'], 'same-request');
+      expect(body['username'], isNull); expect(body['key'], isNull);
+      return jsonResponse('{"success":true,"answer":"Xin chào","remaining":2}', 200);
+    }));
+    addTearDown(api.close);
+    final result = await api.guestAnswer('guest-token', 'same-request', [{'role': 'user', 'content': 'Hi'}]);
+    expect(result['remaining'], 2); expect(result['answer'], 'Xin chào');
+  });
   test('email login uses canonical username and session token', () async {
     final api = ChatApi(client: MockClient((req) async {
       final body = jsonDecode(req.body);
