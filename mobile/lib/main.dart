@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
 import 'computer.dart';
+import 'admin.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
@@ -284,6 +285,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     return ListView(padding: const EdgeInsets.all(16), children: [
       Text(api.session!.fullname, style: Theme.of(context).textTheme.headlineSmall),
       Text(api.session!.username), const SizedBox(height: 20),
+      if (api.session!.admin) ListTile(leading: const Icon(Icons.admin_panel_settings),
+        title: const Text('Quản trị'), subtitle: const Text('Người dùng · token · thông báo · thanh toán'),
+        onTap: () async {
+          await voice.stop();
+          if (!mounted) return;
+          await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AdminPage(api: api)));
+        }),
       Text('Số dư: ${wallet == null ? 'Chưa tải được' : money(wallet['balance_vnd'] as num)}',
         style: Theme.of(context).textTheme.titleLarge),
       Text('Khả dụng: ${money((wallet?['available_vnd'] as num?) ?? 0)}'),

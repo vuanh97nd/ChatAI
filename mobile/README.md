@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.4
+# ChatAI Android — bản thử nghiệm 0.5
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -108,3 +108,21 @@ Bản này trả văn bản kết quả; đọc file đã có trong thư mục W
 Chưa chuyển file từ điện thoại, tải file kết quả hoặc điều khiển chuột/phím trực tiếp.
 Nếu PLAXIS Input đang mở, tác vụ có tên PLAXIS bị từ chối trước khi chạy để tránh
 thay thế mô hình hiện tại. Chuẩn bị project riêng trên Windows trước.
+
+## Admin trên Android
+
+Tài khoản → Quản trị (chỉ hiện với Admin). Có tìm/lọc/phân trang người dùng,
+token tháng hiện tại theo giờ Việt Nam, số dư, chi tiết token các tháng và nhật ký
+quản trị; khóa/mở khóa, thu hồi phiên, xóa mềm/khôi phục trong thời hạn server.
+Tab Thông báo gửi tất cả (*) hoặc một tên tài khoản. Tab Thanh toán nạp thủ công
+1.000–5.000.000 đ có lý do và sửa phí duy trì (cho phép 0 đ), giá DeepSeek.
+
+Nạp tiền/thông báo lưu mã yêu cầu trong Keystore trước gửi. Khi mất mạng, thử lại
+đúng nội dung dùng cùng mã. Yêu cầu chưa xác minh được khôi phục khi mở lại trang;
+không tự gửi lại. Server kiểm tra quyền Admin trên mọi endpoint. Không dùng
+admin-key trong APK, không thay đổi cơ chế tự xác nhận QR.
+
+Phạm vi hiện tại chưa có cấu hình ngân hàng/webhook, email/Resend, key nhà cung cấp
+AI hoặc đào tạo bộ nhớ chung từ Android. Các chức năng đó vẫn quản lý trên desktop.
+Trước phát hành: thử tài khoản thường không thấy/truy cập được quản trị; kiểm tra
+nạp mất mạng không cộng hai lần, khóa/khôi phục, thông báo và giá 0 đ trên máy thật.
