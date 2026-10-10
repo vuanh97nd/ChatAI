@@ -34,7 +34,17 @@ jobs:
         working-directory: mobile
         run: |
           flutter analyze --no-fatal-infos
-          flutter test --reporter expanded
+          set -o pipefail
+          flutter test --reporter expanded 2>&1 | tee flutter-test.log
+      - name: Publish failed test diagnostics
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f mobile/flutter-test.log ]; then
+            gh release view android-diagnostics >/dev/null 2>&1 || gh release create android-diagnostics --target "$GITHUB_SHA" --prerelease --title "Android build diagnostics" --notes "Flutter test log only; no APK."
+            gh release upload android-diagnostics mobile/flutter-test.log --clobber
+          fi
       - name: Restore test signing identity
         uses: actions/cache@v4
         with:
