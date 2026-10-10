@@ -43,7 +43,7 @@ npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put GROQ_API_KEY
 npx wrangler secret put NVIDIA_API_KEY
-npx wrangler secret put BRAVE_SEARCH_API_KEY
+# Bing RSS mặc định: không cần secret tìm kiếm.
 ```
 
 6. Điền `ALLOWED_ORIGINS` nếu có web client, ví dụ `https://chat.example.com,http://localhost:5173`. Để rỗng thì chỉ nhận request không có Origin (Python desktop/cURL); Origin từ trình duyệt bị từ chối. Không dùng dấu `*`.
@@ -166,7 +166,7 @@ Tối đa100 mục/tài khoản, title120 ký tự, text4000 ký tự. Bật b�
 
 ## Tìm kiếm kết hợp suy luận
 
-`/api/chat/ai` hoặc `/api/chat/stream` nhận `web_search:true` và `search_query` tùy chọn. Worker gọi Brave Search, đưa trích đoạn/nguồn vào model được chọn, yêu cầu tổng hợp có dẫn URL. Secret BRAVE_SEARCH_API_KEY cần được cấu hình. Nếu không có search_query, dùng câu hỏi văn bản, không lấy nội dung document/context làm truy vấn. Tối đa600 ký tự/75 từ. Tool Python thực thi ở desktop/Docker, Worker không chạy Python hoặc lệnh Windows.
+`/api/chat/ai` hoặc `/api/chat/stream` nhận `web_search:true` và `search_query` tùy chọn. Worker gọi Bing RSS, đưa trích đoạn/nguồn vào model được chọn, yêu cầu tổng hợp có dẫn URL. Bing RSS không cần API key; nếu Bing chặn truy cập, trả lỗi rõ ràng, không tự chuyển dịch vụ. Nếu không có search_query, dùng câu hỏi văn bản, không lấy nội dung document/context làm truy vấn. Tối đa600 ký tự/75 từ. Tool Python thực thi ở desktop/Docker, Worker không chạy Python hoặc lệnh Windows.
 
 `work.js` ở thư mục gốc là bản sao đồng bộ của server/worker.js, dùng để copy lên Cloudflare Dashboard. Chỉ triển khai một bản.
 

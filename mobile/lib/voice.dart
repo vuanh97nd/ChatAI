@@ -22,9 +22,9 @@ class AndroidVoiceEngine implements VoiceEngine {
   Future<List<String>> locales() async => (await speech.locales()).map((l) => l.localeId).toList();
   @override
   Future<void> listen(String locale, void Function(String) words) async {
-    await speech.listen(localeId: locale, listenFor: const Duration(seconds: 60),
+    await speech.listen(listenFor: const Duration(seconds: 60),
       pauseFor: const Duration(seconds: 4),
-      listenOptions: SpeechListenOptions(partialResults: true, cancelOnError: true,
+      listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),
       onResult: (result) => words(result.recognizedWords));
   }
@@ -73,10 +73,12 @@ class VoiceController extends ChangeNotifier {
       if (run != _generation || _disposed) return;
       speaking = false;
       final available = await engine.initialize((status) {
+        if (run != _generation || _disposed) return;
         if (status == 'done' || status == 'notListening') {
           listening = false; _changed();
         }
       }, (message) {
+        if (run != _generation || _disposed) return;
         listening = false;
         error = 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
         _changed();
@@ -87,7 +89,7 @@ class VoiceController extends ChangeNotifier {
       }
       final locales = await engine.locales();
       if (run != _generation || _disposed) return;
-      final vietnamese = locales.where((l) => l.toLowerCase().replaceAll('-', '_').startsWith('vi_')).toList();
+      final vietnamese = locales.where((l) => l.toLowerCase() == 'vi' || l.toLowerCase().replaceAll('-', '_').startsWith('vi_')).toList();
       if (vietnamese.isEmpty) {
         throw Exception('Chưa có nhận dạng tiếng Việt. Cài hoặc bật tiếng Việt trong dịch vụ giọng nói Android.');
       }

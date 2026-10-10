@@ -198,7 +198,7 @@ class SupportMixin:
                     state['recent_documents']=attachments
                     evidence.append(_reader_context(attachments))
                 if use_web:
-                    # The Worker performs web search with BRAVE_SEARCH_API_KEY.
+                    # The Worker performs web search through Bing RSS.
                     # This also works when the desktop cannot reach a search engine.
                     emit({'type':'status','text':'Đang tìm kiếm web trên Worker…'})
                 body['document_context']='\n\n'.join(evidence)[:140000]

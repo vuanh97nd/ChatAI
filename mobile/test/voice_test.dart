@@ -28,6 +28,15 @@ class FakeVoice implements VoiceEngine {
 }
 
 void main() {
+  test('Vietnamese bare language code can start dictation', () async {
+    final engine = FakeVoice()..supported = ['vi'];
+    final voice = VoiceController(engine: engine);
+    addTearDown(voice.dispose);
+    await voice.start((_) {});
+    expect(engine.selected, 'vi');
+    expect(voice.listening, isTrue);
+  });
+
   test('Vietnamese dictation only supplies editable text, not an AI request', () async {
     final engine = FakeVoice(); final voice = VoiceController(engine: engine);
     addTearDown(voice.dispose); var draft = '';

@@ -6,39 +6,36 @@
  * Server cloud tùy chọn của Chat AI. Xem README-server.md trước khi triển khai.
  */
 // Web search is independent of the answer model (Qwen, DeepSeek, etc.).
-// Configure BRAVE_SEARCH_API_KEY as a Worker secret; no Gemini key is used.
+// Bing RSS is public search, not the retired Bing Search API. No API key required.
 export async function requestWebSearch(env,query,send=fetch){
  query=String(query||'').trim();
- if(!query||query.length>600||query.split(/\s+/).length>75)throw new Error('Câu hỏi tra cứu cần từ 1 đến 600 ký tự, tối đa 75 từ. Hãy rút gọn câu hỏi.');
- const key=String(env.BRAVE_SEARCH_API_KEY||'').trim();
- if(!key)throw new Error('Tra cứu mạng cho Qwen/DeepSeek chưa được cấu hình. Quản trị viên cần thêm secret BRAVE_SEARCH_API_KEY trên Worker. Không cần khóa Gemini.');
+ if(!query||query.length>600||query.split(/\s+/).length>75)throw new Error('Câu hỏi tra cứu cần từ 1 đến 600 ký tự, tối đa 75 từ.');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
  try{
-  const url=new URL('https://api.search.brave.com/res/v1/web/search');
-  url.searchParams.set('q',query);url.searchParams.set('count','5');
-  const response=await send(url.href,{method:'GET',headers:{Accept:'application/json','X-Subscription-Token':key},signal:controller.signal});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok){
-   const detail=String(data.error?.detail||data.error?.message||data.message||'Không có chi tiết lỗi.').split(key).join('[KEY]').slice(0,400);
-   const hint=response.status===429?' Hạn mức tra cứu đã hết; thử lại sau.':response.status===401||response.status===403?' Kiểm tra BRAVE_SEARCH_API_KEY và quyền tìm kiếm.':'';
-   throw new Error('Brave Search HTTP '+response.status+': '+detail+hint);
-  }
-  const clean=value=>String(value||'').replace(/<[^>]*>/g,' ').replace(/&(?:amp|lt|gt|quot|#39);/g,m=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"}[m])).replace(/\s+/g,' ').trim();
+  const url=new URL('https://www.bing.com/search');
+  url.searchParams.set('q',query);url.searchParams.set('format','rss');url.searchParams.set('setlang','vi');
+  const response=await send(url.href,{headers:{Accept:'application/rss+xml, application/xml','User-Agent':'Mozilla/5.0'},signal:controller.signal});
+  if(!response.ok)throw new Error('Bing HTTP '+response.status+'. Không thể tra cứu lúc này.');
+  const xml=await response.text();
+  if(xml.length>2*1024*1024)throw new Error('Phản hồi Bing quá lớn.');
+  if(!/<rss[\s>]/i.test(xml)||!/<channel[\s>]/i.test(xml))throw new Error('Bing không trả kết quả RSS; có thể yêu cầu xác minh truy cập.');
+  const decode=value=>String(value||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&(?:amp|lt|gt|quot|apos|#39);/g,m=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[m])).replace(/&#(x[0-9a-f]+|[0-9]+);/gi,(m,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';});
+  const clean=value=>decode(value).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
   const sources=[],parts=[],seen=new Set();
-  for(const item of data.web?.results||[]){
-   let link;try{link=new URL(item.url);}catch{continue;}
-   if(!['https:','http:'].includes(link.protocol)||seen.has(link.href))continue;
-   const snippet=clean(item.description).slice(0,400);if(!snippet)continue;
-   const title=clean(item.title||link.hostname).slice(0,150);seen.add(link.href);
-   sources.push({title,url:link.href});
-   parts.push('['+sources.length+'] '+title+'\n'+snippet+'\nNguồn: '+link.href);
+  for(const match of xml.matchAll(/<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi)){
+   const field=name=>(match[1].match(new RegExp('<'+name+'(?:\\s[^>]*)?>([\\s\\S]*?)<\/'+name+'>','i'))||[])[1]||'';
+   let link;try{link=new URL(decode(field('link')).trim());}catch{continue;}
+   if(!['https:','http:'].includes(link.protocol)||link.username||link.password||seen.has(link.href))continue;
+   const snippet=clean(field('description')).slice(0,400);if(!snippet)continue;
+   const title=clean(field('title')||link.hostname).slice(0,150);seen.add(link.href);
+   sources.push({title,url:link.href});parts.push('['+sources.length+'] '+title+'\n'+snippet+'\nNguồn: '+link.href);
    if(sources.length>=5)break;
   }
-  if(!sources.length)throw new Error('Không tìm thấy trích đoạn và nguồn phù hợp. Hãy đổi từ khóa tra cứu.');
-  return {success:true,answer:'Các trích đoạn tìm kiếm dưới đây chưa phải toàn văn tài liệu; không đủ để tự khẳng định điều khoản tiêu chuẩn.\n'+parts.join('\n\n'),sources,source:'brave_search',searched_at:new Date().toISOString()};
+  if(!sources.length)throw new Error('Bing không trả trích đoạn và nguồn phù hợp. Hãy đổi từ khóa.');
+  return {success:true,answer:'Trích đoạn Bing chưa phải toàn văn tài liệu.\n'+parts.join('\n\n'),sources,source:'bing_search',searched_at:new Date().toISOString()};
  }catch(error){
-  if(error.name==='AbortError')throw new Error('Tra cứu mạng quá thời gian chờ. Vui lòng thử lại.');
-  if(error instanceof TypeError)throw new Error('Không kết nối được dịch vụ tìm kiếm Brave. Vui lòng thử lại.');
+  if(error.name==='AbortError')throw new Error('Tra cứu Bing quá thời gian chờ.');
+  if(error instanceof TypeError)throw new Error('Không kết nối được Bing.');
   throw error;
  }finally{clearTimeout(timer);}
 }
