@@ -3282,8 +3282,14 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         for label,section in [('Chung',None),('Cấu hình máy và AI','Cấu hình máy và AI'),('Giao diện','Giao diện'),('Office và công cụ','Office và thư mục'),('Điều khiển ứng dụng','Điều khiển ứng dụng'),('Tài khoản và đăng nhập','Tài khoản'),('Lịch sử và dữ liệu','Lịch sử và dữ liệu'),('Cập nhật','Cập nhật Chat AI'),('Nâng cao','Nâng cao')]:
             button=self.button(layout,label,lambda checked=False,n=section:self.open_settings_section(n))
             button.setCheckable(True);self.settings_nav_buttons[label]=(button,section)
-        self.button(layout,'Bộ nhớ cá nhân',self.memory_dialog)
-        self.button(layout,'Tải mô hình',lambda:self.tabs.setCurrentIndex(1))
+        def _nav_memory():
+            for btn,_ in self.settings_nav_buttons.values():btn.setChecked(False)
+            self.memory_dialog()
+        def _nav_model_download():
+            for btn,_ in self.settings_nav_buttons.values():btn.setChecked(False)
+            self.tabs.setCurrentIndex(1)
+        self.button(layout,'Bộ nhớ cá nhân',_nav_memory)
+        self.button(layout,'Tải mô hình',_nav_model_download)
         layout.addStretch(1)
 
     def copy_performance_report(self):
