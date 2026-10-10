@@ -5,7 +5,7 @@ on:
     paths: ['mobile/**', '.github/workflows/android-apk.yml']
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
@@ -50,7 +50,7 @@ jobs:
         working-directory: mobile
         run: |
           version=$(sed -n 's/^version: //p' pubspec.yaml)
-          flutter build apk --debug --build-name="${version%+*}" --build-number="${version#*+}" --dart-define="CHAT_AI_VERSION=${version%+*}" --dart-define="CHAT_AI_COMMIT=${GITHUB_SHA:0:7}"
+          flutter build apk --debug --build-name="${version%+*}" --build-number="${version#*+}" --dart-define="CHAT_AI_BUILD=${version#*+}" --dart-define="CHAT_AI_VERSION=${version%+*}" --dart-define="CHAT_AI_COMMIT=${GITHUB_SHA:0:7}"
       - name: Verify APK and publish build identity
         working-directory: mobile
         run: python tool/verify_apk.py
@@ -60,3 +60,9 @@ jobs:
           path: mobile/build/verified-apk/*
           if-no-files-found: error
           retention-days: 30
+      - name: Publish APK for in-app updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --target "$GITHUB_SHA" --title "Chat AI Android" --notes "APK Android đã qua kiểm thử và xác minh."
+          gh release upload android-latest mobile/build/verified-apk/* --clobber

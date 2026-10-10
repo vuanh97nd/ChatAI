@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
 import 'notifications.dart';
@@ -122,6 +123,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     voice = VoiceController(engine: widget.voiceEngine);
     WidgetsBinding.instance.addObserver(this);
     voice.addListener(voiceChanged); restore();
+    unawaited(checkForUpdate());
   }
   @override
   void dispose() {
@@ -159,6 +161,16 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (readingMessage == index && voice.speaking) { await voice.stop(); return; }
     changed(() => readingMessage = index);
     await voice.read(messages[index]['content']!);
+  }
+  Future<void> checkForUpdate() async {
+    try {
+      final update = await checkAppUpdate();
+      if (!mounted || update.build <= currentBuild) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Có bản Chat AI mới: ${update.version} · build ${update.build}'),
+        action: SnackBarAction(label: 'Xem', onPressed: () => Navigator.push(context,
+          MaterialPageRoute<void>(builder: (_) => const UpdatePage())))));
+    } catch (_) { /* Automatic checks must not interrupt chat when offline. */ }
   }
   Future<void> restore() async {
     try {
@@ -569,6 +581,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
         if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
           title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
+        ListTile(leading: const Icon(Icons.system_update_outlined),
+          title: const Text('Cập nhật ứng dụng'), trailing: const Icon(Icons.chevron_right),
+          onTap: () {
+            Navigator.pop(drawerContext);
+            Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
+          }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),
           title: const Text('Giao diện', maxLines: 1),
           trailing: const Icon(Icons.chevron_right),
