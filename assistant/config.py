@@ -62,7 +62,7 @@ def validate_config(cfg):
     import re
     for provider in ('nvidia','deepseek','gemini','openai'):
         if not isinstance(cfg[provider+'_model'],str) or not re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',cfg[provider+'_model']):raise ValueError('Tên model API không hợp lệ.')
-    if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","openai","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
+    if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","groq","openai","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
     for key,value in {"num_predict":2048,"font_size":13,"auto_python":True}.items():cfg.setdefault(key,value)
     cfg.setdefault('api_num_predict',4096)
     cfg.setdefault('api_temperature',min(1,cfg.get('temperature',.2)))
