@@ -4,6 +4,13 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/main.dart';
 
 void main() {
+  testWidgets('empty chat welcomes users with the shared logo without a login form', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ChatWelcome())));
+    expect(find.text('Xin chào bạn!'), findsOneWidget);
+    expect(find.text('Tôi có thể giúp gì cho bạn?'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
+  });
   testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: StartupScreen()));
     expect(find.text('Chat AI'), findsOneWidget);

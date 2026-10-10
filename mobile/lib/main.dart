@@ -39,7 +39,21 @@ class StartupScreen extends StatelessWidget {
     const SizedBox(height: 24),
     const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
     const SizedBox(height: 12), const Text('Đang khởi động…'),
+    const SizedBox(height: 8), const Text('Android 0.8.1 · Chat trước, đăng nhập sau'),
   ]))));
+}
+
+class ChatWelcome extends StatelessWidget {
+  const ChatWelcome({super.key});
+  @override
+  Widget build(BuildContext context) => Center(child: Column(
+    mainAxisSize: MainAxisSize.min, children: [
+      Image.asset('assets/chat_ai.png', width: 96, height: 96, semanticLabel: 'Logo ChatAI'),
+      const SizedBox(height: 20),
+      Text('Xin chào bạn!', style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 8), const Text('Tôi có thể giúp gì cho bạn?'),
+    ],
+  ));
 }
 
 class Home extends StatefulWidget {
@@ -323,10 +337,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek · Tính phí token')),
       ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!)),
     ])),
-    Expanded(child: messages.isEmpty ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Image.asset('assets/chat_ai.png', width: 80, height: 80, semanticLabel: 'Logo ChatAI'),
-      const SizedBox(height: 16), const Text('Xin chào! Tôi có thể giúp gì cho bạn?'),
-    ])) :
+    Expanded(child: messages.isEmpty ? const ChatWelcome() :
       ListView.builder(itemCount: messages.length, itemBuilder: (c, i) {
         final m = messages[i];
         return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
