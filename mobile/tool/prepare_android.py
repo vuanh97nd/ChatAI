@@ -17,7 +17,7 @@ def branding(android):
     logo.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ROOT / 'assets/chat_ai.png', logo)
     resource('drawable/chatai_notification.xml', '''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FFFFFFFF" android:pathData="M4,3h16v14H8l-4,4z"/></vector>''')
-    resource('values/chatai_colors.xml', '<resources><color name="chatai_background">#202020</color></resources>')
+    resource('values/chatai_colors.xml', '<resources><color name="chatai_background">#141414</color></resources>')
     resource('drawable/chatai_launch.xml', '''<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/chatai_background"/>
     <item android:width="112dp" android:height="112dp" android:gravity="center" android:drawable="@drawable/chatai_logo"/>

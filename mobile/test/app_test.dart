@@ -45,6 +45,34 @@ void main() {
     expect(find.byType(LoginPage), findsOneWidget);
     await tester.pumpWidget(testApp(home: SizedBox()));
   });
+  testWidgets('signed-in drawer opens memory and notifications and can return to chat', (tester) async {
+    FlutterSecureStorage.setMockInitialValues({'session': jsonEncode(Session('alice', 'session:test', 'Alice').toJson())});
+    final api = ChatApi(client: MockClient((request) async {
+      final result = <String, dynamic>{'success': true};
+      switch (request.url.path) {
+        case '/api/memory/personal/list': result['items'] = [{'title': 'Test memory', 'text': 'Remember me'}];
+        case '/api/notifications/list': result['notifications'] = [{'title': 'Test notice', 'text': 'Hello'}];
+        case '/api/conversations/list': result['conversations'] = [{'id': 'saved', 'title': 'Recent chat'}];
+      }
+      return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+    }));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(LoginPage), findsNothing);
+    await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
+    expect(find.text('Recent chat'), findsOneWidget);
+    expect(find.text('Quản trị'), findsNothing);
+    await tester.tap(find.text('Bộ nhớ')); await tester.pumpAndSettle();
+    expect(find.text('Test memory'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
+    await tester.tap(find.text('Thông báo')); await tester.pumpAndSettle();
+    expect(find.text('Test notice'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
+    await tester.tap(find.text('Chat')); await tester.pumpAndSettle();
+    expect(find.byType(ChatWelcome), findsOneWidget);
+    await tester.pumpWidget(testApp(home: const SizedBox()));
+  });
   testWidgets('empty chat welcomes users with the shared logo without a login form', (tester) async {
     await tester.pumpWidget(testApp(home: Scaffold(body: ChatWelcome())));
     expect(find.text('Xin chào bạn!'), findsOneWidget);
@@ -52,11 +80,11 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
   });
-  testWidgets('welcome scrolls in the small space left by the keyboard without overflow', (tester) async {
+  testWidgets('welcome hides when keyboard leaves too little space, without overflow', (tester) async {
     await tester.pumpWidget(testApp(home: Scaffold(
       body: SizedBox(height: 70, child: ChatWelcome()))));
     expect(tester.takeException(), isNull);
-    expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(find.byType(Image), findsNothing);
   });
   testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
     await tester.pumpWidget(testApp(home: StartupScreen()));

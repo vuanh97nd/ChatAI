@@ -14,7 +14,7 @@ import 'animated_logo.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.4');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.9.0');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -26,9 +26,6 @@ Widget buildInfoButton(BuildContext context) => IconButton(
     children: const [Text('Android · mở vào chat · dùng thử NVIDIA 3 lượt trên thiết bị.')]),
 );
 
-Widget headerLogo() => Padding(padding: const EdgeInsets.all(10),
-  child: Image.asset('assets/chat_ai.png', semanticLabel: 'Biểu tượng ChatAI'));
-
 void main() => runApp(const ChatApp());
 class ChatApp extends StatelessWidget {
   const ChatApp({super.key});
@@ -37,7 +34,7 @@ class ChatApp extends StatelessWidget {
     title: 'Chat AI', debugShowCheckedModeBanner: false,
     theme: ThemeData(brightness: Brightness.dark, useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff6d65ff),
-        brightness: Brightness.dark), scaffoldBackgroundColor: const Color(0xff202020)),
+        brightness: Brightness.dark), scaffoldBackgroundColor: const Color(0xff141414)),
     home: const Home(),
   );
 }
@@ -60,14 +57,17 @@ class StartupScreen extends StatelessWidget {
 class ChatWelcome extends StatelessWidget {
   const ChatWelcome({super.key});
   @override
-  Widget build(BuildContext context) => Center(child: SingleChildScrollView(child: Column(
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
+    if (constraints.maxHeight < 150 || MediaQuery.viewInsetsOf(context).bottom > 0) return const SizedBox.shrink();
+    return Center(child: SingleChildScrollView(child: Column(
     mainAxisSize: MainAxisSize.min, children: [
       const AnimatedChatLogo(),
       const SizedBox(height: 20),
       Text('Xin chào bạn!', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 8), const Text('Tôi có thể giúp gì cho bạn?'),
     ],
-  )));
+    )));
+  });
 }
 
 class Home extends StatefulWidget {
@@ -92,6 +92,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   List<Map<String, String>> messages = [];
   List<dynamic> memories = [], notifications = [], conversations = [];
   String? conversation;
+  String historyQuery = '';
   Map<String, dynamic>? billing, order;
   Timer? poll;
   int pollSeconds = 10;
@@ -267,9 +268,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       changed(() { error = '$e'; if (e is ApiException && e.status == 401) guestRemaining = 0; });
     } finally { changed(() => sending = false); }
   }
-  Widget guestChat() => Scaffold(appBar: AppBar(leading: headerLogo(), title: const Text('Chat AI'), actions: [
-    buildInfoButton(context),
-    TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))]),
+  Widget guestChat() => Scaffold(drawer: navigationDrawer(), appBar: topBar(),
     body: SafeArea(child: Column(children: [
       if (error != null) ListTile(
         dense: true, title: const Text('Chưa kết nối được. Vui lòng thử lại sau.'),
@@ -355,13 +354,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     // Dialog controllers are retained until the closing animation finishes.
   }
   Widget chat() => Column(children: [
-    Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
-      const Text('Chọn AI'), const SizedBox(width: 16),
-      Expanded(child: DropdownButton<String>(isExpanded: true, value: provider, items: const [
-        DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA · Miễn phí')),
-        DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek · Tính phí token')),
-      ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))),
-    ])),
     Expanded(child: messages.isEmpty ? const ChatWelcome() :
       ListView.builder(itemCount: messages.length, itemBuilder: (c, i) {
         final m = messages[i];
@@ -380,16 +372,36 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (sending) const LinearProgressIndicator(),
     if (voice.listening || voice.starting) Padding(padding: const EdgeInsets.all(8),
       child: Text(voice.starting ? 'Đang mở micro…' : 'Đang nghe tiếng Việt… Bấm micro để dừng.')),
-    Padding(padding: const EdgeInsets.all(12), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-      Expanded(child: TextField(controller: input, minLines: 1, maxLines: 5,
-        maxLength: 12000, decoration: const InputDecoration(hintText: 'Hỏi Chat AI…', border: OutlineInputBorder()))),
-      IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
-        onPressed: sending || working ? null : dictate,
-        icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
-        color: voice.listening ? Colors.redAccent : null),
-      IconButton.filled(onPressed: sending || working || voice.starting ? null : send, icon: const Icon(Icons.send)),
-    ])),
+    Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      decoration: BoxDecoration(color: const Color(0xff222222),
+        border: Border.all(color: const Color(0xff393939)), borderRadius: BorderRadius.circular(28)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: input, minLines: 1, maxLines: 4, maxLength: 12000,
+          decoration: const InputDecoration(hintText: 'Hỏi Chat AI…', counterText: '',
+            border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none)),
+        Row(children: [
+          Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(color: const Color(0xff303030), borderRadius: BorderRadius.circular(24)),
+            child: DropdownButtonHideUnderline(child: DropdownButton<String>(
+              isExpanded: true, value: provider, hint: const Text('Chọn AI'),
+              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+              items: const [
+                DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek', overflow: TextOverflow.ellipsis)),
+              ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))))),
+          const SizedBox(width: 8),
+          IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
+            onPressed: sending || working ? null : dictate,
+            icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
+            color: voice.listening ? Colors.redAccent : null),
+          IconButton.filled(tooltip: 'Gửi tin nhắn',
+            onPressed: sending || working || voice.starting ? null : send,
+            icon: const Icon(Icons.send)),
+        ]),
+      ]))),
   ]);
+
   Widget account() {
     final wallet = billing?['wallet'] as Map<String, dynamic>?;
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -438,44 +450,128 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       OutlinedButton(onPressed: working || sending ? null : () => guard(signOut), child: const Text('Đăng xuất')),
     ]);
   }
+  Future<void> newChat() async {
+    if (sending || working) return;
+    await voice.stop();
+    changed(() { messages = []; conversation = null; tab = 0; error = null;
+      if (guestPending == null) input.clear(); });
+  }
+
+  Future<void> navigateTo(int destination, BuildContext drawerContext) async {
+    Navigator.pop(drawerContext);
+    if (api.session == null) { await openLogin(); return; }
+    await voice.stop();
+    changed(() => tab = destination);
+  }
+
+  Future<void> openAdmin() async {
+    await voice.stop();
+    if (!mounted || api.session?.admin != true) return;
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AdminPage(api: api)));
+  }
+
+  AppBar topBar() => AppBar(backgroundColor: const Color(0xff141414),
+    surfaceTintColor: Colors.transparent, elevation: 0,
+    title: tab == 0 ? Row(mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(width: 30, height: 30, child: Image.asset('assets/chat_ai.png', semanticLabel: 'Biểu tượng ChatAI')),
+      const SizedBox(width: 8), const Text('Chat AI', style: TextStyle(fontSize: 18)),
+    ]) : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo'][tab]),
+    actions: [
+      if (api.session == null) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))
+      else IconButton(tooltip: 'Tài khoản', onPressed: () { unawaited(voice.stop()); changed(() => tab = 3); },
+        icon: const Icon(Icons.account_circle_outlined)),
+    ]);
+
+  Widget navigationDrawer() => Drawer(backgroundColor: const Color(0xff141414),
+    width: MediaQuery.sizeOf(context).width * .9,
+    child: SafeArea(child: Builder(builder: (drawerContext) => Column(children: [
+      Padding(padding: const EdgeInsets.fromLTRB(20, 20, 12, 16), child: Row(children: [
+        Image.asset('assets/chat_ai.png', width: 36, height: 36, semanticLabel: 'Biểu tượng ChatAI'),
+        const SizedBox(width: 12),
+        const Expanded(child: Text('Chat AI', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600))),
+        buildInfoButton(context),
+      ])),
+      Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 12), children: [
+        ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Chat'),
+          onTap: sending ? null : () {
+            Navigator.pop(drawerContext); unawaited(voice.stop()); changed(() => tab = 0);
+          }),
+        ListTile(leading: const Icon(Icons.history_outlined), title: const Text('Hội thoại'),
+          onTap: sending ? null : () => navigateTo(1, drawerContext)),
+        ListTile(leading: const Icon(Icons.memory_outlined), title: const Text('Bộ nhớ'),
+          onTap: sending ? null : () => navigateTo(2, drawerContext)),
+        ListTile(leading: const Icon(Icons.notifications_none), title: const Text('Thông báo'),
+          onTap: sending ? null : () => navigateTo(5, drawerContext)),
+        ListTile(leading: const Icon(Icons.computer_outlined), title: const Text('Kết nối máy tính'),
+          onTap: sending ? null : () => navigateTo(4, drawerContext)),
+        ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Số dư và nạp tiền'),
+          onTap: sending ? null : () => navigateTo(3, drawerContext)),
+        if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
+          title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
+        const Divider(height: 32),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: Text('Gần đây', style: TextStyle(color: Colors.grey))),
+        if (api.session != null) TextField(onChanged: (v) => changed(() => historyQuery = v),
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm hội thoại', border: InputBorder.none)),
+        if (api.session == null) const Padding(padding: EdgeInsets.all(16), child: Text('Đăng nhập để xem hội thoại đã lưu.', style: TextStyle(color: Colors.grey)))
+        else if (conversations.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Chưa có hội thoại đã lưu.', style: TextStyle(color: Colors.grey))),
+        for (final item in conversations.where((c) => (c['title'] as String).toLowerCase().contains(historyQuery.toLowerCase())))
+          ListTile(leading: const Icon(Icons.chat_bubble_outline, size: 20),
+            title: Text(item['title'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openConversation(item as Map<String, dynamic>)); }),
+      ])),
+      const Divider(height: 1),
+      Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+        Expanded(child: TextButton.icon(onPressed: sending ? null : () => navigateTo(3, drawerContext),
+          icon: const Icon(Icons.account_circle),
+          label: Text(api.session?.fullname ?? 'Đăng nhập', maxLines: 1, overflow: TextOverflow.ellipsis))),
+        FilledButton.icon(onPressed: sending || working ? null : () { Navigator.pop(drawerContext); unawaited(newChat()); },
+          icon: const Icon(Icons.add), label: const Text('Chat mới')),
+      ])),
+    ]))));
+
+  Widget pageContent() {
+    switch (tab) {
+      case 1:
+        return ListView(children: [
+          ListTile(title: const Text('Hội thoại đã lưu'), trailing: IconButton(
+            tooltip: 'Làm mới', onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
+          for (final item in conversations) ListTile(leading: const Icon(Icons.chat_bubble_outline),
+            title: Text(item['title'] as String, maxLines: 2, overflow: TextOverflow.ellipsis),
+            onTap: sending ? null : () => openConversation(item as Map<String, dynamic>)),
+          const Padding(padding: EdgeInsets.all(16), child: Text('Hiển thị hội thoại Android. Hội thoại desktop dùng kho đồng bộ riêng.')),
+        ]);
+      case 2:
+        return ListView(children: [
+          ListTile(title: const Text('Bộ nhớ cá nhân'), trailing: IconButton(
+            tooltip: 'Thêm ghi nhớ', onPressed: working ? null : editMemory, icon: const Icon(Icons.add))),
+          for (final m in memories) ListTile(title: Text(m['title'] as String), subtitle: Text(m['text'] as String)),
+        ]);
+      case 3: return account();
+      case 4: return ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device);
+      case 5:
+        return ListView(children: [
+          ListTile(title: const Text('Thông báo'), trailing: IconButton(tooltip: 'Làm mới',
+            onPressed: working ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
+          if (notifications.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('Chưa có thông báo.')),
+          for (final n in notifications) ListTile(title: Text(n['title'] as String), subtitle: Text(n['text'] as String)),
+        ]);
+      default: return chat();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const StartupScreen();
     if (api.session == null) return guestChat();
-    return Scaffold(appBar: AppBar(leading: headerLogo(), title: const Text('Chat AI'), actions: [
-      buildInfoButton(context),
-      IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {
-        await voice.stop(); changed(() { messages = []; conversation = null; tab = 0; }); }, icon: const Icon(Icons.add_comment_outlined)),
-    ]), body: SafeArea(child: Column(children: [
-      if (error != null) MaterialBanner(content: Text(error!), actions: [
-        TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
-      if (working) const LinearProgressIndicator(),
-      Expanded(child: tab == 4 ? ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device) : [chat(), ListView(children: [
-        ListTile(title: const Text('Hội thoại trên server'), trailing: IconButton(
-          onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
-        for (final item in conversations) ListTile(title: Text(item['title'] as String),
-          onTap: sending ? null : () => openConversation(item as Map<String, dynamic>)),
-        const Padding(padding: EdgeInsets.all(16), child: Text('Bản đầu tiên hiển thị hội thoại Android. '
-          'Hội thoại desktop dùng kho đồng bộ riêng; chưa hiển thị ở đây.')),
-      ]), ListView(children: [
-        ListTile(title: const Text('Bộ nhớ cá nhân'), trailing: IconButton(
-          onPressed: working ? null : editMemory, icon: const Icon(Icons.add))),
-        for (final m in memories) ListTile(title: Text(m['title'] as String), subtitle: Text(m['text'] as String)),
-        const Divider(), const ListTile(title: Text('Thông báo')),
-        for (final n in notifications) ListTile(title: Text(n['title'] as String), subtitle: Text(n['text'] as String)),
-      ]), account()][tab]),
-    ])), bottomNavigationBar: NavigationBar(selectedIndex: tab,
-      onDestinationSelected: (i) {
-        if (i != tab) unawaited(voice.stop());
-        changed(() => tab = i);
-      }, destinations: const [
-        NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
-        NavigationDestination(icon: Icon(Icons.history), label: 'Hội thoại'),
-        NavigationDestination(icon: Icon(Icons.memory), label: 'Bộ nhớ'),
-        NavigationDestination(icon: Icon(Icons.person_outline), label: 'Tài khoản'),
-        NavigationDestination(icon: Icon(Icons.computer), label: 'Máy tính'),
-      ]));
+    return Scaffold(drawer: navigationDrawer(), appBar: topBar(),
+      body: SafeArea(child: Column(children: [
+        if (error != null) MaterialBanner(content: Text(error!), actions: [
+          TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
+        if (working) const LinearProgressIndicator(),
+        Expanded(child: pageContent()),
+      ])));
   }
+
 }
 
 class LoginPage extends StatefulWidget {

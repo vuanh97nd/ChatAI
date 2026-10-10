@@ -163,7 +163,7 @@ tạo kênh Thông báo ChatAI và đăng ký kiểm tra nền bằng WorkManage
 cần mạng). Android có thể trì hoãn vì tiết kiệm pin; không phải push tức thời FCM.
 Tắt trong app hủy công việc nền; đăng xuất cũng hủy và xóa thông báo đang hiện.
 Không đọc nội dung của tài khoản khác, không tự gửi thông báo cũ ngay khi bật.
-Mở app/làm mới sẽ kiểm tra thêm; người dùng vẫn đọc toàn bộ trong Bộ nhớ.
+Mở app/làm mới sẽ kiểm tra thêm; người dùng đọc toàn bộ trong menu → Thông báo.
 
 Quyền cần thiết: Internet, Micro khi bấm nói, Camera khi quét QR, Thông báo khi
 bấm bật. Không yêu cầu đọc toàn bộ bộ nhớ máy hoặc trợ năng để điều khiển Windows.
@@ -173,3 +173,18 @@ cấp/từ chối quyền, tài khoản khác, logout, nền/khởi động lạ
 WorkManager được cố định 0.9.0 cùng ba module nền tảng vì bản 0.9.4 có chữ ký
 Apple không khớp platform interface, làm kiểm thử Dart trên Android không biên dịch.
 Không nâng riêng một module; chạy lại analyze, test và build APK khi nâng cả bộ.
+
+## Giao diện Android 0.9.0 (build 13)
+
+Màn hình chat dùng nền tối, logo động và ô nhập bo tròn dưới cùng. Chọn NVIDIA
+hoặc DeepSeek ngay trong ô nhập; người chưa đăng nhập dùng NVIDIA. Micro nhận
+lời nói thành bản nháp để xem và gửi; nút gửi không tự chạy sau khi nhận giọng nói.
+
+Menu ☰ thay thanh điều hướng dưới: Chat, hội thoại, bộ nhớ, thông báo, kết nối
+máy tính, số dư và nạp tiền. Phần Gần đây có tìm kiếm theo tên trong các hội thoại
+đã tải. Nhấn tài khoản ở cuối menu để mở trang tài khoản; Chat mới bắt đầu phiên
+mới, còn mục Chat quay lại phiên hiện tại. Admin có mục Quản trị riêng.
+
+Khi bàn phím mở hoặc vùng nội dung quá thấp, lời chào và logo giữa màn hình ẩn
+để ưu tiên ô nhập. Chưa có chức năng đính kèm file trên Android, nên không đặt
+nút đính kèm chưa hoạt động trong ô nhập.
