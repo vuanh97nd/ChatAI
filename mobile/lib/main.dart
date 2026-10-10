@@ -144,6 +144,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> dictate() async {
     if (voice.listening || voice.starting) { await voice.stop(); return; }
     changed(() => error = null);
+    FocusManager.instance.primaryFocus?.unfocus();
     final prefix = input.text.trimRight();
     await voice.start((words) {
       if (!mounted) return;
@@ -288,7 +289,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Widget guestChat() => Scaffold(key: scaffoldKey, onDrawerChanged: (v) => changed(() => drawerOpen = v), drawer: navigationDrawer(), appBar: topBar(),
     body: SafeArea(child: Column(children: [
       if (error != null) ListTile(
-        dense: true, title: const Text('Chưa kết nối được. Vui lòng thử lại sau.'),
+        dense: true, title: Text(voice.error != null ? voice.error! : 'Chưa kết nối được. Vui lòng thử lại sau.'),
         trailing: TextButton(onPressed: () => showDialog<void>(context: context,
           builder: (c) => AlertDialog(title: const Text('Chi tiết lỗi'),
             content: SingleChildScrollView(child: SelectableText(error!)),

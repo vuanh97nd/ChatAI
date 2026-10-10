@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -22,11 +23,18 @@ class AndroidVoiceEngine implements VoiceEngine {
   Future<List<String>> locales() async => (await speech.locales()).map((l) => l.localeId).toList();
   @override
   Future<void> listen(String locale, void Function(String) words) async {
-    await speech.listen(listenFor: const Duration(seconds: 60),
+    await speech.listen(localeId: locale, listenFor: const Duration(seconds: 60),
       pauseFor: const Duration(seconds: 4),
       listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),
       onResult: (result) => words(result.recognizedWords));
+    // Some Android recognition services return without starting or throwing.
+    for (var attempt = 0; attempt < 10 && !speech.isListening; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if (!speech.isListening) {
+      throw Exception('Không mở được nhận dạng giọng nói. Kiểm tra quyền micro và bật dịch vụ nhận dạng giọng nói trong cài đặt Android.');
+    }
   }
   @override
   Future<void> cancel() => speech.cancel();
@@ -67,6 +75,7 @@ class VoiceController extends ChangeNotifier {
   Future<void> start(void Function(String) onWords) async {
     if (_disposed || starting || listening) return;
     final run = ++_generation;
+    var receivedWords = false;
     starting = true; error = null; _changed();
     try {
       await engine.stopSpeaking();
@@ -75,31 +84,41 @@ class VoiceController extends ChangeNotifier {
       final available = await engine.initialize((status) {
         if (run != _generation || _disposed) return;
         if (status == 'done' || status == 'notListening') {
-          listening = false; _changed();
+          listening = false;
+          if (!starting && !receivedWords && error == null) {
+            error = 'Chưa nghe được lời nói. Hãy bấm mic và nói lại; kiểm tra quyền micro nếu vẫn không nhận chữ.';
+          }
+          _changed();
         }
       }, (message) {
         if (run != _generation || _disposed) return;
         listening = false;
         error = 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
         _changed();
-      });
+      }).timeout(const Duration(seconds: 20), onTimeout: () => throw TimeoutException('Mở micro quá lâu. Kiểm tra quyền micro và dịch vụ nhận dạng giọng nói Android.'));
       if (run != _generation || _disposed) return;
       if (!available) {
         throw Exception('Chưa được cấp quyền micro hoặc máy chưa có dịch vụ nhận dạng giọng nói.');
       }
-      final locales = await engine.locales();
+      final locales = await engine.locales().timeout(const Duration(seconds: 10));
       if (run != _generation || _disposed) return;
       final vietnamese = locales.where((l) => l.toLowerCase() == 'vi' || l.toLowerCase().replaceAll('-', '_').startsWith('vi_')).toList();
       if (vietnamese.isEmpty) {
         throw Exception('Chưa có nhận dạng tiếng Việt. Cài hoặc bật tiếng Việt trong dịch vụ giọng nói Android.');
       }
-      listening = true; _changed();
       await engine.listen(vietnamese.first, (words) {
-        if (!_disposed && run == _generation) onWords(words);
-      });
+        if (!_disposed && run == _generation && words.trim().isNotEmpty) {
+          receivedWords = true;
+          onWords(words);
+        }
+      }).timeout(const Duration(seconds: 10));
+      if (run == _generation && !_disposed && error == null) { listening = true; }
     } catch (e) {
       if (run == _generation && !_disposed) {
-        listening = false; error = '$e';
+        _generation++;
+        listening = false; starting = false; error = '$e';
+        unawaited(engine.cancel().catchError((Object _) {}));
+        _changed();
       }
     } finally {
       if (run == _generation && !_disposed) { starting = false; _changed(); }

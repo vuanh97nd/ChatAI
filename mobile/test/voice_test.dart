@@ -8,15 +8,22 @@ class FakeVoice implements VoiceEngine {
   String? selected, readText;
   void Function(String)? recognition;
   int cancels = 0, stops = 0;
+  bool failListen = false;
+  void Function(String)? status;
   Completer<bool>? permission;
   Completer<void>? reading;
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) async =>
-      permission == null ? available : await permission!.future;
+      _initialize(status);
+  Future<bool> _initialize(void Function(String) callback) async {
+    status = callback;
+    return permission == null ? available : await permission!.future;
+  }
   @override
   Future<List<String>> locales() async => supported;
   @override
   Future<void> listen(String locale, void Function(String) words) async {
+    if (failListen) throw Exception('Không mở được nhận dạng giọng nói');
     selected = locale; recognition = words;
   }
   @override
@@ -28,6 +35,22 @@ class FakeVoice implements VoiceEngine {
 }
 
 void main() {
+  test('recognizer start failure resets mic and shows the error', () async {
+    final engine = FakeVoice()..failListen = true;
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    await voice.start((_) {});
+    expect(voice.listening, isFalse); expect(voice.starting, isFalse);
+    expect(voice.error, contains('Không mở được'));
+  });
+  test('empty recognition ends with guidance instead of silent failure', () async {
+    final engine = FakeVoice();
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    await voice.start((_) {});
+    engine.status!('done');
+    expect(voice.listening, isFalse);
+    expect(voice.error, contains('Chưa nghe được'));
+  });
+
   test('Vietnamese bare language code can start dictation', () async {
     final engine = FakeVoice()..supported = ['vi'];
     final voice = VoiceController(engine: engine);
