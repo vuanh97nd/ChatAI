@@ -566,17 +566,29 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
         if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
           title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
-        ListTile(leading: const Icon(Icons.brightness_6_outlined), title: const Text('Giao diện'),
-          trailing: DropdownButton<ThemeMode>(value: appThemeMode.value, items: const [
-            DropdownMenuItem(value: ThemeMode.system, child: Text('Theo thiết bị')),
-            DropdownMenuItem(value: ThemeMode.light, child: Text('Sáng')),
-            DropdownMenuItem(value: ThemeMode.dark, child: Text('Tối')),
-          ], onChanged: (mode) async {
-            if (mode == null) return;
+        ListTile(leading: const Icon(Icons.brightness_6_outlined),
+          title: const Text('Giao diện', maxLines: 1),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            final mode = await showDialog<ThemeMode>(context: context,
+              builder: (dialogContext) => SimpleDialog(title: const Text('Giao diện'),
+                children: [
+                  for (final option in const {
+                    ThemeMode.system: 'Theo thiết bị',
+                    ThemeMode.light: 'Sáng',
+                    ThemeMode.dark: 'Tối',
+                  }.entries)
+                    SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, option.key),
+                      child: Row(children: [
+                        Expanded(child: Text(option.value)),
+                        if (appThemeMode.value == option.key) const Icon(Icons.check),
+                      ])),
+                ]));
+            if (mode == null || !mounted) return;
             appThemeMode.value = mode;
             try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
-          })),
+          }),
         const Divider(height: 32),
         const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: Text('Gần đây', style: TextStyle(color: Colors.grey))),
         if (api.session != null) TextField(onChanged: (v) => changed(() => historyQuery = v),
