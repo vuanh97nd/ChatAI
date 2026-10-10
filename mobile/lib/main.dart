@@ -13,7 +13,17 @@ import 'notifications.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.2');
+const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
+
+Widget buildInfoButton(BuildContext context) => IconButton(
+  tooltip: 'Thông tin phiên bản', icon: const Icon(Icons.info_outline),
+  onPressed: () => showAboutDialog(context: context, applicationName: 'Chat AI',
+    applicationVersion: '$appVersion · $appCommit',
+    applicationIcon: Image.asset('assets/chat_ai.png', width: 48, height: 48),
+    children: const [Text('Android · mở vào chat · dùng thử NVIDIA 3 lượt trên thiết bị.')]),
+);
 
 void main() => runApp(const ChatApp());
 class ChatApp extends StatelessWidget {
@@ -39,7 +49,7 @@ class StartupScreen extends StatelessWidget {
     const SizedBox(height: 24),
     const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
     const SizedBox(height: 12), const Text('Đang khởi động…'),
-    const SizedBox(height: 8), const Text('Android 0.8.1 · Chat trước, đăng nhập sau'),
+    const SizedBox(height: 8), const Text('Android $appVersion · Chat trước, đăng nhập sau'),
   ]))));
 }
 
@@ -57,13 +67,15 @@ class ChatWelcome extends StatelessWidget {
 }
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  final ChatApi? api;
+  final VoiceEngine? voiceEngine;
+  const Home({super.key, this.api, this.voiceEngine});
   @override
   State<Home> createState() => _HomeState();
 }
 class _HomeState extends State<Home> with WidgetsBindingObserver {
-  final api = ChatApi();
-  final voice = VoiceController();
+  late final ChatApi api;
+  late final VoiceController voice;
   int? readingMessage;
   final input = TextEditingController();
   final amount = TextEditingController(text: '50000');
@@ -86,7 +98,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   @override
   void initState() {
-    super.initState(); WidgetsBinding.instance.addObserver(this);
+    super.initState();
+    api = widget.api ?? ChatApi();
+    voice = VoiceController(engine: widget.voiceEngine);
+    WidgetsBinding.instance.addObserver(this);
     voice.addListener(voiceChanged); restore();
   }
   @override
@@ -249,6 +264,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } finally { changed(() => sending = false); }
   }
   Widget guestChat() => Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
+    buildInfoButton(context),
     TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))]),
     body: SafeArea(child: Column(children: [
       Padding(padding: const EdgeInsets.all(12), child: Text('Dùng thử NVIDIA · còn $guestRemaining/3 lượt trên thiết bị này')),
@@ -418,6 +434,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (loading) return const StartupScreen();
     if (api.session == null) return guestChat();
     return Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
+      buildInfoButton(context),
       IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {
         await voice.stop(); changed(() { messages = []; conversation = null; tab = 0; }); }, icon: const Icon(Icons.add_comment_outlined)),
     ]), body: SafeArea(child: Column(children: [

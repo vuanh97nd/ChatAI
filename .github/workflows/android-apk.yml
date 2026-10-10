@@ -35,12 +35,28 @@ jobs:
         run: |
           flutter analyze --no-fatal-infos
           flutter test --reporter expanded
+      - name: Restore test signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: chatai-android-debug-signing-v1
+      - name: Prepare test signing identity
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
       - name: Build installable test APK
         working-directory: mobile
-        run: flutter build apk --debug
+        run: |
+          version=$(sed -n 's/^version: //p' pubspec.yaml)
+          flutter build apk --debug --build-name="${version%+*}" --build-number="${version#*+}" --dart-define="CHAT_AI_VERSION=${version%+*}" --dart-define="CHAT_AI_COMMIT=${GITHUB_SHA:0:7}"
+      - name: Verify APK and publish build identity
+        working-directory: mobile
+        run: python tool/verify_apk.py
       - uses: actions/upload-artifact@v4
         with:
-          name: ChatAI-Android-test-${{ github.sha }}
-          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          name: ChatAI-Android-test-${{ github.run_number }}-${{ github.sha }}
+          path: mobile/build/verified-apk/*
           if-no-files-found: error
           retention-days: 30

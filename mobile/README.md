@@ -30,11 +30,19 @@ xác nhận QR. Cần triển khai Worker mới để dùng luồng đồng hàn
 ## Tải APK thử nghiệm
 
 GitHub → Actions → **Build Android APK** → chọn lượt chạy xanh → Artifacts →
-**ChatAI-Android-test-…** → tải ZIP, giải nén `app-debug.apk`, chuyển sang điện thoại.
+**ChatAI-Android-test-…** → tải ZIP, giải nén file `ChatAI-<version>-build<code>-<commit>.apk`, chuyển sang điện thoại.
 Cho phép trình duyệt/trình quản lý file cài ứng dụng từ nguồn này. Đây là APK debug
 cho thử nghiệm; không dùng để phát hành chính thức. Máy cài có thể hiện cảnh báo.
-APK debug giữa các máy build có thể khác khóa: khi bị lỗi chữ ký phải gỡ bản thử
-nghiệm cũ; phát hành chính thức cần khóa ký cố định như bên dưới.
+Trong app, nút **Thông tin phiên bản** ở thanh trên hiển thị phiên bản và commit.
+File `build-info.json` đi cùng APK ghi phiên bản đọc từ manifest, SHA-256 và
+thông tin chữ ký; workflow chỉ upload sau khi kiểm tra package/phiên bản/chữ ký.
+Worker cập nhật không thay giao diện APK đã cài.
+
+Workflow giữ khóa debug bằng GitHub Actions cache để các lần build sau dùng lại
+cùng khóa. Cache có thể bị xóa/hết hạn; đây chưa phải cơ chế ký phát hành bền vững.
+Bản thử trước khi có cache có thể mang chữ ký khác. Không tự gỡ ứng dụng để xử lý:
+trước tiên đối chiếu lỗi cài đặt, phiên bản và chứng thư. Phát hành chính thức cần
+khóa ký cố định được sao lưu như bên dưới.
 
 ## Build tại máy
 
