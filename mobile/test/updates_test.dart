@@ -8,7 +8,7 @@ void main() {
   test('update manifest builds a fixed GitHub APK URL and compares build codes', () async {
     final client = MockClient((request) async {
       expect(request.url.toString(), updateManifest);
-      return http.Response(jsonEncode({'version': '0.9.5', 'build': '25',
+      return http.Response(jsonEncode({'version': '0.9.5', 'build': '${currentBuild + 1}',
         'file': 'ChatAI-0.9.5-build25-abcdef0.apk'}), 200);
     });
     addTearDown(client.close);

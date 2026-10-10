@@ -582,14 +582,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
           title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
         ListTile(leading: const Icon(Icons.system_update_outlined),
-          title: const Text('Cập nhật ứng dụng'), trailing: const Icon(Icons.chevron_right),
+          title: const Text('Cập nhật ứng dụng'),
           onTap: () {
             Navigator.pop(drawerContext);
             Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
           }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),
           title: const Text('Giao diện', maxLines: 1),
-          trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             final mode = await showDialog<ThemeMode>(context: context,
               builder: (dialogContext) => SimpleDialog(title: const Text('Giao diện'),

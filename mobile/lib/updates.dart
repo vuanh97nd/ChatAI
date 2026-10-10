@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-const currentBuild = int.fromEnvironment('CHAT_AI_BUILD', defaultValue: 24);
+const currentBuild = int.fromEnvironment('CHAT_AI_BUILD', defaultValue: 25);
 const updateManifest = 'https://github.com/vuanh97nd/ChatAI/releases/download/android-latest/build-info.json';
 
 class AppUpdate {
