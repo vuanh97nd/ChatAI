@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.1
+# ChatAI Android — bản thử nghiệm 0.2
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -13,9 +13,11 @@ DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấ
   20.000–10.000.000 đ, bội số 1.000 đ. Admin không hiện nút nạp.
 - Chỉ kiểm tra đơn QR đang mở mỗi 10 giây; lùi đến 60 giây khi lỗi,
   ngừng khi ứng dụng xuống nền, khi hết hạn hoặc đã thanh toán.
+- Micro nhập câu hỏi tiếng Việt: hiển thị bản nháp, người dùng kiểm tra và bấm gửi.
+- Nút Đọc câu trả lời / Dừng đọc; tự dừng nghe/đọc khi xuống nền, đổi trang hoặc đăng xuất.
 - Không điều khiển hoặc ghi đè mô hình PLAXIS/GeoStudio.
 
-Chưa có đọc PDF/Excel/ảnh, giọng nói, push notification, chạy tác vụ Windows,
+Chưa có đọc PDF/Excel/ảnh, push notification, chạy tác vụ Windows,
 đồng bộ hội thoại desktop hay tự cập nhật APK. Kho hội thoại Android hiện là
 `ai_conversations`; desktop đang dùng `desktop_history`. Bộ nhớ cá nhân và ví dùng chung.
 Server hiện khóa một thiết bị cho mỗi tài khoản thường: đăng nhập Android có thể
@@ -71,3 +73,17 @@ số dư/thiếu số dư → tạo QR và chuyển khoản thử → đổi n�
 chỉ cộng tiền một lần → xem bộ nhớ → đăng xuất và đăng nhập tài khoản khác.
 Kiểm tra thêm mạng mất, server trả lỗi, bàn phím, xoay màn hình và chữ lớn.
 Không coi kiểm thử giả lập HTTP là xác nhận thanh toán thật.
+
+## Giọng nói
+
+Lần đầu bấm micro, Android hỏi quyền ghi âm. Nếu từ chối, vẫn nhập chữ bình thường;
+có thể bật lại trong Cài đặt Android → Ứng dụng → Chat AI → Quyền → Micro.
+Máy cần dịch vụ nhận dạng hỗ trợ tiếng Việt (ví dụ Speech Services by Google);
+nhận dạng có thể cần mạng và có thể gửi âm thanh đến dịch vụ do Android lựa chọn.
+ChatAI không tải âm thanh lên server ChatAI hoặc lưu bản ghi âm; chỉ gửi văn bản
+sau khi bạn bấm Gửi. Chức năng đọc cần giọng tiếng Việt trong cài đặt Text-to-speech
+của Android. Đây là hội thoại bằng nút bấm, chưa phải gọi thoại liên tục.
+
+Thử thêm: từ chối quyền → nhập chữ; cấp quyền → nói → chỉnh bản nháp → gửi;
+đọc câu trả lời dài → dừng; chuyển app xuống nền khi đang nghe/đọc;
+thiếu dịch vụ nhận dạng hoặc thiếu giọng Việt phải hiện thông báo thay vì treo app.

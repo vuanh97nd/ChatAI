@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'voice.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
@@ -31,6 +32,8 @@ class Home extends StatefulWidget {
 }
 class _HomeState extends State<Home> with WidgetsBindingObserver {
   final api = ChatApi();
+  final voice = VoiceController();
+  int? readingMessage;
   final input = TextEditingController();
   final amount = TextEditingController(text: '50000');
   String device = '', provider = 'nvidia';
@@ -50,20 +53,45 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   @override
   void initState() {
-    super.initState(); WidgetsBinding.instance.addObserver(this); restore();
+    super.initState(); WidgetsBinding.instance.addObserver(this);
+    voice.addListener(voiceChanged); restore();
   }
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this); poll?.cancel();
+    voice.removeListener(voiceChanged); voice.dispose();
     api.close(); input.dispose(); amount.dispose(); super.dispose();
   }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A permission dialog is inactive, but it must not cancel first-time setup.
+    if (state == AppLifecycleState.inactive) return;
     foreground = state == AppLifecycleState.resumed;
-    if (!foreground) { poll?.cancel(); }
+    if (!foreground) { poll?.cancel(); unawaited(voice.stop()); }
     else if (order != null) { schedulePoll(); }
   }
   void changed(VoidCallback fn) { if (mounted) setState(fn); }
+  void voiceChanged() {
+    changed(() {
+      if (voice.error != null) error = voice.error;
+      if (!voice.speaking) readingMessage = null;
+    });
+  }
+  Future<void> dictate() async {
+    if (voice.listening || voice.starting) { await voice.stop(); return; }
+    changed(() => error = null);
+    final prefix = input.text.trimRight();
+    await voice.start((words) {
+      if (!mounted) return;
+      final text = prefix.isEmpty ? words : '$prefix $words';
+      input.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    });
+  }
+  Future<void> readMessage(int index) async {
+    if (readingMessage == index && voice.speaking) { await voice.stop(); return; }
+    changed(() => readingMessage = index);
+    await voice.read(messages[index]['content']!);
+  }
   Future<void> restore() async {
     try {
       device = await storage.read(key: 'device') ?? uuid.v4();
@@ -106,7 +134,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     await guard(refresh);
   }
   Future<void> signOut() async {
-    poll?.cancel();
+    poll?.cancel(); await voice.stop();
     // Local logout always completes, including when the server is unavailable.
     try { await api.post('/api/logout', {}); } catch (_) {}
     await storage.delete(key: 'session');
@@ -118,6 +146,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final text = input.text.trim();
     if (text.isEmpty || sending || working) return;
     changed(() { sending = true; error = null; });
+    await voice.stop();
     final pending = <String, String>{'role': 'user', 'content': text};
     bool userSaved = false;
     try {
@@ -143,6 +172,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } finally { changed(() => sending = false); }
   }
   Future<void> openConversation(Map<String, dynamic> item) async {
+    await voice.stop();
     await guard(() async {
       final result = <Map<String, String>>[];
       dynamic cursor;
@@ -226,13 +256,26 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: m['role'] == 'user' ? const Color(0xff39354b) : const Color(0xff292929),
-              borderRadius: BorderRadius.circular(16)), child: SelectableText(m['content']!)));
+              borderRadius: BorderRadius.circular(16)), child: Column(
+              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SelectableText(m['content']!),
+              if (m['role'] == 'assistant') TextButton.icon(
+                onPressed: () => readMessage(i),
+                icon: Icon(readingMessage == i && voice.speaking ? Icons.stop : Icons.volume_up_outlined),
+                label: Text(readingMessage == i && voice.speaking ? 'Dừng đọc' : 'Đọc câu trả lời')),
+            ])));
       })),
     if (sending) const LinearProgressIndicator(),
+    if (voice.listening || voice.starting) Padding(padding: const EdgeInsets.all(8),
+      child: Text(voice.starting ? 'Đang mở micro…' : 'Đang nghe tiếng Việt… Bấm micro để dừng.')),
     Padding(padding: const EdgeInsets.all(12), child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
       Expanded(child: TextField(controller: input, minLines: 1, maxLines: 5,
         maxLength: 12000, decoration: const InputDecoration(hintText: 'Hỏi Chat AI…', border: OutlineInputBorder()))),
-      IconButton.filled(onPressed: sending || working ? null : send, icon: const Icon(Icons.send)),
+      IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
+        onPressed: sending || working ? null : dictate,
+        icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
+        color: voice.listening ? Colors.redAccent : null),
+      IconButton.filled(onPressed: sending || working || voice.starting ? null : send, icon: const Icon(Icons.send)),
     ])),
   ]);
   Widget account() {
@@ -274,8 +317,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (api.session == null) return LoginPage(api: api, device: device, onLogin: authenticated);
     return Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
-      IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () => changed(() {
-        messages = []; conversation = null; tab = 0; }), icon: const Icon(Icons.add_comment_outlined)),
+      IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {
+        await voice.stop(); changed(() { messages = []; conversation = null; tab = 0; }); }, icon: const Icon(Icons.add_comment_outlined)),
     ]), body: SafeArea(child: Column(children: [
       if (error != null) MaterialBanner(content: Text(error!), actions: [
         TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
@@ -295,7 +338,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         for (final n in notifications) ListTile(title: Text(n['title'] as String), subtitle: Text(n['text'] as String)),
       ]), account()][tab]),
     ])), bottomNavigationBar: NavigationBar(selectedIndex: tab,
-      onDestinationSelected: (i) => changed(() => tab = i), destinations: const [
+      onDestinationSelected: (i) {
+        if (i != tab) unawaited(voice.stop());
+        changed(() => tab = i);
+      }, destinations: const [
         NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
         NavigationDestination(icon: Icon(Icons.history), label: 'Hội thoại'),
         NavigationDestination(icon: Icon(Icons.memory), label: 'Bộ nhớ'),

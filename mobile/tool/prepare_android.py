@@ -12,6 +12,17 @@ def configure(android):
     text = text.replace('android:label="chatai_mobile"', 'android:label="Chat AI"')
     if 'android.permission.INTERNET' not in text:
         text = text.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+    if 'android.permission.RECORD_AUDIO' not in text:
+        text = text.replace('<application', '<uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-feature android:name="android.hardware.microphone" android:required="false"/>\n    <application', 1)
+    intents = ''
+    for action in ('android.speech.RecognitionService', 'android.intent.action.TTS_SERVICE'):
+        if action not in text:
+            intents += f'<intent><action android:name="{action}"/></intent>\n'
+    if intents:
+        if '<queries>' in text:
+            text = text.replace('<queries>', '<queries>\n' + intents, 1)
+        else:
+            text = text.replace('</manifest>', '<queries>\n' + intents + '</queries>\n</manifest>', 1)
     text = text.replace('<application\n', '<application android:allowBackup="false" android:usesCleartextTraffic="false"\n', 1)
     manifest.write_text(text)
     build = android / 'app/build.gradle.kts'
