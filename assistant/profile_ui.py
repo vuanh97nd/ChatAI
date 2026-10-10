@@ -47,7 +47,7 @@ class ProfileMixin:
         self.account_email_label.setText('Email: '+(session.get('email') or 'Chưa cập nhật'))
         self.account_phone_label.setText('Số điện thoại: '+(session.get('phone') or 'Chưa cập nhật'))
         paint_avatar(self.profile_avatar,session.get('avatar'),name,30,self.preview_theme)
-        self.apply_settings_button.setEnabled(not self.busy() and self.settings_dirty())
+        self.apply_settings_button.setVisible(not self.busy() and self.settings_dirty())
         identity=(session.get('endpoint'),session.get('username'))
         if identity!=getattr(self,'profile_visible_identity',None):
             self.profile_visible_identity=identity
@@ -58,7 +58,7 @@ class ProfileMixin:
 
     def account_settings_changed(self,value=None):
         if hasattr(self,'apply_settings_button'):
-            self.apply_settings_button.setEnabled(not self.busy() and self.settings_dirty())
+            self.apply_settings_button.setVisible(not self.busy() and self.settings_dirty())
 
     def edit_personal_info(self):
         if self.busy():return
