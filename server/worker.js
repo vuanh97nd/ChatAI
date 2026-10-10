@@ -1321,6 +1321,7 @@ export default {
    await ensureRuntimeSchema(env.DB);
    if(['/api/mobile/guest/status','/api/mobile/guest/chat'].includes(path)){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    await env.DB.prepare('CREATE TABLE IF NOT EXISTS support_rate (key TEXT PRIMARY KEY,hits INTEGER NOT NULL,bucket INTEGER NOT NULL)').run();
     if(!await throttle(env.DB,request.headers.get('CF-Connecting-IP')||'unknown','mobile-guest',10))return respond(fail('Vui lòng đợi trước khi thử lại.',429));
     return respond(await mobileGuestAPI(env,path,body));
    }

@@ -10,10 +10,11 @@ import 'voice.dart';
 import 'computer.dart';
 import 'admin.dart';
 import 'notifications.dart';
+import 'animated_logo.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.3');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '0.8.4');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -24,6 +25,9 @@ Widget buildInfoButton(BuildContext context) => IconButton(
     applicationIcon: Image.asset('assets/chat_ai.png', width: 48, height: 48),
     children: const [Text('Android · mở vào chat · dùng thử NVIDIA 3 lượt trên thiết bị.')]),
 );
+
+Widget headerLogo() => Padding(padding: const EdgeInsets.all(10),
+  child: Image.asset('assets/chat_ai.png', semanticLabel: 'Biểu tượng ChatAI'));
 
 void main() => runApp(const ChatApp());
 class ChatApp extends StatelessWidget {
@@ -43,7 +47,7 @@ class StartupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(body: SafeArea(child: Center(child: Column(
     mainAxisSize: MainAxisSize.min, children: [
-    Image.asset('assets/chat_ai.png', width: 112, height: 112, semanticLabel: 'Logo ChatAI'),
+    const AnimatedChatLogo(size: 112),
     const SizedBox(height: 24),
     Text('Chat AI', style: Theme.of(context).textTheme.headlineMedium),
     const SizedBox(height: 24),
@@ -58,7 +62,7 @@ class ChatWelcome extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(child: SingleChildScrollView(child: Column(
     mainAxisSize: MainAxisSize.min, children: [
-      Image.asset('assets/chat_ai.png', width: 96, height: 96, semanticLabel: 'Logo ChatAI'),
+      const AnimatedChatLogo(),
       const SizedBox(height: 20),
       Text('Xin chào bạn!', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 8), const Text('Tôi có thể giúp gì cho bạn?'),
@@ -263,11 +267,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       changed(() { error = '$e'; if (e is ApiException && e.status == 401) guestRemaining = 0; });
     } finally { changed(() => sending = false); }
   }
-  Widget guestChat() => Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
+  Widget guestChat() => Scaffold(appBar: AppBar(leading: headerLogo(), title: const Text('Chat AI'), actions: [
     buildInfoButton(context),
     TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))]),
     body: SafeArea(child: Column(children: [
-      if (error != null) Padding(padding: const EdgeInsets.all(12), child: Text(error!)),
+      if (error != null) ListTile(
+        dense: true, title: const Text('Chưa kết nối được. Vui lòng thử lại sau.'),
+        trailing: TextButton(onPressed: () => showDialog<void>(context: context,
+          builder: (c) => AlertDialog(title: const Text('Chi tiết lỗi'),
+            content: SingleChildScrollView(child: SelectableText(error!)),
+            actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])),
+          child: const Text('Chi tiết'))),
       if (guestRemaining == 0) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập / Đăng ký để tiếp tục')),
       Expanded(child: chat()),
     ])));
@@ -346,11 +356,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Widget chat() => Column(children: [
     Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Row(children: [
-      const Text('AI trực tuyến'), const SizedBox(width: 16),
-      DropdownButton<String>(value: provider, items: const [
+      const Text('Chọn AI'), const SizedBox(width: 16),
+      Expanded(child: DropdownButton<String>(isExpanded: true, value: provider, items: const [
         DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA · Miễn phí')),
         DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek · Tính phí token')),
-      ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!)),
+      ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))),
     ])),
     Expanded(child: messages.isEmpty ? const ChatWelcome() :
       ListView.builder(itemCount: messages.length, itemBuilder: (c, i) {
@@ -432,7 +442,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (loading) return const StartupScreen();
     if (api.session == null) return guestChat();
-    return Scaffold(appBar: AppBar(title: const Text('Chat AI'), actions: [
+    return Scaffold(appBar: AppBar(leading: headerLogo(), title: const Text('Chat AI'), actions: [
       buildInfoButton(context),
       IconButton(tooltip: 'Cuộc trò chuyện mới', onPressed: sending ? null : () async {
         await voice.stop(); changed(() { messages = []; conversation = null; tab = 0; }); }, icon: const Icon(Icons.add_comment_outlined)),

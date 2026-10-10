@@ -3,8 +3,19 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import * as root from '../../work.js';
 import * as server from '../worker.js';
-function database(){const raw=new DatabaseSync(':memory:');return {raw,prepare(sql){return {args:[],bind(...args){this.args=args;return this;},async run(){return raw.prepare(sql).run(...this.args);},async first(){return raw.prepare(sql).get(...this.args)||null;}};}};}
+function database(){const raw=new DatabaseSync(':memory:');return {raw,prepare(sql){return {args:[],bind(...args){this.args=args;return this;},async run(){return raw.prepare(sql).run(...this.args);},async first(){return raw.prepare(sql).get(...this.args)||null;},async all(){return {results:raw.prepare(sql).all(...this.args)};}};},async batch(items){return Promise.all(items.map(item=>item.run()));}};}
 for(const [name,mod] of [['root',root],['server',server]]){
+ test(`${name}: public status initializes its rate table on a fresh database`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-only-secret'};
+  try{
+   const request=new Request('https://example.org/api/mobile/guest/status',{
+    method:'POST',headers:{'Content-Type':'application/json','CF-Connecting-IP':'192.0.2.1'},
+    body:JSON.stringify({guest_token:'d'.repeat(64)})});
+   const response=await mod.default.fetch(request,env,{});
+   assert.equal(response.status,200);
+   assert.equal((await response.json()).remaining,3);
+  }finally{env.DB.raw.close();}
+ });
  test(`${name}: three guest turns, fixed NVIDIA and idempotent retry`,async()=>{
   const env={DB:database()},token='a'.repeat(64),messages=[{role:'user',content:'Xin chào'}];let calls=0;
   const execute=async(e,path,b)=>{calls++;assert.equal(b.provider,'nvidia');assert.equal(b.max_tokens,1024);return Response.json({success:true,answer:'Chào bạn'});};

@@ -8,6 +8,11 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/main.dart';
 import 'voice_test.dart' show FakeVoice;
 
+// Repeating logo motion is disabled in interaction tests so settling is finite.
+Widget testApp({required Widget home}) => MaterialApp(home: home,
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!));
+
 void main() {
   testWidgets('fresh install opens chat, accepts three turns, then opens login on fourth send', (tester) async {
     FlutterSecureStorage.setMockInitialValues({});
@@ -23,7 +28,7 @@ void main() {
       }
       return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     }));
-    await tester.pumpWidget(MaterialApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsNothing);
     expect(find.byType(ChatWelcome), findsOneWidget);
@@ -38,34 +43,34 @@ void main() {
     await tester.tap(find.byIcon(Icons.send)); await tester.pumpAndSettle();
     expect(turns, 3);
     expect(find.byType(LoginPage), findsOneWidget);
-    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(testApp(home: SizedBox()));
   });
   testWidgets('empty chat welcomes users with the shared logo without a login form', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ChatWelcome())));
+    await tester.pumpWidget(testApp(home: Scaffold(body: ChatWelcome())));
     expect(find.text('Xin chào bạn!'), findsOneWidget);
     expect(find.text('Tôi có thể giúp gì cho bạn?'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
   });
   testWidgets('welcome scrolls in the small space left by the keyboard without overflow', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(
+    await tester.pumpWidget(testApp(home: Scaffold(
       body: SizedBox(height: 70, child: ChatWelcome()))));
     expect(tester.takeException(), isNull);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
   testWidgets('startup shows the shared ChatAI logo, name and loading state', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: StartupScreen()));
+    await tester.pumpWidget(testApp(home: StartupScreen()));
     expect(find.text('Chat AI'), findsOneWidget);
     expect(find.text('Đang khởi động…'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     final logo = tester.widget<Image>(find.byType(Image));
     expect((logo.image as AssetImage).assetName, 'assets/chat_ai.png');
     expect(logo.semanticLabel, 'Logo ChatAI');
-    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    await tester.pumpWidget(testApp(home: SizedBox()));
   });
   testWidgets('first screen offers NVIDIA, login and required email registration', (tester) async {
     final api = ChatApi(); addTearDown(api.close);
-    await tester.pumpWidget(MaterialApp(home: LoginPage(api: api, device: 'test', onLogin: (_) async {})));
+    await tester.pumpWidget(testApp(home: LoginPage(api: api, device: 'test', onLogin: (_) async {})));
     expect(find.text('AI trực tuyến · NVIDIA mặc định'), findsOneWidget);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
     expect(find.text('Đăng nhập'), findsOneWidget);
