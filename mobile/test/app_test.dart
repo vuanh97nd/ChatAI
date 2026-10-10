@@ -28,7 +28,7 @@ void main() {
       }
       return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     }));
-    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsNothing);
     expect(find.byType(ChatWelcome), findsOneWidget);
@@ -56,7 +56,7 @@ void main() {
       }
       return http.Response(jsonEncode(result), 200, headers: {'content-type': 'application/json; charset=utf-8'});
     }));
-    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
     expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(LoginPage), findsNothing);
@@ -87,7 +87,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     final api = ChatApi(client: MockClient((request) async => http.Response(
       '{"success":true,"remaining":3}', 200, headers: {'content-type': 'application/json'})));
-    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice())));
+    await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Keep this draft');
     await tester.tap(find.text('Đăng nhập')); await tester.pumpAndSettle();

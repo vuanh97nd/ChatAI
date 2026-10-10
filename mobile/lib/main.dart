@@ -86,7 +86,8 @@ class ChatWelcome extends StatelessWidget {
 class Home extends StatefulWidget {
   final ChatApi? api;
   final VoiceEngine? voiceEngine;
-  const Home({super.key, this.api, this.voiceEngine});
+  final Future<AppUpdate> Function()? updateCheck;
+  const Home({super.key, this.api, this.voiceEngine, this.updateCheck});
   @override
   State<Home> createState() => _HomeState();
 }
@@ -187,7 +188,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Future<void> checkForUpdate() async {
     try {
-      final update = await checkAppUpdate();
+      final update = await (widget.updateCheck ?? checkAppUpdate)();
       if (!mounted || update.build <= currentBuild) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Có bản Chat AI mới: ${update.version} · build ${update.build}'),

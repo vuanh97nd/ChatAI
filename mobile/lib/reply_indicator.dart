@@ -9,7 +9,13 @@ class ReplyIndicator extends StatefulWidget {
 }
 class _ReplyIndicatorState extends State<ReplyIndicator> with SingleTickerProviderStateMixin {
   late final AnimationController animation = AnimationController(vsync: this,
-    duration: const Duration(milliseconds: 1200))..repeat();
+    duration: const Duration(milliseconds: 1200));
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) { animation.stop(); }
+    else { animation.repeat(); }
+  }
   @override
   void dispose() { animation.dispose(); super.dispose(); }
   @override
