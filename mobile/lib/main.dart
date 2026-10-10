@@ -23,11 +23,14 @@ const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local'
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
 Widget buildInfoButton(BuildContext context) => IconButton(
-  tooltip: 'Thông tin phiên bản', icon: const Icon(Icons.info_outline),
+  tooltip: 'Giới thiệu Chat AI', icon: const Icon(Icons.info_outline),
   onPressed: () => showAboutDialog(context: context, applicationName: 'Chat AI',
     applicationVersion: '$appVersion · $appCommit',
     applicationIcon: Image.asset('assets/chat_ai.png', width: 48, height: 48),
-    children: const [Text('Android · mở vào chat · dùng thử NVIDIA 3 lượt trên thiết bị.')]),
+    children: const [Text('Ứng dụng AI hỗ trợ trò chuyện, xử lý tài liệu và sáng tạo nội dung.\n\n'
+      'Tác giả: Vũ Ngọc Ánh\n'
+      'Email: vuanh97nd@gmail.com\n'
+      'Mã nguồn và hỗ trợ: github.com/vuanh97nd/ChatAI')]),
 );
 
 Future<void> main() async {
