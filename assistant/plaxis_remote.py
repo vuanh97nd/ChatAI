@@ -13,6 +13,7 @@ This module is the "run and read results" layer; script generation is handled
 by plaxis_app.py. The tool exposed here is plaxis_run_problem.
 """
 import json
+import re
 import logging
 import textwrap
 
@@ -25,15 +26,153 @@ _VERSION_LABEL = {'2d': 'PLAXIS 2D', '3d': 'PLAXIS 3D'}
 
 # ── Connection helpers ────────────────────────────────────────────────────────
 
+def _window_titles():
+    """Visible top-level window titles (Windows only); empty elsewhere."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return []
+    if not hasattr(ctypes, 'windll'):
+        return []
+    user32 = ctypes.windll.user32
+    titles = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def collect(hwnd, _):
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length and user32.IsWindowVisible(hwnd):
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buffer, length + 1)
+            titles.append(buffer.value)
+        return True
+    user32.EnumWindows(collect, 0)
+    return titles
+
+
+def detect_ports(version, titles=None):
+    """Read the scripting ports PLAXIS shows in its title bar
+    ('PLAXIS 2D Ultimate: (Untitled) --- SERVER ACTIVE on port 10001').
+    The fixed default 10000 can belong to an unrelated program; connecting
+    there hangs forever, so the real PLAXIS window is the source of truth."""
+    found = {}
+    label = 'PLAXIS 3D' if version == '3d' else 'PLAXIS 2D'
+    for title in (_window_titles() if titles is None else titles):
+        match = re.search(r'SERVER ACTIVE on port (\d+)', title, re.I)
+        if not match or label.lower() not in title.lower():
+            continue
+        target = 'output' if re.search(r'\boutput\b', title, re.I) else 'input'
+        found.setdefault(target, int(match.group(1)))
+    return found
+
+
+def resolve_port(version, target):
+    """Detected port for the running PLAXIS window, else the documented default."""
+    ports = detect_ports(version)
+    if ports.get(target):
+        return ports[target], True
+    default = (_INPUT_PORT if target == 'input' else _OUTPUT_PORT)[version]
+    if target == 'output' and ports.get('input') == default:
+        # Input already serves the default Output port; connecting would talk to Input.
+        return None, False
+    return default, False
+
+
+def open_output(version, wait=90):
+    """Ask PLAXIS Input to open Output for the last calculated phase, then wait until
+    an Output window advertises its scripting port. Returns that port."""
+    import time
+    in_port, found = resolve_port(version, 'input')
+    if not found:
+        raise RuntimeError('Chưa thấy PLAXIS Input có remote scripting server; không mở được Output.')
+    _, g_in = _connect(in_port, 'PLAXIS Input')
+    phases = list(g_in.Phases)
+    calculated = [p for p in phases if _phase_ok(p)]
+    if not calculated:
+        raise RuntimeError('Chưa có phase nào tính xong; tính toán trước rồi mới mở Output.')
+    g_in.view(calculated[-1])
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        port = detect_ports(version).get('output')
+        if port and port_open(port):
+            return port
+        time.sleep(1)
+    raise RuntimeError('Đã yêu cầu mở Output nhưng sau 90 giây chưa thấy cửa sổ Output có remote scripting server. '
+                       'Trong Output: Expert → Configure remote scripting server → Start (một lần).')
+
+
+def _phase_ok(phase):
+    try:
+        value = phase.CalculationResult.value
+    except Exception:
+        return False
+    return value == 1 or str(value).strip().lower().startswith('ok')
+
+
+def port_open(port, timeout=0.5):
+    """True when something accepts TCP connections on localhost:port (cheap pre-check)."""
+    import socket
+    try:
+        with socket.create_connection(('127.0.0.1', port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def wait_for_port(port, seconds=90, stopped=None):
+    import time
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if port_open(port):
+            return True
+        if stopped and stopped():
+            return False
+        time.sleep(1)
+    return False
+
+
+class PlaxisStopped(RuntimeError):
+    """The user pressed stop while a PLAXIS request was still waiting."""
+
+
+def _until_stopped(fn, *args, **kwargs):
+    """Run a blocking PLAXIS call so that pressing stop returns within a fraction of a
+    second. The socket call itself cannot be interrupted; it is abandoned in a daemon
+    thread and its eventual result ignored, so the effect in PLAXIS is reported as unknown."""
+    import threading
+    from .windows_apps import _STOP
+    box = {}
+
+    def run():
+        try:
+            box['value'] = fn(*args, **kwargs)
+        except BaseException as exc:  # re-raised in the caller's thread
+            box['error'] = exc
+    worker = threading.Thread(target=run, daemon=True, name='ChatAI-plaxis-call')
+    worker.start()
+    while worker.is_alive():
+        worker.join(0.2)
+        if worker.is_alive() and _STOP.is_set():
+            raise PlaxisStopped('Đã dừng theo yêu cầu khi PLAXIS chưa trả lời; lệnh đã gửi có thể vẫn đang chạy trong PLAXIS.')
+    if 'error' in box:
+        raise box['error']
+    return box['value']
+
+
 def _connect(port, label):
     """Connect to a Plaxis Remote Scripting Server and return (server, globals)."""
+    if port is None:
+        raise RuntimeError(f'Chưa thấy cửa sổ {label} có remote scripting server đang chạy. '
+                           'Output chỉ có sau khi đã tính toán; mở kết quả rồi bật server trong Output.')
     try:
         from plxscripting.easy import new_server
     except ImportError:
         from .plaxis_dependency import missing_scripting_message
         raise RuntimeError(missing_scripting_message()) from None
     try:
-        s, g = new_server('localhost', port, password='')
+        # request_timeout bounds a server that accepts but never answers (wrong program on the port);
+        # long enough for mesh/calculate requests.
+        s, g = new_server('localhost', port, timeout=10.0, request_timeout=1800, password='')
         return s, g
     except Exception as exc:
         raise RuntimeError(
@@ -218,7 +357,7 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
     """
     version = version.lower()
     label = _VERSION_LABEL.get(version, 'PLAXIS')
-    in_port = _INPUT_PORT[version]
+    in_port = resolve_port(version, 'input')[0]
     out_port = _OUTPUT_PORT[version]
 
     try:
@@ -252,6 +391,7 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
     # Extract results from Output server
     structured = {}
     try:
+        out_port = resolve_port(version, 'output')[0] or open_output(version)
         s_out, g_out = _connect(out_port, f'{label} Output')
         phases = list(g_out.Phases)
         if phases:
@@ -314,20 +454,39 @@ class PlaxisRemoteApp:
 
     def commit(self, plan):
         if plan.get('action')=='plaxis_commands':
-            from .plaxis_commands import execute_commands,commands_from_json
+            from .plaxis_commands import run_batch,commands_from_json
             rows=commands_from_json(json.dumps(plan['commands']))
-            port=(_INPUT_PORT if plan['target']=='input' else _OUTPUT_PORT)[plan['version']]
-            try:server,g=_connect(port,'PLAXIS '+plan['target'])
-            except RuntimeError as exc:return {'ok':False,'not_executed':True,'error':str(exc)}
-            result=execute_commands(server,g,rows,self.on_status)
+            port,detected=resolve_port(plan['version'],plan['target'])
+            if plan['target']=='output' and not detected and detect_ports(plan['version']).get('input'):
+                # Output picks its own free port each time it opens (10002, 10003 …);
+                # open it from Input and read the port from its title bar.
+                try:port=_until_stopped(open_output,plan['version'])
+                except RuntimeError as exc:
+                    return {'ok':False,'not_executed':True,'error':str(exc),
+                            'note':'Chưa mở được PLAXIS Output. Kiểm tra phase đã tính xong (CalculationResult OK) rồi thử lại một lần.'}
+            try:server,g=_until_stopped(_connect,port,'PLAXIS '+plan['target'])
+            except RuntimeError as exc:
+                result={'ok':False,'not_executed':True,'error':str(exc)}
+                if plan['target']!='input':
+                    result['note']=('PLAXIS Output chỉ có sau khi đã tính toán và mở kết quả. Dựng mô hình, chia lưới, '
+                                    'tạo phase và calculate bằng target input trước; không thử lại Output lúc này.')
+                return result
+            try:result=_until_stopped(run_batch,server,g,rows,self.on_status,port)
+            except PlaxisStopped as exc:
+                return {'ok':False,'stopped':True,'uncertain':True,'error':str(exc),
+                        'note':'Kết quả các lệnh đang gửi chưa rõ. Đọc lại trạng thái mô hình trước khi làm tiếp; không gửi lại nguyên nhóm lệnh.'}
+            if any(re.search(r'Max retries exceeded|Failed to establish|Connection refused',str(r.get('error','')),re.I) for r in result.get('results',[]) if isinstance(r,dict)):
+                result['note']=(f'Mất kết nối tới localhost:{port}. '+('PLAXIS Output chỉ có sau khi đã tính toán; dùng target input để dựng và tính mô hình. ' if plan['target']!='input' else
+                                'Kiểm tra PLAXIS Input còn mở và remote scripting server đang Start. ')+'Không mở thêm PLAXIS và không lặp lại cùng lệnh.')
             from .procedure_environment import plaxis_environment
             result['environment']=plaxis_environment(plan['version'],port)
             return result
-        result = run_plaxis_problem(
-            plan['script'],
-            version=plan['version'],
-            problem_type=plan['problem_type'],
-        )
+        try:
+            result = _until_stopped(run_plaxis_problem, plan['script'], version=plan['version'],
+                                    problem_type=plan['problem_type'])
+        except PlaxisStopped as exc:
+            return {'ok': False, 'stopped': True, 'uncertain': True, 'error': str(exc),
+                    'note': 'Script PLAXIS có thể đã chạy một phần. Đọc lại trạng thái mô hình trước khi làm tiếp.'}
 
         if not result['executed']:
             return {

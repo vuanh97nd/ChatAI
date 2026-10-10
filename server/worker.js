@@ -2310,9 +2310,11 @@ async function lessonsAPI(env,actor,path,body){
  if(path==='/api/lessons/search'){
   const words=typeof body.query==='string'?body.query.trim().split(/\s+/).filter(Boolean).slice(0,8):[];
   if(!words.length)return fail('Nhập nội dung cần tra bộ nhớ.');
-  const conditions=words.map(()=>"data LIKE ? ESCAPE '\\'").join(' OR ');
+  // Match lesson content only (not JSON keys such as "tool"), ranked by how many words hit.
+  const text="(COALESCE(json_extract(data,'$.tool'),'')||' '||COALESCE(json_extract(data,'$.task'),'')||' '||COALESCE(json_extract(data,'$.evidence'),'')||' '||COALESCE(json_extract(data,'$.arguments'),'')||' '||COALESCE(json_extract(data,'$.environment'),''))";
+  const score=words.map(()=>"("+text+" LIKE ? ESCAPE '\\')").join('+');
   const wordsEscaped=words.map(w=>'%'+w.replace(/[\\%_]/g,'\\$&')+'%');
-  const rows=await db.prepare("SELECT owner,data FROM ai_lessons WHERE deleted=0 AND (owner=? OR owner='@shared') AND ("+conditions+") ORDER BY seq DESC LIMIT 20").bind(actor.username,...wordsEscaped).all();
+  const rows=await db.prepare("SELECT owner,data FROM (SELECT owner,data,seq,("+score+") AS score FROM ai_lessons WHERE deleted=0 AND (owner=? OR owner='@shared')) WHERE score>0 ORDER BY score DESC,seq DESC LIMIT 20").bind(...wordsEscaped,actor.username).all();
   return reply({success:true,items:(rows.results||[]).map(r=>({scope:r.owner==='@shared'?'shared':'private',record:JSON.parse(r.data)}))});
  }
  if(path==='/api/admin/lessons/withdraw'){

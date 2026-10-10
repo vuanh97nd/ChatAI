@@ -205,21 +205,70 @@ def chunks(document,max_chars=6000):
                'pages':list(dict.fromkeys(page_numbers))}
 
 
-def read_document_range(files,path,start=0,limit=6000,pdf_ocr=None,foxit_ocr=False):
-    """Tool đọc theo offset, có thể đọc tiếp đến hết; không gọi mạng."""
+_RANGE_CACHE={}
+
+
+def _cached_document(p,pdf_ocr,foxit_ocr):
+    """Re-reading a 300-page PDF for every 8000-character window is slow; reuse the
+    extraction while the file is unchanged."""
+    stat=p.stat();key=(str(p.resolve()).casefold(),stat.st_mtime_ns,stat.st_size)
+    if key in _RANGE_CACHE:return _RANGE_CACHE[key]
+    document=read_local(p,pdf_ocr=pdf_ocr,foxit_ocr=foxit_ocr)
+    while len(_RANGE_CACHE)>=4:_RANGE_CACHE.pop(next(iter(_RANGE_CACHE)))
+    _RANGE_CACHE[key]=document
+    return document
+
+
+def read_document_range(files,path,start=0,limit=6000,pdf_ocr=None,foxit_ocr=False,page=None,query=None):
+    """Tool đọc theo offset, trang hoặc từ khóa; có thể đọc tiếp đến hết; không gọi mạng."""
     p=files.path(path)
     if p.suffix.lower() not in ('.pdf','.docx','.txt','.md','.html'):
         raise ValueError('PDF/DOCX/TXT/MD/HTML; Excel dùng excel_read.')
     if type(start) is not int or start<0 or type(limit) is not int or not 1<=limit<=8000:
         raise ValueError('start >= 0, limit 1..8000.')
-    document=read_local(p,pdf_ocr=pdf_ocr,foxit_ocr=foxit_ocr);offset=0;locations=[]
+    if page is not None and (type(page) is not int or page<1):raise ValueError('page phải là số trang >= 1.')
+    if query is not None and (not isinstance(query,str) or not query.strip() or len(query)>200):
+        raise ValueError('query là cụm từ cần tìm, 1..200 ký tự.')
+    document=_cached_document(p,pdf_ocr,foxit_ocr);offset=0;spans=[]
     for unit in document['units']:
         length=len('['+unit['location']+']\n'+unit['text'])
-        if offset+length>start and offset<start+limit:locations.append(unit['location'])
+        spans.append((unit['location'],offset,offset+length,unit['text']))
         offset+=length+2
-    text=document['text'];end=min(len(text),start+limit)
-    return {'ok':True,'path':str(p),'content':text[start:end],'locations':locations,
-        'characters_total':len(text),'next_start':end if end<len(text) else None,
-        'range_start':start,'range_end':end,'truncated':start>0 or end<len(text),
-        'coverage':'full_text' if start==0 and end==len(text) and document['full_text'] else 'partial',
-        'note':document['coverage_note'],'issues':document.get('issues',[])}
+    text=document['text'];matches=[]
+    if page is not None:
+        found=next((begin for location,begin,_,_ in spans if location in (f'trang {page}',f'page {page}')),None)
+        if found is None:raise ValueError(f'Không có trang {page}; tài liệu có {len(spans)} đơn vị đọc.')
+        start=found
+    if query is not None:
+        needle=query.strip().casefold()
+        matches=[location for location,_,_,body in spans if needle in body.casefold()][:40]
+        # Skip table-of-contents hits ("Title .......... 12") so the window lands on the content.
+        position=-1;cursor=start;folded=text.casefold()
+        while True:
+            position=folded.find(needle,cursor)
+            if position<0:break
+            line_end=text.find('\n',position);line=text[position:line_end if line_end>=0 else len(text)]
+            if not re.search(r'\.{5,}\s*\d+\s*$',line):break
+            cursor=position+len(needle)
+        if position<0:
+            return {'ok':True,'path':str(p),'content':'','locations':[],'matches':[],'query':query,
+                    'characters_total':len(text),'next_start':None,'range_start':start,'range_end':start,
+                    'truncated':True,'coverage':'partial','found':False,
+                    'note':'Không tìm thấy "'+query+'" sau vị trí '+str(start)+'. Thử từ khóa khác hoặc dùng page.','issues':document.get('issues',[])}
+        start=max(0,position-min(300,limit//8))
+    locations=[location for location,begin,end,_ in spans if end>start and begin<start+limit]
+    end=min(len(text),start+limit)
+    complete=start==0 and end==len(text)
+    if complete:note=document['coverage_note']
+    else:
+        note=(f'Mới đọc ký tự {start}–{end} trên tổng {len(text)} ({round(100*(end-start)/max(1,len(text)),1)}%); phần còn lại CHƯA đọc. '
+              'Đi thẳng tới nội dung cần bằng page (số trang) hoặc query (tên bài/mục), không đọc lại mục lục.')
+        if document.get('issues') or document.get('ocr_pages'):note+=' '+document['coverage_note']
+    from .document_memory import normalize_exponents
+    result={'ok':True,'path':str(p),'content':normalize_exponents(text[start:end]),'locations':locations,
+        'characters_total':len(text),'pages_total':len(spans),'next_start':end if end<len(text) else None,
+        'range_start':start,'range_end':end,'truncated':not complete,
+        'coverage':'full_text' if complete and document['full_text'] else 'partial',
+        'note':note,'issues':document.get('issues',[])}
+    if query is not None:result.update(query=query,matches=matches,found=True)
+    return result

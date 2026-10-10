@@ -61,7 +61,8 @@ class HistorySyncTests(unittest.TestCase):
         self.assertTrue(self.b.load(cid)['messages'])
     def test_active_actions_are_not_uploaded_or_resumed(self):
         cid=self.conversation(self.a);s=self.a.load(cid);s['running']=True;s['queue']=[{'tool':'danger'}];self.a.save(cid,s)
-        self.sa.cycle();self.assertEqual(self.backend.rows,{})
+        # A running/queued conversation may back up its dialogue, but never the queue or running flag.
+        self.sa.cycle();self.assertNotIn('danger',str(self.backend.rows));self.assertNotIn("'running': True",str(self.backend.rows))
         s['running']=False;s['queue']=[];s['api_key']='secret';s['messages'][0]['images']=['private-image'];self.a.save(cid,s)
         self.sa.cycle();self.sb.cycle()
         raw=str(self.backend.rows);self.assertNotIn('secret',raw);self.assertNotIn('private-image',raw)

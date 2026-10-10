@@ -85,7 +85,11 @@ def task_record(state):
 
 def repeated_failure(state,call):
     fn=call['function'];signature=fingerprint(fn['name'],fn['arguments'])
-    matches=[row for row in tool_attempts(state.get('messages',[]),True) if row['signature']==signature]
+    attempts=tool_attempts(state.get('messages',[]),True)
+    matches=[row for row in attempts if row['signature']==signature]
+    if fn['name'].startswith('plaxis_') and attempts and attempts[-1]['signature']==signature and attempts[-1]['outcome']=='failed':
+        return ('Đúng lệnh này vừa thất bại ở bước ngay trước ('+attempts[-1]['error'][:120]+'); gửi lại y hệt sẽ lỗi lại. '
+                'Đọc lỗi và model_state, tra cú pháp bằng signature hoặc đổi tham số rồi mới thử.')
     if any(row['outcome']=='denied' for row in matches):return 'Thao tác giống hệt đã bị từ chối trong lượt này; không đề nghị lại.'
     if sum(row['outcome']=='failed' for row in matches)>=2:
         return 'Cùng công cụ và tham số đã thất bại hai lần; cần đổi cách xử lý có căn cứ hoặc hỏi dữ kiện thiếu.'

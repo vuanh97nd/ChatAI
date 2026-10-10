@@ -23,10 +23,15 @@ class PDFSource:
         if name=='pdf_read':
             path=self.files.path(args['path'])
             if path.suffix.lower()!='.pdf':raise ValueError('Chỉ đọc PDF.')
-            start=int(args.get('start','0'))
+            start=int(str(args.get('start') or '0').strip())
             if start<0:raise ValueError('start phải không âm.')
+            page=str(args.get('page') or '').strip()
+            if page and (not page.isdigit() or int(page)<1):raise ValueError('page phải là số trang >= 1.')
+            query=str(args.get('query') or '').strip()
+            if len(query)>200:raise ValueError('query tối đa 200 ký tự.')
             return {'action':name,'path':str(path),'sha256':fingerprint(path),'start':start,
-                    'notice':'Đọc tối đa 8000 ký tự PDF tại vị trí start và đưa vào hội thoại AI.'}
+                    'page':int(page) if page else None,'query':query or None,
+                    'notice':'Đọc tối đa 8000 ký tự PDF tại vị trí start, trang page hoặc chỗ có query và đưa vào hội thoại AI.'}
         app=self.windows.allowed_path(args['app'])
         if app.name.lower() not in {'foxitpdfreader.exe','foxitreader.exe','foxit reader.exe','foxitpdfeditor.exe','foxit pdf editor.exe'}:
             raise ValueError('Chọn EXE Foxit PDF Reader hoặc Foxit PDF Editor trong danh sách app được phép.')
@@ -42,10 +47,10 @@ class PDFSource:
                 'url':url,'path':str(destination),
                 'notice':'Tải PDF tối đa 20 MiB từ URL này, lưu tệp mới trong thư mục được phép, đọc phần đầu rồi mở ứng dụng Foxit đã chọn. Cần duyệt trước; nội dung PDF được gửi cho AI. Không ghi đè file.'}
 
-    def read(self,path,start=0):
+    def read(self,path,start=0,page=None,query=None):
         from .documents import read_document_range
         try:
-            result=read_document_range(self.files,str(path),start=start,limit=8000,pdf_ocr=self.pdf_ocr,foxit_ocr=False)
+            result=read_document_range(self.files,str(path),start=start,limit=8000,pdf_ocr=self.pdf_ocr,foxit_ocr=False,page=page,query=query)
             return dict(result,read_ok=True)
         except (ValueError, RuntimeError) as error:
             return {'ok':False,'read_ok':False,'path':str(path),'content':'','coverage':'none',
@@ -55,7 +60,7 @@ class PDFSource:
         if plan['action']=='pdf_read':
             path=self.files.path(plan['path'])
             if fingerprint(path)!=plan['sha256']:raise PermissionError('PDF đã đổi; duyệt lại.')
-            return self.read(path,plan['start'])
+            return self.read(path,plan['start'],plan.get('page'),plan.get('query'))
         app=self.windows.allowed_path(plan['app'])
         if fingerprint(app)!=plan['sha256']:raise PermissionError('Foxit đã đổi; duyệt lại.')
         if plan['action']=='pdf_local_open':

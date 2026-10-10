@@ -99,31 +99,52 @@ class HistorySync:
             rows=db.execute("SELECT id,state FROM conversations WHERE json_extract(state,'$.account_username')=?",(self.owner,)).fetchall()
             deletions=dict(db.execute('SELECT id,owner FROM history_deletions WHERE owner=?',(self.owner,)).fetchall())
         local={cid:json.loads(raw) for cid,raw in rows}
-        changed=False
+        changed=False;failures=[]
         for cid in sorted(set(local)|set(deletions)|set(remote)):
-            state=local.get(cid);deleted=cid in deletions
-            if state and (state.get('running') or state.get('pending') or state.get('queue')):continue
-            if state and not state.get('messages'):continue
-            revision,base_hash=self.baseline(cid)
-            local_hash='DELETED' if deleted else fingerprint(state) if state else None
-            item=remote.get(cid)
-            if item and item['revision']!=revision:
-                fetched=self.api('get',conversation_id=cid)
-                remote_hash='DELETED' if fetched['deleted'] else fingerprint(fetched['state'])
-                if local_hash==remote_hash:
-                    self.mark(cid,item['revision'],remote_hash);continue
-                if local_hash not in (None,base_hash) and state:
-                    # Concurrent edits: preserve the local branch instead of replacing it.
-                    copy=dict(state);copy['custom_title']=(copy.get('custom_title') or next((m['content'][:50] for m in copy['messages'] if m['role']=='user'),'Hội thoại'))+' (bản trên máy)'
-                    self.store.save(uuid.uuid4().hex,copy)
-                if deleted:
-                    # A confirmed local deletion remains pending against the latest revision.
-                    revision=item['revision']
-                else:
-                    changed=self.import_remote(cid,fetched,local_hash if state else None) or changed
-                    continue
-            if local_hash is not None and local_hash!=base_hash:
-                result=self.api('put',conversation_id=cid,revision=revision,deleted=deleted,
-                                state=dialogue(state or {'messages':[]}))
-                self.mark(cid,result['revision'],local_hash)
+            # One oversized or rejected conversation must not block every later one.
+            try:changed=self.sync_one(cid,local.get(cid),cid in deletions,remote.get(cid)) or changed
+            except Exception as error:
+                from .accounts import AccountAPIError
+                if isinstance(error,AccountAPIError) and getattr(error,'status',None) in (401,403):raise
+                if not isinstance(error,AccountAPIError) and not isinstance(error,(ValueError,KeyError,TypeError)):raise
+                failures.append((cid,str(error)[:200]))
+        self.failures=failures
         return changed
+
+    def sync_one(self,cid,state,deleted,item):
+        # The desktop only syncs while idle, so a stored running/pending flag is a
+        # crash leftover or an approval wait: back up its dialogue, never overwrite it.
+        if state and not state.get('messages'):return False
+        revision,base_hash=self.baseline(cid)
+        local_hash='DELETED' if deleted else fingerprint(state) if state else None
+        if item and item['revision']!=revision:
+            fetched=self.api('get',conversation_id=cid)
+            remote_hash='DELETED' if fetched['deleted'] else fingerprint(fetched['state'])
+            if local_hash==remote_hash:
+                self.mark(cid,item['revision'],remote_hash);self.forget_deletion(cid,deleted)
+                return False
+            busy=state and (state.get('running') or state.get('pending') or state.get('queue'))
+            if busy:return False
+            if local_hash not in (None,base_hash) and state:
+                # Concurrent edits: preserve the local branch instead of replacing it.
+                copy=dict(state);copy['custom_title']=(copy.get('custom_title') or next((m['content'][:50] for m in copy['messages'] if m['role']=='user'),'Hội thoại'))+' (bản trên máy)'
+                self.store.save(uuid.uuid4().hex,copy)
+            if deleted:
+                # A confirmed local deletion remains pending against the latest revision.
+                revision=item['revision']
+            else:
+                return self.import_remote(cid,fetched,local_hash if state else None)
+        if local_hash is not None and local_hash!=base_hash:
+            if deleted and not item and revision==0:
+                # Never uploaded: nothing to delete on the server.
+                self.forget_deletion(cid,True);return False
+            result=self.api('put',conversation_id=cid,revision=revision,deleted=deleted,
+                            state=dialogue(state or {'messages':[]}))
+            self.mark(cid,result['revision'],local_hash)
+            self.forget_deletion(cid,deleted)
+        return False
+
+    def forget_deletion(self,cid,deleted):
+        if not deleted:return
+        with self.store.connection() as db:
+            db.execute('DELETE FROM history_deletions WHERE id=? AND owner=?',(cid,self.owner))

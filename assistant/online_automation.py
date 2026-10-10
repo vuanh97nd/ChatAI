@@ -12,6 +12,55 @@ PLAXIS_AUTOMATION_ROUND_LIMIT = 120
 GEOSLOPE_AUTOMATION_ROUND_LIMIT = 64
 
 
+def _rebalanced_tail(text):
+    """Fix only the closing brackets at the very end ('}}]' vs '}}}]' vs '}}]}');
+    everything before the tail must already be valid, so no content is invented."""
+    body=text.rstrip()
+    # A reply cut off mid-value must stay rejected: require a finished bracket tail.
+    if not body.endswith((']','}')) or not body.rstrip('}] \n\r\t').endswith(('"','}',']','true','false','null')) and not body.rstrip('}] \n\r\t')[-1:].isdigit():
+        return None
+    while body and body[-1] in '}] \n\r\t':body=body[:-1]
+    stack=[];quoted=False;escaped=False
+    for char in body:
+        if quoted:
+            if escaped:escaped=False
+            elif char=='\\':escaped=True
+            elif char=='"':quoted=False
+        elif char=='"':quoted=True
+        elif char in '{[':stack.append('}' if char=='{' else ']')
+        elif char in '}]':
+            if not stack or stack.pop()!=char:return None
+    if quoted or not stack:return None
+    try:return json.loads(body+''.join(reversed(stack)))
+    except json.JSONDecodeError:return None
+
+
+def _single_plan(text):
+    """Recover one plan when the rest of the reply is only identical repeats of it or
+    stray closing brackets (a common model glitch). Different extra plans stay rejected."""
+    decoder=json.JSONDecoder()
+    starts=[i for i in (text.find('{'),text.find('[')) if i>=0]
+    if not starts:return None
+    start=min(starts)
+    if text[:start].count('{') or text[:start].count('['):return None
+    try:value,end=decoder.raw_decode(text,start)
+    except json.JSONDecodeError:
+        # '[{...}}}]' : an extra brace breaks the array; the object inside is still whole.
+        inner=text.find('{',start)
+        if text[start]!='[' or inner<0 or text[start+1:inner].strip():return None
+        try:value,end=decoder.raw_decode(text,inner)
+        except json.JSONDecodeError:
+            return _rebalanced_tail(text[start:])
+    rest=text[end:]
+    while True:
+        rest=rest.lstrip().lstrip('}]').lstrip()
+        if not rest:return value
+        try:again,used=decoder.raw_decode(rest)
+        except json.JSONDecodeError:return None
+        if again!=value:return None
+        rest=rest[used:]
+
+
 def plan_json(raw, label):
     text=raw.strip().lstrip('\ufeff').strip()
     if not text:raise ValueError(label+' đang rỗng; cần một đối tượng JSON.')
@@ -19,6 +68,25 @@ def plan_json(raw, label):
     if fenced:text=fenced.group(1).strip()
     try:return json.loads(text)
     except json.JSONDecodeError as error:
+        salvaged=_single_plan(text)
+        if salvaged is not None:return salvaged
+        # '..."commands": "[ ... ]}}' : the nested string lost its closing quote right
+        # before the final braces. Insert it there only; the rest must already parse.
+        stripped=text.rstrip()
+        tail=len(stripped)-len(stripped.rstrip('}'))
+        if 1<=tail<=3 and stripped[:len(stripped)-tail].endswith(']'):
+            try:
+                value=json.loads(stripped[:len(stripped)-tail]+'"'+'}'*tail)
+                if isinstance(value,dict):return value
+            except json.JSONDecodeError:pass
+        # The model escaped the nested commands string twice: \\" where \" was meant.
+        backslash=chr(92)
+        if backslash*2+'"' in text:
+            undoubled=text.replace(backslash*2+'"',backslash+'"')
+            try:return json.loads(undoubled)
+            except json.JSONDecodeError:
+                salvaged=_single_plan(undoubled)
+                if salvaged is not None:return salvaged
         # Accept one complete object surrounded by model commentary, but never
         # choose between multiple objects or rescue a truncated outer object.
         start=text.find('{')
@@ -116,8 +184,17 @@ def parse_plan(raw, schemas):
 
 def check_confirmation(output,state,cfg):
     from .autonomy import task_tools_authorized
-    if output['tool'] or not (cfg.get('windows_apps_auto_execute') or task_tools_authorized(cfg)):return
+    if output['tool']:return
     answer=output['answer']
+    unverified=unverified_completion(answer,state)
+    if unverified:
+        last_user=max((i for i,m in enumerate(state['messages']) if m.get('role')=='user'),default=-1)
+        if state.get('verification_demanded')!=last_user:
+            state['verification_demanded']=last_user
+            raise ValueError(unverified)
+        # Asked once already: let the answer through, but never as a verified claim.
+        output['answer']=('⚠ Chưa kiểm chứng mô hình với manual bằng verify_model; các khẳng định "đúng manual" dưới đây chưa được xác nhận.\n\n'+answer)
+    if not (cfg.get('windows_apps_auto_execute') or task_tools_authorized(cfg)):return
     # Reject procedural permission loops, not questions about engineering inputs.
     permission=re.search(r'bạn[^\n?]{0,40}(?:xác nhận|đồng ý|cho phép)[^\n?]{0,100}(?:bắt đầu|thực hiện|tra|đọc|mở|thử lại)|bạn\s+(?:có\s+)?muốn\s+tôi[^\n?]{0,100}(?:tra|đọc|kiểm tra|mở\s+(?:trang|URL|liên kết|bản raw))',answer,re.I)
     delegated_lookup=re.search(r'bạn\s+cho\s+tôi\s+biết[^\n?]{0,160}(?:cú pháp|chữ ký|đối tượng gốc|path[^\n?]{0,15}browser_search)',answer,re.I)
@@ -126,6 +203,21 @@ def check_confirmation(output,state,cfg):
     repeated_choice=approved and re.search(r'bạn\s+chọn\s+hướng\s+nào',answer,re.I)
     if permission or delegated_lookup or repeated_choice:
         raise ValueError('Phản hồi kế hoạch hỏi lại quyền hoặc đẩy việc tra cứu cho người dùng. Quyền tự thực hiện đã có: tự tra bằng công cụ, kiểm tra kết quả và sửa bước lỗi; chỉ hỏi dữ kiện kỹ thuật không thể tự xác minh hoặc cần đăng nhập.')
+    # A manual is already open: look the number up there before asking the user for it.
+    # Only an answer that asks the USER to supply data; an answer that lists the manual's
+    # numbers (and ends with "Bạn muốn tôi dựng mô hình?") must pass.
+    asks_data=re.search(r'(?:bạn|anh|chị)\s+(?:vui lòng\s+|hãy\s+|có thể\s+)?(?:cho\s+(?:tôi\s+|mình\s+)?biết|cung cấp|gửi|xác nhận|nhập)[^?\n]{0,160}'
+                        r'(?:tọa độ|cao độ|thông số|kích thước|giá trị|chiều\s+(?:cao|dày|rộng|sâu)|mực nước|vật liệu|tải trọng|số liệu)[^?\n]{0,120}\?',answer,re.I)
+    if asks_data:
+        last_user=max((i for i,m in enumerate(state['messages']) if m.get('role')=='user'),default=-1)
+        manual=[m for m in state['messages'] if m.get('role')=='tool' and m.get('tool_name')=='pdf_read' and '"ok": true' in str(m.get('content',''))]
+        lookups=sum(1 for m in state['messages'][last_user+1:] if m.get('role')=='tool' and m.get('tool_name')=='pdf_read')
+        # Remind once per user turn; if the model still asks, let the question reach the
+        # user instead of ending the turn with a validation error.
+        if manual and lookups==0 and state.get('manual_lookup_demanded')!=last_user:
+            state['manual_lookup_demanded']=last_user
+            raise ValueError('Manual PDF đã có trong hội thoại. Trước khi hỏi người dùng số liệu, tra manual bằng pdf_read với query '
+                             '(tên mục/bước hoặc thông số cần tìm) hoặc page. Chỉ hỏi khi manual thật sự không có số liệu đó.')
 
 
 
@@ -166,6 +258,306 @@ def known_error_reply(prompt,messages):
     return None
 
 
+PLAXIS_RECIPE='''
+
+MẪU LỆNH plaxis_commands ĐÃ CHẠY ĐÚNG trên PLAXIS 2D 2024.2 (dùng trực tiếp, chỉ tra signature khi cần dạng khác):
+- Dự án mới: {"command":"new_project","args":[]}
+- Kiểu mô hình: {"command":"setproperties","args":[{"ref":"g.Project"},"ModelType","Plane strain"]}; móng tròn dùng mô hình đối xứng trục rồi đọc lại {"command":"read","args":[{"ref":"g.Project.ModelType"}]} (0 = biến dạng phẳng, 1 = đối xứng trục).
+- Biên đất: {"command":"soilcontour","args":[xmin,ymin,xmax,ymax]}
+- Borehole: {"command":"borehole","args":[x],"result":"bh"}; mực nước: {"command":"set","args":[{"ref":"bh.Head"},cao_độ]}
+- Lớp đất: {"command":"soillayer","args":[{"ref":"bh"},bề_dày]} (đúng 2 tham số), cao độ: {"command":"setsoillayerlevel","args":[{"ref":"bh"},chỉ_số_mặt,cao_độ]} (mặt 0 là đỉnh lớp 1)
+- Vật liệu: {"command":"soilmat","args":[],"result":"sand"} rồi {"command":"setproperties","args":[{"ref":"sand"},"Identification","Sand"]}; tương tự platemat, anchormat, embeddedbeammat
+- Gán vật liệu: {"command":"setmaterial","args":[{"ref":"g.Soillayers","index":0},{"ref":"sand"}]}; kết cấu: [{"ref":"g.Plates","index":0},{"ref":"wall"}]
+- Hình học (chế độ structures): plate/line/lineload/linedispl [x1,y1,x2,y2]; polygon [[x,y],...]; n2nanchor [x1,y1,x2,y2]
+- Lưới: gotomesh rồi {"command":"mesh","args":[0.06]}
+- Phase: gotostages; {"command":"phase","args":[{"ref":"g.InitialPhase"}],"result":"p1"}; kích hoạt: {"command":"set","args":[{"ref":"Tên_tải.Active"},{"ref":"p1"},true]}
+- Gán vật liệu cho khối đất vẽ bằng polygon (chế độ structures/soil): {"command":"setmaterial","args":[{"ref":"g.Polygon_2.Soil"},{"ref":"emb"}]} (qua thuộc tính .Soil, không truyền polygon).
+- THỨ TỰ: gán vật liệu cho MỌI vùng đất (lớp đất và polygon) TRƯỚC khi chia lưới. Chia lưới khi còn vùng chưa có vật liệu sẽ làm phase ban đầu lỗi "Soil with no material".
+- CHẾ ĐỘ PHASE (sau gotostages): đối tượng đổi tên thành khối đất Soil_1_1, Soil_2_Soil_3_1… (đọc g.Soils để biết tên), không còn Polygon_x. Thuộc tính phụ thuộc phase nên luôn kèm phase:
+  {"command":"setmaterial","args":[{"ref":"Soil_1_1"},{"ref":"g.InitialPhase"},{"ref":"clay"}]}
+  {"command":"set","args":[{"ref":"Soil_1_1.Material"},{"ref":"g.InitialPhase"},{"ref":"clay"}]}
+  {"command":"set","args":[{"ref":"Soil_2_Soil_3_1.Active"},{"ref":"p1"},true]}
+- Tắt khối đất đào trong một phase: {"command":"set","args":[{"ref":"Soil_1_2.Active"},{"ref":"p2"},false]} (đọc tên khối trong model_state; mỗi khối đào là một khối riêng nhờ đường cao độ đào).
+CHƯA CHẠY THỬ trên máy này — dùng, và nếu lỗi tra signature ngay:
+- Neo đầu cố định (thanh chống đối xứng): {"command":"fixedendanchor","args":[50,19]}; neo hai đầu dùng n2nanchor [x1,y1,x2,y2].
+- Mặt phân cách đất–tường: {"command":"posinterface","args":[{"ref":"Line_1"}]} và {"command":"neginterface","args":[{"ref":"Line_1"}]} trên đường của tường; bật trong phase cùng tường.
+- Cao độ đào: vẽ đường ngang trong structures, ví dụ {"command":"line","args":[[50,18],[65,18]]}, để tách khối đất cần tắt.
+- Mực nước theo phase (đào ngập nước, hạ nước): làm theo đúng mục của manual; tra signature của lệnh mực nước trước khi gọi.
+- Trước calculate: mỗi phase Plastic phải bật/tắt hoặc đổi vật liệu ít nhất một đối tượng; model_state ghi "KHÔNG THAY ĐỔI GÌ" là phase rỗng.
+- Tính: {"command":"calculate","args":[]}; kết quả đọc bằng target output (Chat AI tự mở Output).
+- Đọc kết quả (plaxis_commands với "target":"output"; đã chạy đúng trên máy này):
+  {"command":"getresults","args":[{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Soil.Uy"},"node"],"result":"uy"} (N = số thứ tự phase cuối, đọc g.Phases) rồi {"command":"summarize","args":[{"ref":"uy"}]} (min/max/max_abs).
+  Ux: g.ResultTypes.Soil.Ux; nội lực tường: getresults [{"ref":"Plate_1"},{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Plate.M2D"},"node"] (tra signature nếu lỗi); hệ số an toàn: đọc Reached.SumMsf của phase Safety.
+Mỗi lần đổi thứ gì, đọc model_state và tránh tạo trùng đối tượng trên cùng một đoạn.'''
+
+
+_MODEL_BUILDING={'soilmat','platemat','anchormat','embeddedbeammat','geogridmat','interfacemat','borehole','soillayer',
+                 'setsoillayerlevel','soilcontour','initializerectangular','plate','line','lineload','pointload','linedispl',
+                 'pointdispl','polygon','n2nanchor','fixedendanchor','embeddedbeam','embeddedbeamrow','geogrid','setmaterial','setproperties'}
+
+
+def _failed_commands(messages):
+    for message in messages:
+        if message.get('role')=='tool' and message.get('tool_name')=='plaxis_commands':
+            try:item=json.loads(message.get('content') or '{}')
+            except ValueError:continue
+            if isinstance(item,dict) and item.get('ok') is False and item.get('failed_command'):
+                yield item['failed_command'],str(item.get('error',''))[:200]
+
+
+def _recently_failed(state,command):
+    """The last plaxis_commands result that mentions this command was its failure."""
+    for message in reversed(state.get('messages',[])[-40:]):
+        if message.get('role')!='tool' or message.get('tool_name')!='plaxis_commands':continue
+        content=str(message.get('content',''))
+        if '"'+command+'"' not in content:continue
+        return '"failed_command": "'+command+'"' in content
+    return False
+
+
+def remember_working_forms(state,call,result):
+    """When a command that failed earlier now succeeds (often after a web lookup), keep
+    the exact working form so later steps reuse it instead of searching again."""
+    try:rows=json.loads(call['function']['arguments'].get('commands','[]'))
+    except (ValueError,TypeError,AttributeError,KeyError):return
+    done={r.get('step') for r in result.get('results',[]) if isinstance(r,dict) and 'error' not in r}
+    failed={command for command,_ in _failed_commands(state.get('messages',[])[-120:])}
+    learned=state.setdefault('plaxis_learned',[])
+    for step,row in enumerate(rows,1):
+        # Property names are not 'forms'; only commands whose call shape was the problem.
+        if row.get('command') in ('setproperties','read','info','tabulate','signature','commands'):continue
+        if step in done and isinstance(row,dict) and row.get('command') in failed and _recently_failed(state,row['command']):
+            form=json.dumps({'command':row['command'],'args':row.get('args',[])},ensure_ascii=False)[:300]
+            if form not in learned:learned.append(form)
+    del learned[:-15]
+
+
+def stuck_command(state,args):
+    """Stop the 4th try of a command that keeps failing with the same error this turn."""
+    try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
+    except ValueError:return None
+    messages=state.get('messages',[])
+    last_user=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
+    counts={}
+    for command,error in _failed_commands(messages[last_user+1:]):
+        counts[(command,error)]=counts.get((command,error),0)+1
+    planned={r.get('command') for r in rows if isinstance(r,dict)}
+    for (command,error),count in counts.items():
+        if command in planned and count>=3:
+            return (f"Lệnh {command} đã thất bại {count} lần trong lượt này với cùng lỗi ({error[:120]}). Không thử thêm biến thể đoán mò: "
+                    "đọc model_state/phase_hint, kiểm tra đúng đối tượng và chế độ (soil/structures/stages), hoặc tra cú pháp trên mạng/manual rồi mới làm.")
+    return None
+
+
+_GEOMETRY_COMMANDS={'plate','line','lineload','pointload','linedispl','pointdispl','polygon','n2nanchor','fixedendanchor',
+                    'embeddedbeam','embeddedbeamrow','geogrid','point'}
+
+
+def _points(args):
+    flat=[]
+    def walk(value):
+        if isinstance(value,(int,float)) and not isinstance(value,bool):flat.append(float(value))
+        elif isinstance(value,list):
+            for item in value:walk(item)
+    walk(args)
+    return [(flat[i],flat[i+1]) for i in range(0,len(flat)-1,2)]
+
+
+def geometry_off_manual(state,call,result):
+    """Points of geometry just drawn that the tutorial's pages never mention (tutorial 3:
+    the wall was drawn to (50 0) while the manual says (50 -10))."""
+    coords={(float(x),float(y)) for x,y in (state.get('tutorial') or {}).get('coords') or []}
+    if len(coords)<3:return None
+    try:rows=json.loads(call['function']['arguments'].get('commands','[]'))
+    except (ValueError,TypeError,AttributeError,KeyError):return None
+    done={r.get('step') for r in result.get('results',[]) if isinstance(r,dict) and 'error' not in r}
+    stray=[]
+    for step,row in enumerate(rows,1):
+        if step in done and isinstance(row,dict) and row.get('command') in _GEOMETRY_COMMANDS:
+            stray+=[f"{row['command']} ({x:g} {y:g})" for x,y in _points(row.get('args',[])) if (x,y) not in coords]
+    if not stray:return None
+    return ('Các điểm sau không có trong trang manual của bài: '+', '.join(stray[:8])+
+            '. Đối chiếu lại tọa độ trong manual (ví dụ đầu mút tường, tải, neo, đường đào) và sửa nếu sai.')
+
+
+def checklist_gaps(state,args):
+    """Before calculating a tutorial, compare its manual sections with the live model."""
+    tutorial=state.get('tutorial') or {}
+    steps=' '.join(tutorial.get('steps') or []).lower()
+    if not steps:return None
+    try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
+    except ValueError:return None
+    if not any(isinstance(r,dict) and r.get('command')=='calculate' for r in rows):return None
+    last_user=max((i for i,m in enumerate(state.get('messages',[])) if m.get('role')=='user'),default=-1)
+    if state.get('checklist_warned')==last_user:return None
+    model=''
+    for message in reversed(state.get('messages',[])):
+        if message.get('role')=='tool' and message.get('tool_name')=='plaxis_commands' and '"model_state"' in str(message.get('content','')):
+            try:model=json.loads(message['content']).get('model_state','')
+            except ValueError:pass
+            break
+    gaps=[]
+    if 'interface' in steps and 'Interfaces:' not in model:
+        gaps.append('manual có mục định nghĩa interface nhưng mô hình chưa có Interfaces')
+    soils=re.search(r'Soils: (\d+)',model)
+    if 'excavation level' in steps and (not soils or int(soils.group(1))<4):
+        gaps.append('manual có mục cao độ đào nhưng mô hình chỉ có '+(soils.group(1) if soils else '?')+' khối đất; chưa vẽ đường chia cao độ đào nên không có khối để tắt')
+    for kind,label in (('strut','thanh chống'),('anchor','neo')):
+        if kind in steps and 'Anchors:' not in model:
+            gaps.append(f'manual có {label} nhưng mô hình chưa có neo')
+            break
+    if not gaps:return None
+    state['checklist_warned']=last_user
+    return 'Chưa tính: so với bảng kiểm của manual, '+'; '.join(gaps)+'. Bổ sung rồi mới calculate (nếu đã kiểm tra là không cần, gọi lại calculate).'
+
+
+def provider_problem(error):
+    """Account problems of the AI provider are not planning errors; say what to do."""
+    text=str(error or '')
+    service=(re.search(r'Dịch vụ\s+(\w+)',text) or re.search(r'(DEEPSEEK|OPENAI|GEMINI|GROQ|NVIDIA|CLAUDE)',text,re.I))
+    name=service.group(1).upper() if service else 'AI'
+    if re.search(r'HTTP 402|Insufficient Balance|insufficient_quota|QUOTA_EXHAUSTED|billing',text,re.I):
+        return (f'Tài khoản {name} đã hết tiền hoặc hết hạn mức (HTTP 402), nên AI không lập được bước tiếp theo. '
+                'Nạp thêm tiền cho tài khoản này hoặc chọn nhà cung cấp AI khác trong Cài đặt rồi gửi lại yêu cầu. '
+                'Chưa thực hiện thao tác mới; mô hình PLAXIS giữ nguyên.')
+    if re.search(r'HTTP 401|invalid api key|unauthorized|HTTP 403',text,re.I):
+        return f'Khóa API của {name} không hợp lệ hoặc bị từ chối. Kiểm tra khóa trong Cài đặt. Chưa thực hiện thao tác mới.'
+    if re.search(r'HTTP 429|RATE_LIMIT|rate limit',text,re.I):
+        return f'{name} đang giới hạn số yêu cầu. Chờ một lúc rồi gửi lại. Chưa thực hiện thao tác mới.'
+    return None
+
+
+def new_unrelated_task(text):
+    """A longer request with nothing about the modelling task is a new topic."""
+    text=str(text or '')
+    if re.search(r'plaxis|\bbài\b|manual|pdf|mô hình|tính|tra|lệnh|vật liệu|phase|lưới|kết quả|lỗi|thử|làm|tiếp|sửa|kiểm tra|mạng|web|ok|đúng',text,re.I):
+        return False
+    return len(text.strip())>25
+
+
+def model_warnings(model_state,tutorial):
+    """Cheap consistency checks on the live model that the model kept missing."""
+    warnings=[]
+    title=(tutorial or {}).get('title','').lower()
+    if re.search(r'circular|axisymmetric|round|pile\b',title) and 'ModelType=Plane strain' in model_state:
+        warnings.append(f"Bài \"{tutorial['title']}\" là bài toán đối xứng trục nhưng mô hình đang là Plane strain; đặt lại ModelType trước khi tính.")
+    for kind,label in (('LineDisplacements','chuyển vị cưỡng bức'),('LineLoads','tải phân bố')):
+        found=re.search(kind+r': (\d+)',model_state)
+        if found and int(found.group(1))>1 and re.search(r'footing|móng',title):
+            warnings.append(f"Có {found.group(1)} {label} trong mô hình; bài móng thường chỉ có một. Kiểm tra trùng trên cùng một đoạn và xóa bản thừa.")
+    return warnings
+
+
+def unverified_completion(answer,state):
+    """A PLAXIS answer that claims the model matches the manual, or that the task is done,
+    needs a verify_model pass after the last model change. 'Calculation OK' only means the
+    solver converged, not that the model is the tutorial's."""
+    if not re.search(r'(?:đúng|khớp|theo đúng|y hệt)\s+(?:với\s+)?(?:manual|tài liệu|hướng dẫn|bài)|đã\s+hoàn\s+(?:tất|thành)|hoàn\s+tất\s+mô\s+hình|đã\s+xác\s+minh'
+                     r'|(?:đã\s+)?(?:chạy|tính|làm|dựng)\s+(?:toán\s+)?xong|xong\s+bài|hoàn\s+thành\s+bài',answer,re.I):
+        return None
+    messages=state.get('messages',[])
+    last_build=-1;verified_at=-1
+    for i,m in enumerate(messages):
+        if m.get('role')=='assistant' and m.get('tool_calls'):
+            fn=m['tool_calls'][0].get('function',{})
+            if fn.get('name')=='plaxis_commands':
+                try:rows=json.loads(fn.get('arguments',{}).get('commands','[]'))
+                except (ValueError,TypeError,AttributeError):rows=[]
+                if any(isinstance(r,dict) and r.get('command') in _MODEL_BUILDING|{'new_project','phase','set','activate','deactivate','mesh'} for r in rows):last_build=i
+        elif m.get('role')=='tool' and m.get('tool_name')=='plaxis_commands' and '"model_verified": true' in str(m.get('content','')):
+            verified_at=i
+    if last_build<0 or verified_at>last_build:return None
+    tutorial=state.get('tutorial') or {}
+    name=f" Bài {tutorial['number']} \"{tutorial['title']}\"" if tutorial else ''
+    return ('Chưa kiểm chứng mô hình với manual'+name+'. Trước khi báo hoàn tất hay "đúng manual", chạy plaxis_commands với '
+            'verify_model, liệt kê các giá trị lấy từ manual: g.Project.ModelType, cao độ/độ dày từng lớp, thông số vật liệu, '
+            'mực nước, tải/chuyển vị và trạng thái kích hoạt trong từng phase. CalculationResult OK chỉ cho biết đã hội tụ.')
+
+
+def tutorial_unread(state,args,store):
+    """Refuse model-building commands for a manual tutorial until a page of that
+    tutorial has actually been read; values must come from the manual, not memory."""
+    tutorial=state.get('tutorial')
+    if not tutorial:return None
+    try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
+    except ValueError:return None
+    def builds(row):
+        if not isinstance(row,dict) or row.get('command') not in _MODEL_BUILDING:return False
+        first=(row.get('args') or [None])[0]
+        return not (row['command']=='setproperties' and isinstance(first,dict) and first.get('ref')=='g.Project')
+    if not any(builds(r) for r in rows if isinstance(r,dict)):return None
+    low=tutorial['page']-3;high=(tutorial.get('end') or tutorial['page']+25)+3
+    pages=set()
+    for _,item in _pdf_reads(state.get('messages',[])):
+        for location in item.get('locations',[]):
+            if str(location).split()[-1].isdigit():pages.add(int(str(location).split()[-1]))
+    try:
+        from .document_memory import DocumentMemory
+        for record in DocumentMemory(store).records(state.get('account_username','')):
+            if record['file']==tutorial.get('file'):
+                pages.update(int(p) for p in re.findall(r'\[trang (\d+)\]',record['text']))
+    except Exception:pass
+    if any(low<=p<=high for p in pages):return None
+    return (f"Chưa đọc trang nào của Bài {tutorial['number']} \"{tutorial['title']}\" (trang {tutorial['page']}"
+            +(f"–{tutorial['end']}" if tutorial.get('end') else '')+'). Không dựng mô hình bằng số liệu tự nhớ: '
+            f"đọc manual trước bằng pdf_read với page {tutorial['page']} hoặc query \"{tutorial['title']}\", rồi lấy số liệu từ đó.")
+
+
+def _pdf_reads(messages):
+    for index,message in enumerate(messages):
+        if message.get('role')!='tool' or message.get('tool_name') not in ('pdf_read','pdf_local_open','pdf_source_open'):continue
+        try:item=json.loads(message.get('content') or '{}')
+        except (TypeError,ValueError):continue
+        if isinstance(item,dict) and item.get('ok') and isinstance(item.get('range_start'),int):yield index,item
+
+
+def mark_repeated_read(messages,result):
+    """A model that lost earlier excerpts re-reads page 1 forever. Return the
+    excerpt once more only if it fell out of the visible window; otherwise send
+    a short refusal so the next plan moves on."""
+    if result.get('found') is False:return result
+    key=(str(result.get('path','')).casefold(),result.get('range_start'))
+    earlier=[i for i,item in _pdf_reads(messages) if (str(item.get('path','')).casefold(),item.get('range_start'))==key and item.get('content')]
+    if not earlier:return result
+    last_user=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
+    repeats=sum(1 for i,item in _pdf_reads(messages) if i>last_user and item.get('already_read'))
+    visible=earlier[-1]>=len(messages)-20
+    pages=', '.join(result.get('locations',[])[:6])
+    if visible or repeats>=2:
+        return {**{k:v for k,v in result.items() if k!='content'},'content':'','already_read':True,
+                'note':'Đoạn này ('+pages+') ĐÃ đọc và còn trong lịch sử/bộ nhớ tài liệu; không trả lại nội dung. '
+                       'Không đọc lại đoạn này. Dùng page hoặc query để tới phần chưa đọc, hoặc chuyển sang thực hiện bước tiếp theo của bài.'}
+    return {**result,'already_read':True,
+            'note':'Đoạn này ('+pages+') đã đọc trước đó; nội dung được gửi lại một lần vì đã ra khỏi lịch sử gần. '+str(result.get('note',''))}
+
+
+def pdf_read_map(messages):
+    """Compact list of what was actually read, kept even after old tool results
+    leave the 20-message planning window."""
+    files={}
+    for _,item in _pdf_reads(messages):
+        record=files.setdefault(str(item.get('path','')),{'total':item.get('characters_total'),'ranges':set(),'pages':[]})
+        if item.get('content'):record['ranges'].add((item['range_start'],item.get('range_end')))
+        for location in item.get('locations',[]):
+            if location not in record['pages']:record['pages'].append(location)
+    if not files:return ''
+    lines=[]
+    for path,record in files.items():
+        numbers=sorted({int(x.split()[-1]) for x in record['pages'] if x.split()[-1].isdigit()})
+        lines.append('- '+PureWindowsPath(path).name+': đã đọc '+str(len(record['ranges']))+' đoạn, tổng '+str(record['total'])+' ký tự; trang đã đọc: '+compress_numbers(numbers))
+    return ('\n\nPDF ĐÃ ĐỌC (theo kết quả công cụ; nội dung nằm trong BỘ NHỚ TÀI LIỆU/lịch sử). Không đọc lại các trang này. '
+            'Cần phần khác thì dùng pdf_read với page hoặc query; đã đủ dữ kiện thì thực hiện bài:\n'+'\n'.join(lines))[:3000]
+
+
+def compress_numbers(numbers):
+    parts=[];begin=None;previous=None
+    for n in numbers+[None]:
+        if begin is None:begin=previous=n;continue
+        if n is not None and n==previous+1:previous=n;continue
+        parts.append(str(begin) if begin==previous else f'{begin}-{previous}');begin=previous=n
+    return ', '.join(parts) or 'chưa rõ'
+
+
 def planning_messages(state,instruction):
     history=state['messages'][-20:]
     # Send the latest user image only: repeated agent rounds must not accumulate
@@ -188,7 +580,10 @@ def planning_messages(state,instruction):
         elif message.get('content'):
             messages.append({'role':message['role'],'content':message['content'][:6000]})
         elif message.get('tool_calls'):
-            messages.append({'role':'assistant','content':json.dumps(message['tool_calls'],ensure_ascii=False)})
+            # Show past calls in the exact plan format the model must answer with;
+            # a raw tool_calls array here is copied back verbatim and breaks parsing.
+            fn=(message['tool_calls'][0] or {}).get('function',{}) if isinstance(message['tool_calls'],list) and message['tool_calls'] else {}
+            messages.append({'role':'assistant','content':json.dumps({'answer':'','tool':fn.get('name',''),'arguments':fn.get('arguments',{})},ensure_ascii=False)})
     return messages
 
 
@@ -202,7 +597,15 @@ def requested_automation(prompt):
 
 def use_automation(prompt, cfg, state, tool_mode=False):
     """Keep clarification replies in the same online tool workflow."""
-    return requested_automation(prompt) or bool(cfg.get('windows_apps_enabled') and (tool_mode or state.get('online_automation')))
+    if requested_automation(prompt):return True
+    if not cfg.get('windows_apps_enabled'):return False
+    if tool_mode or state.get('online_automation'):return True
+    # A PLAXIS task in progress: "tìm trong manual pdf ấy", "tính đi", "kiểm tra lại" belong to it.
+    # In plain chat the model cannot see tool results or the manual and answers "no PDF".
+    recent=state.get('messages',[])[-60:]
+    plaxis_task=any(m.get('role')=='tool' and str(m.get('tool_name','')).startswith('plaxis_') for m in recent)
+    manual_read=any(m.get('role')=='tool' and m.get('tool_name')=='pdf_read' for m in recent)
+    return bool(plaxis_task or (manual_read and re.search(r'manual|pdf|tài liệu|\bbài\b|tutorial|số liệu|tính|kiểm tra',prompt,re.I)))
 
 
 def _geoslope_workflow(state):
@@ -568,7 +971,25 @@ class OnlineAutomation:
         if pending.get('decision_started'):raise RuntimeError('Thao tác đã bắt đầu; không tự chạy lại.')
         pending['decision_started']=True;self.save(state)
         call=state['queue'][0];name=call['function']['name']
-        if allowed:
+        plaxis_exe=name=='windows_open' and bool(re.search(r'plaxis.*input.*\.exe$',str(pending['plan'].get('path','')),re.I))
+        if allowed and plaxis_exe:
+            from .plaxis_remote import detect_ports,port_open
+            version='3d' if re.search(r'plaxis\s*3d|plaxis3d',str(pending['plan'].get('path','')),re.I) else '2d'
+            port=detect_ports(version).get('input')
+            if port and port_open(port):
+                result={'ok':True,'already_running':True,'not_executed':True,'port':port,
+                        'note':f'PLAXIS Input đang chạy, remote scripting server ở localhost:{port}; không mở thêm. Dùng plaxis_commands (target input), không dùng windows_inspect/windows_open cho PLAXIS.'}
+            else:
+                try:
+                    result=self.component(name).commit(pending['plan'])
+                    import time
+                    deadline=time.monotonic()+90
+                    while time.monotonic()<deadline and not detect_ports(version).get('input'):time.sleep(1)
+                    port=detect_ports(version).get('input')
+                    result.update(scripting_ready=bool(port),port=port,note=(f'PLAXIS đã sẵn sàng, remote scripting server ở localhost:{port}. Dùng plaxis_commands; tiến trình khởi động có thể đã thoát nên không dùng windows_inspect.' if port else
+                        'Đã mở PLAXIS nhưng sau 90 giây chưa thấy remote scripting server. Cần bật Expert → Configure remote scripting server → Start; không mở PLAXIS thêm lần nữa.'))
+                except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
+        elif allowed:
             try:result=self.component(name).commit(pending['plan'])
             except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
         else:result={'ok':False,'denied':True,'note':'Người dùng từ chối. Không gọi lại thao tác này.'}
@@ -592,6 +1013,14 @@ class OnlineAutomation:
         if name in ('pdf_read','pdf_local_open','pdf_source_open') and result.get('ok'):
             from .document_memory import DocumentMemory
             DocumentMemory(self.store).remember(state.get('account_username',''),[result])
+            if name=='pdf_read':result=mark_repeated_read(state['messages'],result)
+        if name=='plaxis_commands' and isinstance(result.get('model_state'),str):
+            warnings=model_warnings(result['model_state'],state.get('tutorial'))
+            if warnings:result['warnings']=warnings
+        if name=='plaxis_commands':
+            remember_working_forms(state,call,result)
+            off_manual=geometry_off_manual(state,call,result)
+            if off_manual:result['geometry_warning']=off_manual
         from .procedure_memory import ProcedureMemory
         ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
         self.store.audit(self.cid,'online_automation_result',{'name':name,'ok':result.get('ok',False)})
@@ -644,6 +1073,13 @@ class OnlineAutomation:
                     if known:raise RuntimeError(known)
                     repeated=repeated_failure(state,call)
                     if repeated:raise RuntimeError(repeated)
+                    if name=='plaxis_commands':
+                        unread=tutorial_unread(state,args,self.store)
+                        if unread:raise RuntimeError(unread)
+                        stuck=stuck_command(state,args)
+                        if stuck:raise RuntimeError(stuck)
+                        gaps=checklist_gaps(state,args)
+                        if gaps:raise RuntimeError(gaps)
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
@@ -731,7 +1167,7 @@ class OnlineAutomation:
                          'Nếu công cụ báo preparation_failed=true và not_executed=true, tự sửa kế hoạch dựa đúng lỗi rồi dùng tham số đã sửa; giữ các thông số người dùng đã chốt, không hỏi lại thông tin có trong lịch sử. Không lặp nguyên lời gọi lỗi. Không thử lại thao tác ghi lỗi có thể đã thực hiện một phần. Nếu gặp CAPTCHA/đăng nhập, báo người dùng. '
                          'Nếu chưa biết selector của trang, browser_run navigate + read trước để nhận controls; bước sau phải navigate lại vì phiên trước đã đóng. '
                          'PDF scan hoặc lỗi mã hóa: pdf_local_open/pdf_read tự thử OCR bằng Foxit trên bản sao, đọc lại kết quả và chỉ tóm tắt chữ thực tế đã đọc. Không cần hỏi lại để OCR theo yêu cầu đọc tài liệu. Nếu OCR lỗi, báo đúng lỗi và không lặp lại thao tác lỗi trong cùng lượt. '
-                         'Nếu người dùng yêu cầu tải PDF mở Foxit, tìm URL nguồn thật bằng browser_search/browser_run rồi gọi pdf_source_open với EXE Foxit đã được phép. Không đoán URL hoặc chọn tài liệu chỉ vì tên gần giống; đối chiếu số hiệu/năm trên nguồn. Đọc tiếp pdf_read đến hết nếu cần tóm tắt toàn văn. '
+                         'Nếu người dùng yêu cầu tải PDF mở Foxit, tìm URL nguồn thật bằng browser_search/browser_run rồi gọi pdf_source_open với EXE Foxit đã được phép. Không đoán URL hoặc chọn tài liệu chỉ vì tên gần giống; đối chiếu số hiệu/năm trên nguồn. Đọc tiếp pdf_read đến hết chỉ khi cần tóm tắt toàn văn; khi cần một bài/mục cụ thể trong manual dài, dùng pdf_read với query (tên bài, ví dụ "Tutorial 1" hoặc tiêu đề mục) hoặc page, không đọc tuần tự từ mục lục. '
                          +app_permissions(self.cfg)+
                          '\nCông cụ: '+json.dumps(planning_schemas,ensure_ascii=False))
             if state.get('automation_attachments'):
@@ -740,6 +1176,33 @@ class OnlineAutomation:
             from .document_memory import DocumentMemory
             question=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
             instruction+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'])
+            instruction+=pdf_read_map(state['messages'])
+            tutorial=DocumentMemory(self.store).tutorial(state.get('account_username',''),state['messages'])
+            if not tutorial and state.get('tutorial') and not new_unrelated_task(question):
+                # "tra mạng đi", "không biết thì tìm trên mạng" still belong to the tutorial.
+                tutorial=state['tutorial']
+            state['tutorial']=tutorial
+            if tutorial:
+                span=f"trang {tutorial['page']}"+(f"–{tutorial['end']}" if tutorial.get('end') else '')
+                instruction+=(f"\n\nBÀI ĐANG LÀM (theo mục lục của {tutorial['file']}): Bài {tutorial['number']} = "
+                              f"\"{tutorial['title']}\", {span} (số trang theo mục lục, trang PDF có thể lệch vài trang). "
+                              "Dùng đúng tên và phạm vi trang này, không dùng cách đánh số của phiên bản PLAXIS khác mà bạn nhớ. "
+                              "Trước khi dựng mô hình phải đọc các trang của bài này bằng pdf_read (page hoặc query theo tên bài) "
+                              "và lấy mọi số liệu từ đó. Khi xác nhận tên bài với người dùng, ghi rõ 'theo mục lục manual'. "
+                              "Chỉ nói đã xong bài khi đã làm MỌI phase/bước tính trong manual (kể cả phân tích an toàn) và đã đọc kết quả "
+                              "mà manual nêu (ví dụ hệ số an toàn, độ lún), rồi so với giá trị manual. Nếu mới xong một phần, mở đầu bằng "
+                              "'Đã làm xong phần …; còn thiếu …' và liệt kê các bước còn lại.")
+                if tutorial.get('steps'):
+                    instruction+=('\nCÁC MỤC CỦA BÀI TRONG MANUAL (bảng kiểm; mỗi mục phải có lệnh tương ứng đã chạy thành công, '
+                                  'đặc biệt từng Phase: bật/tắt đúng đối tượng; khi báo kết quả, đánh dấu mục đã làm/chưa làm):\n- '
+                                  +'\n- '.join(tutorial['steps']))
+            plaxis_context=any(str(m.get('tool_name','')).startswith('plaxis_') for m in state['messages'][-60:]) or any(
+                'plaxis' in str(m.get('content','')).lower() for m in state['messages'][-12:] if m.get('role')=='user')
+            if plaxis_context:instruction+=PLAXIS_RECIPE
+            state['plaxis_learned']=[f for f in state.get('plaxis_learned',[]) if not f.startswith('{"command": "setproperties"')]
+            if state.get('plaxis_learned'):
+                instruction+=('\n\nCÁCH ĐÃ THÀNH CÔNG TRONG PHIÊN NÀY (sau khi các cách khác lỗi; dùng lại, không tra lại):\n- '
+                              +'\n- '.join(state['plaxis_learned']))
             from .procedure_memory import ProcedureMemory
             instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state)
             if state.get('plaxis_general_mode'):
@@ -824,7 +1287,12 @@ class OnlineAutomation:
                         options={'num_predict':8192,'temperature':0})
                     if recovered.get('truncated'):raise ValueError('JSON khôi phục bị giới hạn token.')
                     output=parse_plan(recovered.get('message',{}).get('content',''),planning_schemas)
-                    check_confirmation(output,state,self.cfg)
+                    try:check_confirmation(output,state,self.cfg)
+                    except ValueError:
+                        # Recovery has no further planning round, so a remind-once guard would
+                        # discard a finished answer. Its second check lets the answer through
+                        # (flagged where needed); permission loops are still rejected.
+                        check_confirmation(output,state,self.cfg)
                     self.store.audit(self.cid,'automation_plan_recovered',{'tool':output['tool']})
                 except (RuntimeError,ValueError,KeyError,TypeError) as error:
                     output=None
@@ -850,6 +1318,6 @@ class OnlineAutomation:
                     yield {'type':'status','text':'AI chưa trả kế hoạch; đang dùng thao tác suy ra từ yêu cầu…'}
                     continue
                 state['running']=False
-                text='AI chưa trả kế hoạch hợp lệ; chưa thực hiện thao tác mới. Lỗi kiểm tra: '+(last_plan_error or 'Chưa có JSON kế hoạch.')
+                text=provider_problem(last_plan_error) or ('AI chưa trả kế hoạch hợp lệ; chưa thực hiện thao tác mới. Lỗi kiểm tra: '+(last_plan_error or 'Chưa có JSON kế hoạch.'))
                 state['messages'].append({'role':'assistant','content':text});yield {'type':'token','text':text}
             self.save(state)

@@ -49,7 +49,16 @@ def _join_read_args(args):
 
 def commands_from_json(raw):
     if not isinstance(raw,str) or len(raw)>50000:raise ValueError('commands cần là chuỗi JSON tối đa 50000 ký tự.')
-    rows=json.loads(raw)
+    try:rows=json.loads(raw)
+    except json.JSONDecodeError as error:
+        # '..."mat"}]}]' instead of '..."mat"]}]': only the closing tail is wrong.
+        from .online_automation import _rebalanced_tail
+        rows=_rebalanced_tail(raw)
+        if rows is None:
+            # A bare character offset is not something a model can act on; show the spot.
+            near=raw[max(0,error.pos-60):error.pos+20]
+            raise ValueError(f'commands không phải JSON hợp lệ ({error.msg}) gần: …{near}… '
+                             'Kiểm tra cặp ngoặc: mảng args đóng bằng ], lệnh đóng bằng }.') from None
     if not isinstance(rows,list) or not 1<=len(rows)<=40:raise ValueError('Mỗi lượt cần 1–40 lệnh PLAXIS.')
     def value(v,depth=0):
         if depth>12:raise ValueError('Tham số lồng quá sâu.')
@@ -258,6 +267,17 @@ def _explain_log(ref,value):
     return f'{code}: {meaning}' if meaning else value
 
 
+def _arity(line):
+    """Number of top-level parameters in one signature line ('Borehole NumberWithUnitLength'' -> 2)."""
+    depth=0;count=0;inside=False
+    for char in line.strip():
+        if char=='<':depth+=1
+        elif char=='>':depth-=1
+        if char==' ' and depth==0:inside=False
+        elif not inside:count+=1;inside=True
+    return count
+
+
 def _signature(listing,name):
     """The parameter pattern PLAXIS prints for one command in g.commands().
 
@@ -292,13 +312,114 @@ def model_checks(raw):
     return checks
 
 
-def execute_commands(server,g,rows,on_status=None):
+_STAGED=('Soils','Plates','NodeToNodeAnchors','FixedEndAnchors','LineLoads','PointLoads','LineDisplacements',
+         'PointDisplacements','Interfaces','EmbeddedBeams','Geogrids')
+
+
+def _value(item):
+    try:return item.value
+    except Exception:return item
+
+
+def phase_changes(g):
+    """Per calculation phase: what it switches on/off or re-assigns relative to its
+    previous phase. Empty for objects whose per-phase state cannot be read."""
+    try:phases=list(g.Phases)
+    except Exception:return []
+    objects=[]
+    for collection in _STAGED:
+        try:objects+=[(str(_value(o.Name)),o,collection=='Soils') for o in getattr(g,collection)]
+        except Exception:continue
+    def state(phase):
+        current={}
+        for name,obj,soil in objects:
+            try:active=bool(_value(obj.Active[phase]))
+            except Exception:continue
+            material=None
+            if soil:
+                try:material=str(_value(_value(obj.Material[phase]).Identification))
+                except Exception:pass
+            current[name]=(active,material)
+        return current
+    states={str(_value(p.Name)):state(p) for p in phases}
+    rows=[]
+    for phase in phases[1:]:
+        name=str(_value(phase.Name))
+        try:previous=str(_value(_value(phase.PreviousPhase).Name))
+        except Exception:continue
+        before,after=states.get(previous,{}),states.get(name,{})
+        on=[k for k,(a,_) in after.items() if a and not before.get(k,(False,None))[0]]
+        off=[k for k,(a,_) in after.items() if not a and before.get(k,(False,None))[0]]
+        mats=[k for k,(_,m) in after.items() if m and before.get(k,(None,None))[1] not in (None,m)]
+        try:kind=_value(phase.DeformCalcType)
+        except Exception:kind=None
+        try:pending=bool(_value(phase.ShouldCalculate))
+        except Exception:pending=True
+        rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'on':on,'off':off,'materials':mats,
+                     'state':tuple(sorted(after.items()))})
+    return rows
+
+
+def _empty_phases(g):
+    """Problems in Plastic phases about to be calculated: a phase that changes nothing,
+    phases whose whole activation state is identical (tutorial 3, second attempt: five
+    phases all started from InitialPhase and switching on the same wall and load)."""
+    rows=[r for r in phase_changes(g) if r['kind']==4]
+    pending=[r for r in rows if r['pending']]
+    problems=[f"{r['phase']} không thay đổi gì so với {r['previous']}" for r in pending if not (r['on'] or r['off'] or r['materials'])]
+    groups={}
+    for r in pending:groups.setdefault(r['state'],[]).append(r['phase'])
+    problems+=['các phase '+', '.join(names)+' có trạng thái bật/tắt giống hệt nhau' for names in groups.values() if len(names)>1]
+    starts={}
+    for r in pending:starts.setdefault(r['previous'],[]).append(r['phase'])
+    problems+=[', '.join(names)+f' đều bắt đầu từ {start}; thi công theo giai đoạn cần phase sau nối tiếp phase trước '
+               '(tạo bằng phase [{"ref":"Phase_trước"}])' for start,names in starts.items() if len(names)>2]
+    return problems
+
+
+def _soils_without_material(g):
+    """Names of soil regions whose material is positively read as unassigned. Anything
+    that cannot be read is skipped, so this never blocks meshing on a guess."""
+    missing=[]
+    try:soils=list(g.Soils)
+    except Exception:return missing
+    for soil in soils:
+        try:
+            value=soil.Material.value
+        except Exception:
+            continue
+        if value is None or 'not assigned' in str(value).lower():
+            try:missing.append(str(soil.Name.value))
+            except Exception:missing.append(str(soil)[:60])
+    return missing
+
+
+def _has(obj,name):
+    """PLAXIS proxies raise their own error (not AttributeError) for a missing member."""
+    try:
+        getattr(obj,name)
+        return True
+    except Exception:
+        return False
+
+
+def execute_commands(server,g,rows,on_status=None,session=None):
+    """session keeps result names ('bh', 'sand') across separate tool calls on the same
+    PLAXIS project, so a later call can refer to objects created earlier."""
     from .windows_apps import _STOP,wait_automation
-    aliases={'g':g};results=[];started=False
+    session=session if session is not None else {'aliases':{},'created':{}}
+    aliases={**session['aliases'],'g':g};results=[];started=False
     def resolve(v):
         if isinstance(v,dict):
             parts=v['ref'].split('.')
             root=aliases.get(parts[0])
+            if root is None and parts[0][:1].islower():
+                # A lowercase root is a result name, not a PLAXIS object (those are
+                # capitalised: Borehole_1, Soil_1). Sending it to PLAXIS only yields
+                # 'Unrecognized token', which the model cannot diagnose.
+                known=', '.join(sorted(k for k in aliases if k!='g')) or 'chưa có'
+                raise NameError(f"Tên '{parts[0]}' chưa được định nghĩa trong dự án PLAXIS này (tên đã có: {known}). "
+                                "Dùng tên đối tượng PLAXIS như Borehole_1 hoặc g.Boreholes[0], hoặc tạo lại với result.")
             if root is None:
                 root=getattr(g,parts.pop(0))
             else:parts=parts[1:]
@@ -307,7 +428,7 @@ def execute_commands(server,g,rows,on_status=None):
         if isinstance(v,list):return [resolve(x) for x in v]
         return v
     for index,row in enumerate(rows):
-        started=False
+        started=False;method_on_object=False
         try:
             wait_automation()
             if _STOP.is_set():raise RuntimeError('Đã dừng điều khiển PLAXIS.')
@@ -363,10 +484,49 @@ def execute_commands(server,g,rows,on_status=None):
                     results.append({'step':index+1,'command':row['command'],'value':plain(existing),'truncated':False,
                                     'skipped':'Đã có đối tượng cùng hai đầu mút; không tạo lại. Dùng đối tượng này cho bước sau.'})
                     continue
-                method=server.new if row['command']=='new_project' else getattr(g,row['command'])
+                signature=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
+                name=row.get('result')
+                if name and session['created'].get(name)==signature and name in aliases:
+                    # Retrying a batch must not create a second borehole/point/material.
+                    results.append({'step':index+1,'command':row['command'],'value':plain(aliases[name]),'truncated':False,
+                                    'skipped':f"Đã tạo '{name}' bằng đúng lệnh này ở lần trước; dùng lại, không tạo trùng."})
+                    continue
+                if row['command']=='calculate':
+                    empty=_empty_phases(g)
+                    # Warn once per identical set; a deliberate repeat (e.g. a water-level-only
+                    # phase this check cannot see) is then allowed.
+                    if empty and session.get('empty_warned')!=empty:
+                        session['empty_warned']=empty
+                        raise RuntimeError('Chưa tính, các phase có vấn đề: '+'; '.join(empty)+
+                            '. Theo manual, mỗi phase phải kích hoạt tải/tường/neo hoặc tắt khối đất đào, và nối tiếp phase trước. Dùng set [{"ref":"Tên.Active"},{"ref":"Phase_x"},true/false] '
+                            'rồi đọc lại model_state. Nếu phase chỉ đổi mực nước (kiểm tra này không thấy), gọi calculate lần nữa.')
+                if row['command'] in ('mesh','gotomesh'):
+                    missing=_soils_without_material(g)
+                    if missing:
+                        raise RuntimeError('Chưa sang chế độ lưới/chia lưới: các vùng đất sau chưa có vật liệu: '+', '.join(missing[:10])+
+                            '. Ở chế độ soil/structures, gán: lớp đất setmaterial [{"ref":"g.Soillayers","index":i},mat]; '
+                            'polygon setmaterial [{"ref":"g.Polygon_x.Soil"},mat]. Nếu đã lỡ sang mesh/stages, gọi gotostructures trước khi gán.')
+                if row['command']=='new_project':method=server.new
+                elif row['command']=='initializerectangular' and not (args and _has(args[0],'initializerectangular')):
+                    method=g.SoilContour.initializerectangular
+                elif args and not isinstance(args[0],(int,float,str,bool,list)) and not _has(g,row['command']) and _has(args[0],row['command']):
+                    # Object method: {"command":"initializerectangular","args":[{"ref":"g.SoilContour"},0,0,5,4]}
+                    method=getattr(args[0],row['command']);args=args[1:];method_on_object=True
+                elif not _has(g,row['command']):
+                    raise AttributeError(f"Lệnh '{row['command']}' không có ở cấp g. Nếu đây là lệnh của một đối tượng, "
+                                         "đặt đối tượng làm tham số đầu tiên, ví dụ {\"command\":\"initializerectangular\",\"args\":[{\"ref\":\"g.SoilContour\"},0,0,5,4]}; "
+                                         "dùng command 'signature' với tên lệnh để xem đúng cú pháp.")
+                else:method=getattr(g,row['command'])
                 started=True
                 result=method(*args)
-            if row.get('result'):aliases[row['result']]=result
+            if row['command']=='new_project':
+                session['aliases'].clear();session['created'].clear()
+                aliases={'g':g}
+            if row.get('result'):
+                aliases[row['result']]=result
+                if row['command'] not in ('read','info','signature','summarize','verify_model'):
+                    session['aliases'][row['result']]=result
+                    session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             results.append({'step':index+1,'command':row['command'],'value':plain(result),'truncated':truncated})
         except Exception as exc:
@@ -376,10 +536,37 @@ def execute_commands(server,g,rows,on_status=None):
                 results.append({'step':index+1,'command':'read','value':None,'error':str(exc)[:500],
                                 'note':'Bước đọc lỗi, không ảnh hưởng mô hình; các bước sau vẫn chạy.'})
                 continue
-            return {'ok':False,'results':results,'failed_step':index+1,'failed_command':row['command'],
+            failure={'ok':False,'results':results,'failed_step':index+1,'failed_command':row['command'],
                     'error':str(exc)[:2000],'command_started':started,'uncertain':started,
                     'not_executed':not results and not started,
                     'note':'Đã dừng tại bước lỗi. Không chạy lại những bước đã thực hiện; đọc trạng thái hiện tại trước khi sửa.'}
+            if row['command'] in ('setmaterial','set','activate','deactivate') and re.search(
+                    r'Tried executing, but failed|Cannot apply the properties|Requested attribute .(?:Soil|Active|Material). is not present',str(exc)):
+                # The model guessed for 20 rounds here: in staged construction these
+                # properties are per phase and the objects are the split soil clusters.
+                failure['phase_hint']=('Nếu đang ở chế độ phase (sau gotostages): thuộc tính phụ thuộc phase, phải kèm phase, '
+                    'ví dụ setmaterial [{"ref":"Soil_1_1"},{"ref":"g.InitialPhase"},{"ref":"clay"}] hoặc '
+                    'set [{"ref":"Soil_1_1.Material"},{"ref":"g.InitialPhase"},{"ref":"clay"}]; tên khối đất đọc từ g.Soils, '
+                    'không dùng Polygon_x. Nếu đang dựng hình: gán qua thuộc tính .Soil của polygon. Cách chắc nhất: '
+                    'gotosoil/gotostructures, gán vật liệu cho mọi vùng rồi mới chia lưới lại.')
+            if 'Invalid parameters' in str(exc):
+                # PLAXIS validates arguments before acting, so nothing changed; give the
+                # accepted forms right away instead of letting the model guess for 8 rounds.
+                failure.update(uncertain=False,command_started=False,not_executed=not results)
+                try:
+                    listing=_signature(str(g.commands()),row['command'])
+                    counts=sorted({_arity(line) for line in listing.splitlines()[1:] if line.strip() and 'no parameters' not in line}|
+                                  ({0} if 'no parameters' in listing else set()))
+                    given=len(row.get('args',[]))-(1 if method_on_object else 0)
+                    if counts and given not in counts:
+                        failure['arguments_hint']=(f"Đã truyền {given} tham số cho {row['command']}; các dạng hợp lệ nhận "
+                                                   +' hoặc '.join(str(c) for c in counts)+' tham số. Bỏ tham số thừa, không thử lại cùng số lượng.')
+                except Exception:pass
+                try:failure['signature']=_signature(str(g.commands()),row['command'])+(
+                    '\nMỗi dòng là một dạng tham số hợp lệ; truyền đúng số lượng. Đối tượng dùng {"ref":"Tên_đối_tượng"}, '
+                    'không dùng chuỗi "Borehole_1".')
+                except Exception:pass
+            return failure
     answer={'ok':True,'results':results,
             'note':'Các lệnh đã trả kết quả. Hãy chạy tiếp bước kế tiếp của bài; chỉ kết luận mô hình đúng tài liệu '
                    'hoặc tính toán hội tụ sau khi đọc trạng thái pha và kết quả Output. Kết quả lệnh chưa phải bằng chứng hội tụ.'}
@@ -388,3 +575,75 @@ def execute_commands(server,g,rows,on_status=None):
         detached=_outside_soil(g)
         if detached:answer['warning']=detached
     return answer
+
+
+_SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
+           'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
+_MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
+_CHANGES_READONLY={'read','info','signature','summarize','verify_model'}
+
+
+def model_snapshot(g,limit=2400):
+    """Compact view of what the open PLAXIS model already holds, so the model can see
+    duplicates and what a failed batch left behind without guessing."""
+    lines=[]
+    try:
+        kind=g.Project.ModelType.value
+        lines.append(f"Project: ModelType={_MODEL_TYPES.get(kind,kind)} ({kind})")
+    except Exception:pass
+    for attr in _SNAPSHOT:
+        try:items=list(getattr(g,attr))
+        except Exception:continue
+        if not items:continue
+        names=[]
+        for item in items[:8]:
+            label=_label(item).split(' <')[0]
+            names.append(label[:40])
+        lines.append(f"{attr}: {len(items)} ({', '.join(names)}{', …' if len(items)>8 else ''})")
+    changes=phase_changes(g) if any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
+    for row in changes:
+        parts=[]
+        if row['on']:parts.append('bật '+', '.join(row['on'][:6]))
+        if row['off']:parts.append('tắt '+', '.join(row['off'][:6]))
+        if row['materials']:parts.append('đổi vật liệu '+', '.join(row['materials'][:4]))
+        lines.append(f"{row['phase']} (từ {row['previous']}): "+('; '.join(parts) if parts else 'KHÔNG THAY ĐỔI GÌ'))
+    missing=_soils_without_material(g)
+    if missing:
+        lines.append('CHƯA CÓ VẬT LIỆU: '+', '.join(missing[:10])+' (chỉ các khối này cần gán; khối khác đã có vật liệu)')
+    text='; '.join(lines) if len(lines)>1 or not lines or not lines[0].startswith('Project:') else ''
+    text=text or ((lines[0]+'; ') if lines else '')+'Mô hình trống (chưa có borehole, lớp đất, vật liệu, hình học hay phase).'
+    return text[:limit]
+
+
+_SESSIONS={}
+
+
+def run_batch(server,g,rows,on_status=None,port=None):
+    """Execute one tool call with per-project names, then attach the model state when the
+    batch failed or changed the model."""
+    try:project=str(g.Project)
+    except Exception:project='unknown'
+    session=_SESSIONS.setdefault((port,project),{'aliases':{},'created':{}})
+    assigns=any(r.get('command')=='setmaterial' for r in rows)
+    before=set(_soils_without_material(g)) if assigns else set()
+    result=execute_commands(server,g,rows,on_status,session)
+    if assigns and before:
+        still=before&set(_soils_without_material(g))
+        if still:
+            result['material_warning']=('setmaterial trả OK nhưng các vùng sau VẪN chưa có vật liệu: '+', '.join(sorted(still))+
+                '. Đối tượng vừa gán là vùng khác (thứ tự g.Soils không theo thứ tự vẽ). Gán theo tên vùng hoặc qua Polygon_x.Soil, rồi đọc lại model_state.')
+    if any(r['command']=='new_project' for r in rows):
+        try:project=str(g.Project)
+        except Exception:pass
+        _SESSIONS[(port,project)]={'aliases':{},'created':{}}
+    first=not session.get('seen');session['seen']=True
+    # First contact with this project: show what is already there before anything is built.
+    if first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
+        try:
+            result['model_state']=model_snapshot(g)
+            result['model_state_note']=('model_state là trạng thái thật của PLAXIS sau lệnh này. Trước khi tạo borehole, lớp đất, '
+                                        'vật liệu hay hình học, kiểm tra ở đây và dùng lại đối tượng đã có; không tạo trùng.')
+        except Exception as exc:result['model_state']='Chưa đọc được trạng thái mô hình: '+str(exc)[:200]
+    names=sorted(session['aliases'])
+    if names:result['names']=('Tên dùng lại được ở lệnh sau: '+', '.join(names))[:600]
+    return result

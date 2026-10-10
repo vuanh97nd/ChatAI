@@ -1,6 +1,7 @@
 """Giao diện desktop Windows bằng Qt; không khởi chạy HTTP server."""
 import html
 import math
+import os
 import time
 import re
 import json
@@ -688,6 +689,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.worker.stop_requested.set()
             self.send_btn.setEnabled(False)
             self.status.setText('Đang dừng… chờ thao tác hiện tại kết thúc an toàn.')
+            worker=self.worker
+            def still_running():
+                if self.worker is worker:
+                    self.status.setText('Tác vụ chưa dừng sau 10 giây (đang chờ ứng dụng bên ngoài). Đóng cửa sổ hai lần để buộc thoát.')
+            QTimer.singleShot(10000,still_running)
         elif not self.busy():self.send()
 
     def sync_send_button(self, enabled=True):
@@ -2471,8 +2477,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         def task():
             try:
                 from assistant.history_sync import HistorySync
-                changed=HistorySync(self.store,session).cycle()
-                result={'session':session,'changed':changed}
+                syncer=HistorySync(self.store,session);changed=syncer.cycle()
+                result={'session':session,'changed':changed,'failures':getattr(syncer,'failures',[])}
             except Exception as error:result={'session':session,'error':str(error)}
             try:self.history_sync_finished.emit(result)
             except RuntimeError:pass
@@ -2485,7 +2491,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if result.get('error'):
             self.account_status.setToolTip('Lịch sử vẫn được lưu trên máy; đang chờ đồng bộ server: '+result['error'])
             return
-        self.account_status.setToolTip('Nội dung hội thoại đã đồng bộ lên server. Ảnh và tệp gốc được giữ trên máy.')
+        failures=result.get('failures') or []
+        if failures:
+            titles=[self.store.conversation_title(cid,session['username']) or cid[:8] for cid,_ in failures[:3]]
+            self.account_status.setToolTip(f'{len(failures)} hội thoại chưa đồng bộ được (vẫn lưu trên máy): '+'; '.join(f'{t}: {e}' for t,(_,e) in zip(titles,failures)))
+        else:self.account_status.setToolTip('Nội dung hội thoại đã đồng bộ lên server. Ảnh và tệp gốc được giữ trên máy.')
         if result.get('changed') and not self.busy():
             state=self.store.load(self.cid)
             if not state.get('messages'):
@@ -3422,6 +3432,18 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if getattr(self,'exit_when_idle',False) and not self.busy():
             if hasattr(self,'automation_panel'):self.automation_panel.end()
             event.accept();return
+        if self.worker and getattr(self,'exit_when_idle',False) and getattr(self,'update_worker',None) is None:
+            # Second close while a stop is pending: the worker is stuck in a call that
+            # never checks the stop flag. Offer a hard exit; the saved state is marked
+            # interrupted and the next start never re-runs the unknown action.
+            choice=QMessageBox.question(self,'Chat AI','Tác vụ vẫn chưa dừng (có thể đang chờ ứng dụng bên ngoài trả lời).\n'
+                                        'Buộc thoát Chat AI? Hội thoại đã lưu được giữ; thao tác đang chờ sẽ được đánh dấu chưa rõ kết quả.')
+            if choice==QMessageBox.StandardButton.Yes:
+                try:self.store.audit(self.cid,'force_exit',{'reason':'worker_not_stopping'})
+                except Exception:pass
+                if hasattr(self,'automation_panel'):self.automation_panel.end()
+                os._exit(0)
+            event.ignore();return
         if self.worker and self.worker.cancellable and getattr(self,'update_worker',None) is None:
             self.exit_when_idle=True
             self.send_or_stop()

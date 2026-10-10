@@ -19,8 +19,18 @@ class ProcedureSync:
     def cycle(self):
         with self.store.connection() as db:
             db.execute('INSERT INTO procedure_accounts VALUES (?,?) ON CONFLICT(owner) DO UPDATE SET server=excluded.server',(self.owner,self.server))
-        changed=0
+        changed=0;self.rejected=[];self.skipped=[];upload_error=None
         admin=self.session.get('is_system') is True or self.session.get('role')=='system' or self.owner.lower()=='admin'
+        try:changed+=self.upload(admin)
+        except Exception as error:
+            if getattr(error,'status',None) in (401,403):raise
+            upload_error=error
+        changed+=self.download()
+        if upload_error:raise upload_error
+        return changed
+
+    def upload(self,admin):
+        changed=0
         for scope in ('private','shared'):
             if scope=='shared' and not admin:continue
             while True:
@@ -35,17 +45,32 @@ class ProcedureSync:
                 updates=[];hashes={}
                 for identifier,raw,old_hash in rows:
                     cleaned=clean_records([json.loads(raw)])
-                    if not cleaned:raise ValueError('Bài học trên máy không hợp lệ.')
+                    if not cleaned:
+                        # An invalid local record is skipped (until it changes) instead of blocking the queue.
+                        hashes[identifier]='INVALID';continue
                     record=public_record(cleaned[0]) if scope=='shared' else cleaned[0]
                     digest=hashlib.sha256(json.dumps(record,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
                     hashes[identifier]=digest
                     if old_hash!=digest:updates.append(record)
-                if updates:self.api('put',scope=scope,records=updates)
+                if updates:
+                    try:self.api('put',scope=scope,records=updates)
+                    except Exception as error:
+                        if getattr(error,'status',None)!=400:raise
+                        # One rejected record fails the whole batch: retry one by one, park the rejected ones.
+                        for record in updates:
+                            try:self.api('put',scope=scope,records=[record])
+                            except Exception as single:
+                                if getattr(single,'status',None)!=400:raise
+                                hashes[record['id']]='REJECTED';self.rejected.append((record['id'],str(single)[:200]))
                 with self.store.connection() as db:
                     for identifier,raw,_ in rows:
                         db.execute('INSERT OR REPLACE INTO procedure_uploads VALUES (?,?,?,?,?)',(self.server,self.owner,identifier,scope,hashes[identifier]))
                         db.execute('INSERT OR REPLACE INTO procedure_upload_sources VALUES (?,?,?,?,?)',(self.server,self.owner,identifier,scope,raw))
                 changed+=len(updates)
+        return changed
+
+    def download(self):
+        changed=0
         with self.store.connection() as db:
             row=db.execute('SELECT cursor FROM procedure_sync WHERE server=? AND owner=?',(self.server,self.owner)).fetchone()
         cursor=row[0] if row else 0
@@ -53,12 +78,16 @@ class ProcedureSync:
         while True:
             page=self.api('list',cursor=cursor)
             rows=page.get('items',[])
-            # Do not advance a cursor unless every row was validated and stored.
+            # A record this client cannot validate (e.g. newer schema) is skipped and
+            # reported; stopping the cursor on it would freeze every later lesson.
+            valid=[]
             for row in rows:
-                cleaned=clean_records([row.get('record')])
-                if len(cleaned)!=1:raise ValueError('Server trả bài học không hợp lệ; chưa cập nhật cursor.')
+                record=row.get('record')
+                if not isinstance(record,dict) or not isinstance(record.get('id'),str):continue
+                if row.get('deleted') or len(clean_records([record]))==1:valid.append(row)
+                else:self.skipped.append(record['id'])
             with self.store.connection() as db:
-                for row in rows:
+                for row in valid:
                     target=shared_owner if row['scope']=='shared' else self.owner
                     if row.get('deleted'):
                         db.execute('DELETE FROM procedure_memory WHERE owner=? AND id=?',(target,row['record']['id']))

@@ -111,7 +111,26 @@ class BrowserTools:
                 'background':bool(self.policy().get('browser_background',False)),
                 'notice':'Duyệt toàn bộ quy trình trước khi chạy tự động. Chrome riêng không có tài khoản/cookie của bạn. Nội dung trang được đưa vào hội thoại. Click có thể gửi biểu mẫu; kiểm tra từng bước. Trình duyệt đóng khi xong.'}
 
-    def commit(self, plan):
+    def commit(self, plan, limit=120):
+        """Run the browser workflow off the caller's thread so that stop, or a page whose
+        scripts never let a read return, cannot hang Chat AI (seen: 5 minutes on a KB page)."""
+        import threading
+        box={}
+        def run():
+            try:box['value']=self._commit(plan)
+            except BaseException as exc:box['error']=exc
+        worker=threading.Thread(target=run,daemon=True,name='ChatAI-browser')
+        worker.start();deadline=time.monotonic()+limit
+        while worker.is_alive():
+            worker.join(0.2)
+            if worker.is_alive() and (_STOP.is_set() or time.monotonic()>deadline):
+                reason='Đã dừng theo yêu cầu' if _STOP.is_set() else f'Trang không phản hồi sau {limit} giây'
+                return {'ok':False,'error':reason+'; đã bỏ phiên Chrome này.',
+                        'note':'Không mở lại cùng trang. Dùng kết quả tìm kiếm đã có, chọn nguồn khác hoặc tra manual.'}
+        if 'error' in box:raise box['error']
+        return box['value']
+
+    def _commit(self, plan):
         path=self.chrome_path(plan['path'])
         if fingerprint(path)!=plan['sha256']:raise PermissionError('Chrome đã đổi; duyệt lại quy trình.')
         if bool(self.policy().get('browser_background',False))!=plan.get('background',False):
