@@ -15,13 +15,13 @@
 AppId={{B4EE6C12-BA44-4F5D-9D18-570316F70791}
 AppName={#AppName}
 AppVersion={#AppVersion}
-; Bundled runtime includes Pillow, imageio, imageio-ffmpeg and OpenCV.
+; Bundled runtime includes Pillow, imageio, imageio-ffmpeg, OpenCV, and Windows automation (pywin32, pywinauto, comtypes, psutil, plxscripting).
 AppPublisher=Chat AI
 AppPublisherURL=https://github.com/vuanh97nd/ChatAI
 AppSupportURL=https://github.com/vuanh97nd/ChatAI/issues
 AppUpdatesURL=https://github.com/vuanh97nd/ChatAI/releases
 VersionInfoVersion=2.6.6.0
-VersionInfoDescription=Chat AI desktop installer with bundled Python and image/video processing libraries
+VersionInfoDescription=Chat AI desktop installer with bundled Python, image/video, and Windows automation libraries
 DefaultDirName={localappdata}\Programs\Chat-AI
 DefaultGroupName=Chat AI
 DisableProgramGroupPage=yes
@@ -60,7 +60,7 @@ Source: "{#SourceRoot}\requirements*.txt"; DestDir: "{app}"; Flags: ignoreversio
 Source: "{#SourceRoot}\logo_chat_ai.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\installer-assets\chat_ai.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Recursively packages the full Python runtime, including bundled Pillow/imageio/ffmpeg/OpenCV wheels.
+; Recursively packages the full Python runtime, including bundled Pillow/imageio/ffmpeg/OpenCV and Windows automation wheels.
 Source: "{#SourceRoot}\config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#SourceRoot}\glossary.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#SourceRoot}\experts.yaml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
