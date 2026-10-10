@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'computer.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
@@ -136,7 +137,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> signOut() async {
     poll?.cancel(); await voice.stop();
     // Local logout always completes, including when the server is unavailable.
-    try { await api.post('/api/logout', {}); } catch (_) {}
+    try { await api.post('/api/logout', {'client_type': 'android_companion'}); } catch (_) {}
     await storage.delete(key: 'session');
     api.session = null;
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
@@ -323,7 +324,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (error != null) MaterialBanner(content: Text(error!), actions: [
         TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
       if (working) const LinearProgressIndicator(),
-      Expanded(child: [chat(), ListView(children: [
+      Expanded(child: tab == 4 ? ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device) : [chat(), ListView(children: [
         ListTile(title: const Text('Hội thoại trên server'), trailing: IconButton(
           onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
         for (final item in conversations) ListTile(title: Text(item['title'] as String),
@@ -346,6 +347,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         NavigationDestination(icon: Icon(Icons.history), label: 'Hội thoại'),
         NavigationDestination(icon: Icon(Icons.memory), label: 'Bộ nhớ'),
         NavigationDestination(icon: Icon(Icons.person_outline), label: 'Tài khoản'),
+        NavigationDestination(icon: Icon(Icons.computer), label: 'Máy tính'),
       ]));
   }
 }

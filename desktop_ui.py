@@ -301,7 +301,9 @@ from assistant.code_ui import CodeMixin
 from assistant.admin_ui import AdminMixin,admin_session
 
 
-class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
+from assistant.remote_ui import RemoteMixin
+
+class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
     model_probe_finished = Signal(object)
     account_enrichment_finished = Signal(object,object)
     login_restore_finished = Signal(object)
@@ -612,6 +614,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.model.currentTextChanged.connect(self.model_changed)
         self.chat_mode.currentIndexChanged.connect(self.mode_changed)
         self.mode_changed(self.chat_mode.currentIndex())
+        self.init_remote()
         QTimer.singleShot(200, self.refresh_startup_models)
         QTimer.singleShot(100,self.restore_login)
 
@@ -759,14 +762,16 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             self.status.setText('Đã dừng phản hồi.');self.sent_prompt=None
         elif worker.failure:
             self.status.setText(worker.failure)
-            QMessageBox.warning(self, 'Chat AI', worker.failure)
+            if not self.remote_task or worker.chat_cid!=self.remote_task.get('cid'):QMessageBox.warning(self, 'Chat AI', worker.failure)
         elif callback:
             if not getattr(self,'exit_when_idle',False):callback(worker.result)
+        self.remote_finished(worker)
         if not worker.failure:self.sync_history()
         self.sync_procedures()
         if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
+        self.remote_progress(event)
         if event['type']=='app_countdown':
             seconds=event['seconds'];self.cancel_countdown_button.setVisible(seconds>0)
             if seconds:self.status.setText(f'AI sẽ thực hiện yêu cầu sau {seconds} giây…')
@@ -2134,6 +2139,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def after_chat(self, state):
         if state['pending']:
+            if self.remote_task and self.cid==self.remote_task.get('cid'):return
             self.approve_pending(state['pending'])
         else:
             perf = state.get('performance', {})
@@ -2387,6 +2393,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(box,'Mở trang phát hành GitHub',lambda:QDesktopServices.openUrl(QUrl('https://github.com/vuanh97nd/ChatAI/releases')))
         layout.addWidget(updates)
         advanced=QGroupBox('Nâng cao');advanced_layout=QVBoxLayout(advanced)
+        self.button(advanced_layout,'Kết nối điện thoại',self.remote_connect_dialog)
         self.button(advanced_layout,'Mở config.json',lambda:self.open_path(ROOT/'config.json'))
         self.button(advanced_layout,'Mở thư mục log và backup',lambda:self.open_path(ROOT/'data'))
         layout.addWidget(advanced)
@@ -3302,6 +3309,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
 
     def account_menu(self):
         menu=QMenu(self)
+        if self.server_session:menu.addAction('Kết nối điện thoại',self.remote_connect_dialog)
         if self.server_session:
             menu.addAction(self.server_session.get('fullname') or self.server_session['username']).setEnabled(False)
             if admin_session(self.server_session):
@@ -3458,7 +3466,11 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
     def closeEvent(self, event):
+        if getattr(self,'remote_exit_pending',False):
+            if self.remote_prepare_close(event):event.accept()
+            return
         if getattr(self,'exit_when_idle',False) and not self.busy():
+            if not self.remote_prepare_close(event):return
             if hasattr(self,'automation_panel'):self.automation_panel.end()
             event.accept();return
         if self.worker and getattr(self,'exit_when_idle',False) and getattr(self,'update_worker',None) is None:
@@ -3500,6 +3512,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             dialog.setEscapeButton(cancel_button)
             dialog.exec()
             if dialog.clickedButton() is exit_button:
+                if not self.remote_prepare_close(event):return
                 if self.server_session:
                     self.store.remember_conversation(self.server_session['username'],self.cid)
                 event.accept()

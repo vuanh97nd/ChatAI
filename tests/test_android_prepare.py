@@ -22,6 +22,7 @@ class AndroidPrepareTests(unittest.TestCase):
             self.assertEqual(before, (manifest.read_text(), build.read_text()))
             self.assertEqual(before[0].count('android.permission.INTERNET'), 1)
             self.assertEqual(before[0].count('android.permission.RECORD_AUDIO'), 1)
+            self.assertEqual(before[0].count('android.permission.CAMERA'), 1)
             self.assertEqual(before[0].count('android.speech.RecognitionService'), 1)
             self.assertEqual(before[0].count('android.intent.action.TTS_SERVICE'), 1)
             self.assertIn('android:required="false"', before[0])

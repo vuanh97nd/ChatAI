@@ -78,3 +78,10 @@ Bản Flutter trong [`mobile/`](mobile/README.md) dùng chung tài khoản, bộ
 và ví server; mặc định NVIDIA trực tuyến. GitHub Actions **Build Android APK**
 kiểm thử và xuất APK cài thử khi cập nhật `mobile/`. Xem hướng dẫn tải/build/ký
 APK và phạm vi chức năng trong tài liệu Android; bản này chưa chạy PLAXIS/GeoStudio.
+
+### Kết nối điện thoại với Windows
+
+Android → **Máy tính**; Windows → **Tài khoản → Kết nối điện thoại**. Ghép QR,
+xác nhận trên Windows một lần rồi gửi việc bằng chữ/giọng nói, xem tiến trình và
+kết quả văn bản, tạm dừng/tiếp tục/hủy. Cần Worker mới và ChatAI Windows đang mở.
+Xem [hướng dẫn và giới hạn](docs/phone-connection.md).

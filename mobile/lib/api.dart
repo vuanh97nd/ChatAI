@@ -74,6 +74,7 @@ class ChatApi {
   Future<Session> login(String name, String password, String device) async {
     final value = await post('/api/login', {
       'username': name.trim(), 'key': password, 'device_id': device,
+      'client_type': 'android_companion',
     }, authenticated: false);
     final user = value['user'] as Map<String, dynamic>;
     session = Session(user['username'] as String,

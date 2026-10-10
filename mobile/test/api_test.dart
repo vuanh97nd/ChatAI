@@ -11,6 +11,7 @@ void main() {
       expect(req.url.path, '/api/login');
       expect(body['username'], 'user@example.com');
       expect(body['device_id'], 'device-1');
+      expect(body['client_type'], 'android_companion');
       return http.Response(jsonEncode({'success': true, 'session_token': 'session:token',
         'fullname': 'Người dùng', 'user': {'username': 'user1'}}), 200);
     }));

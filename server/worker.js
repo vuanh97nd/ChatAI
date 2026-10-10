@@ -382,7 +382,7 @@ const referenceWorker = {async fetch(request,env){
    if(!isSys){
     if(!device)device='legacy_app_device_'+actor.username+'_'+Date.now();
     loginWrites.push(db.prepare("INSERT INTO account_tokens(token_hash,username,epoch,expires_at) SELECT ?,username,session_epoch,? FROM users WHERE username=? AND session_epoch=? AND account_status='active'").bind(await tokenDigest(sessionToken),new Date(Date.now()+30*86400000).toISOString(),actor.username,actor.session_epoch||0));
-    loginWrites.push(db.prepare("INSERT INTO device_logins(username, device_id, session_id, created_at) SELECT username,?,NULL,? FROM users WHERE username=? AND session_epoch=? AND account_status='active' ON CONFLICT(username) DO UPDATE SET device_id=excluded.device_id, session_id=NULL, created_at=excluded.created_at").bind(device,now,actor.username,actor.session_epoch||0));
+    if(body.client_type!=='android_companion')loginWrites.push(db.prepare("INSERT INTO device_logins(username, device_id, session_id, created_at) SELECT username,?,NULL,? FROM users WHERE username=? AND session_epoch=? AND account_status='active' ON CONFLICT(username) DO UPDATE SET device_id=excluded.device_id, session_id=NULL, created_at=excluded.created_at").bind(device,now,actor.username,actor.session_epoch||0));
    }
    loginWrites.push(db.prepare('INSERT OR IGNORE INTO welcome_accounts(username,seen_at) VALUES(?,?)').bind(actor.username,now));
    const written=await db.batch(loginWrites),welcome=written[written.length-1];
@@ -399,7 +399,7 @@ const referenceWorker = {async fetch(request,env){
        expires_at:actor.expires_at,
        license_type:isSys?'Vĩnh viễn':'Có thời hạn',
        first_login:welcome?.meta?.changes===1,
-       device_lock:!isSys,
+       device_lock:!isSys&&body.client_type!=='android_companion',
        permissions:isSys?['all','system','admin']:['user'],
        user:{
            username:actor.username,
@@ -421,7 +421,7 @@ const referenceWorker = {async fetch(request,env){
    const logoutActor=await auth(env,username,String(body.key||body.password||''));
    if(!logoutActor)return fail('Invalid session.',401);
    const isSys=logoutActor.is_system;
-   if(username&&!isSys){
+   if(username&&!isSys&&body.client_type!=='android_companion'){
     await db.prepare('DELETE FROM device_logins WHERE username=?').bind(username).run();
    }
    return reply({success:true,message:'Đăng xuất thành công'});
@@ -1319,6 +1319,13 @@ export default {
     if(!body||typeof body!=='object'||Array.isArray(body))return respond(fail('JSON phải là object.'));
    }
    await ensureRuntimeSchema(env.DB);
+   if(path.startsWith('/api/remote/')){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const actor=await auth(env,body.username,body.key);
+    if(!actor)return respond(fail('Đăng nhập để kết nối điện thoại.',401));
+    if(!await throttle(env.DB,actor.username,'remote',180))return respond(fail('Vui lòng đợi một chút.',429));
+    return respond(await remoteAPI(env,actor,path,body,request));
+   }
    if(path.startsWith('/api/lessons/')||path.startsWith('/api/admin/lessons/')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để dùng bộ nhớ.',401));
@@ -2345,4 +2352,137 @@ async function lessonsAPI(env,actor,path,body){
   return reply({success:true,message:'Đã thu hồi bài học dùng chung.'});
  }
  return fail('Không tìm thấy chức năng bộ nhớ.',404);
+}
+
+// Phone -> desktop relay: account ownership plus separately revocable device grants.
+const remoteSchemas=new WeakMap();
+const remoteId=value=>typeof value==='string'&&/^[a-f0-9-]{36}$/.test(value);
+const remoteHash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const remoteSecret=()=>[...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const remoteTerminal=new Set(['completed','failed','cancelled']);
+async function remoteSchema(db){
+ if(remoteSchemas.has(db))return remoteSchemas.get(db);
+ const job=db.batch([
+  db.prepare('CREATE TABLE IF NOT EXISTS remote_desktops(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,secret_hash TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,seen INTEGER NOT NULL DEFAULT 0)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS remote_desktop_owner ON remote_desktops(owner,id)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS remote_pairs(id TEXT PRIMARY KEY,desktop TEXT NOT NULL,owner TEXT NOT NULL,code_hash TEXT NOT NULL,expires INTEGER NOT NULL,mobile TEXT,mobile_name TEXT,mobile_hash TEXT,state TEXT NOT NULL DEFAULT \'offered\')'),
+  db.prepare('CREATE INDEX IF NOT EXISTS remote_pair_waiting ON remote_pairs(desktop,state,expires)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS remote_links(desktop TEXT NOT NULL,mobile TEXT NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,secret_hash TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(desktop,mobile))'),
+  db.prepare('CREATE TABLE IF NOT EXISTS remote_tasks(id TEXT PRIMARY KEY,desktop TEXT NOT NULL,mobile TEXT NOT NULL,owner TEXT NOT NULL,prompt TEXT NOT NULL,state TEXT NOT NULL DEFAULT \'queued\',lease_id TEXT,lease_until INTEGER,progress TEXT NOT NULL DEFAULT \'\',result TEXT NOT NULL DEFAULT \'\',reply TEXT NOT NULL DEFAULT \'\',command TEXT,version INTEGER NOT NULL DEFAULT 0,created INTEGER NOT NULL,updated INTEGER NOT NULL)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS remote_task_queue ON remote_tasks(desktop,state,created)'),
+  db.prepare('CREATE INDEX IF NOT EXISTS remote_task_mobile ON remote_tasks(owner,mobile,desktop,created DESC)'),
+  db.prepare("CREATE INDEX IF NOT EXISTS remote_task_active ON remote_tasks(desktop,created) WHERE state NOT IN ('queued','completed','failed','cancelled')")
+ ]);remoteSchemas.set(db,job);try{await job;}catch(e){remoteSchemas.delete(db);throw e;}
+}
+export async function remoteAPI(env,actor,path,body,request){
+ const db=env.DB,owner=actor.username,now=Date.now();await remoteSchema(db);
+ const desktopId=body.desktop_id;
+ if(path==='/api/remote/desktop/register'){
+  if(!remoteId(desktopId)||typeof body.name!=='string'||!body.name.trim()||body.name.length>100)return fail('Tên/mã máy không hợp lệ.');
+  const existing=await db.prepare('SELECT * FROM remote_desktops WHERE id=?').bind(desktopId).first();
+  if(existing){
+   if(existing.owner!==owner||await remoteHash(String(body.desktop_secret||''))!==existing.secret_hash)return fail('Máy đã đăng ký; cần khóa kết nối đã cấp.',403);
+   return reply({success:true,desktop_id:desktopId});
+  }
+  const secret=remoteSecret();
+  await db.prepare('INSERT INTO remote_desktops(id,owner,name,secret_hash) VALUES(?,?,?,?)').bind(desktopId,owner,body.name.trim(),await remoteHash(secret)).run();
+  return reply({success:true,desktop_id:desktopId,desktop_secret:secret});
+ }
+ const desktopPath=path.startsWith('/api/remote/desktop/');
+ let desktop;
+ if(desktopPath){
+  desktop=await db.prepare('SELECT * FROM remote_desktops WHERE id=? AND owner=?').bind(desktopId,owner).first();
+  if(!desktop||await remoteHash(String(body.desktop_secret||''))!==desktop.secret_hash)return fail('Không có quyền kết nối máy tính này.',403);
+ }
+ if(path==='/api/remote/desktop/pair'){
+  const id=crypto.randomUUID(),code=remoteSecret();
+  await db.prepare("UPDATE remote_pairs SET state='expired' WHERE desktop=? AND state IN ('offered','waiting')").bind(desktopId).run();
+  await db.prepare('INSERT INTO remote_pairs(id,desktop,owner,code_hash,expires) VALUES(?,?,?,?,?)').bind(id,desktopId,owner,await remoteHash(code),now+300000).run();
+  return reply({success:true,pair_id:id,expires:now+300000,qr:JSON.stringify({kind:'chatai_pair',version:1,server:new URL(request.url).origin,desktop_id:desktopId,code})});
+ }
+ if(path==='/api/remote/pair/request'){
+  if(!remoteId(body.mobile_id)||typeof body.mobile_secret!=='string'||!/^[a-f0-9]{64}$/.test(body.mobile_secret)||typeof body.code!=='string'||!/^[a-f0-9]{64}$/.test(body.code)||typeof body.name!=='string'||!body.name.trim()||body.name.length>100)return fail('Mã ghép nối không hợp lệ.');
+  const pair=await db.prepare("SELECT * FROM remote_pairs WHERE desktop=? AND owner=? AND code_hash=? AND expires>? AND state IN ('offered','waiting')").bind(desktopId,owner,await remoteHash(body.code),now).first();
+  if(!pair)return fail('QR hết hạn hoặc khác tài khoản.',404);
+  if(pair.mobile&&pair.mobile!==body.mobile_id)return fail('QR đã được điện thoại khác dùng.',409);
+  const changed=await db.prepare("UPDATE remote_pairs SET mobile=?,mobile_name=?,mobile_hash=?,state='waiting' WHERE id=? AND (mobile IS NULL OR mobile=?) AND state IN ('offered','waiting')").bind(body.mobile_id,body.name.trim(),await remoteHash(body.mobile_secret),pair.id,body.mobile_id).run();
+  if(changed.meta?.changes!==1)return fail('QR đã được sử dụng.',409);
+  return reply({success:true,pair_id:pair.id,state:'waiting'});
+ }
+ if(path==='/api/remote/pair/status'){
+  const row=await db.prepare('SELECT state,mobile_hash,expires FROM remote_pairs WHERE id=? AND owner=? AND mobile=?').bind(String(body.pair_id||''),owner,String(body.mobile_id||'')).first();
+  if(!row||await remoteHash(String(body.mobile_secret||''))!==row.mobile_hash)return fail('Không tìm thấy ghép nối.',404);
+  return reply({success:true,state:row.expires<=now&&['offered','waiting'].includes(row.state)?'expired':row.state});
+ }
+ if(path==='/api/remote/desktop/approve'){
+  const pair=await db.prepare("SELECT * FROM remote_pairs WHERE id=? AND desktop=? AND owner=? AND state='waiting' AND expires>?").bind(String(body.pair_id||''),desktopId,owner,now).first();
+  if(!pair)return fail('Yêu cầu ghép nối đã hết hạn.',404);
+  if(body.approve!==true){await db.prepare("UPDATE remote_pairs SET state='rejected' WHERE id=?").bind(pair.id).run();return reply({success:true});}
+  await db.batch([
+   db.prepare('INSERT INTO remote_links(desktop,mobile,owner,name,secret_hash) VALUES(?,?,?,?,?) ON CONFLICT(desktop,mobile) DO UPDATE SET name=excluded.name,secret_hash=excluded.secret_hash,revoked=0').bind(desktopId,pair.mobile,owner,pair.mobile_name,pair.mobile_hash),
+   db.prepare("UPDATE remote_pairs SET state='approved' WHERE id=?").bind(pair.id)
+  ]);return reply({success:true});
+ }
+ if(path==='/api/remote/desktop/revoke'){
+  if(!remoteId(body.mobile_id))return fail('Mã điện thoại không hợp lệ.');
+  await db.batch([
+   db.prepare('UPDATE remote_links SET revoked=1 WHERE desktop=? AND mobile=? AND owner=?').bind(desktopId,body.mobile_id,owner),
+   db.prepare("UPDATE remote_tasks SET state='cancelled',command=NULL,updated=? WHERE desktop=? AND mobile=? AND state='queued'").bind(now,desktopId,body.mobile_id),
+   db.prepare("UPDATE remote_tasks SET command='cancel',updated=? WHERE desktop=? AND mobile=? AND state NOT IN ('queued','completed','failed','cancelled')").bind(now,desktopId,body.mobile_id)
+  ]);return reply({success:true});
+ }
+ if(path==='/api/remote/desktop/enable'){
+  if(typeof body.enabled!=='boolean')return fail('enabled phải là bật/tắt.');
+  await db.prepare('UPDATE remote_desktops SET enabled=?,seen=? WHERE id=?').bind(body.enabled?1:0,now,desktopId).run();return reply({success:true});
+ }
+ if(path==='/api/remote/desktop/links'){
+  const rows=await db.prepare('SELECT mobile,name,revoked FROM remote_links WHERE desktop=? AND owner=?').bind(desktopId,owner).all();return reply({success:true,links:rows.results||[]});
+ }
+ if(path==='/api/remote/desktop/tick'){
+  await db.prepare('UPDATE remote_desktops SET seen=? WHERE id=?').bind(now,desktopId).run();
+  const update=body.update;
+  if(update){
+   if(!remoteId(update.id)||!remoteId(update.lease_id)||!Number.isSafeInteger(update.version)||update.version<1||!['running','needs_input','paused','completed','failed','cancelled'].includes(update.state)||typeof update.progress!=='string'||update.progress.length>2000||typeof update.result!=='string'||update.result.length>48000)return fail('Tiến trình không hợp lệ.');
+   await db.prepare("UPDATE remote_tasks SET state=?,progress=?,result=?,version=?,lease_until=?,updated=?,command=CASE WHEN command=? THEN NULL ELSE command END WHERE id=? AND desktop=? AND owner=? AND lease_id=? AND version<? AND state NOT IN ('completed','failed','cancelled')").bind(update.state,update.progress,update.result,update.version,now+90000,now,String(update.ack||''),update.id,desktopId,owner,update.lease_id,update.version).run();
+  }
+  const pairs=await db.prepare("SELECT id,mobile_name,mobile FROM remote_pairs WHERE desktop=? AND owner=? AND state='waiting' AND expires>?").bind(desktopId,owner,now).all();
+  // Claims are never put back in the queue on timeout: their execution may already have started.
+  const active=await db.prepare("SELECT id,state,command,reply,lease_id,version FROM remote_tasks WHERE desktop=? AND owner=? AND state NOT IN ('queued','completed','failed','cancelled') ORDER BY created LIMIT 1").bind(desktopId,owner).first();
+  let task=null;
+  if(!active&&desktop.enabled&&body.ready===true){
+   task=await db.prepare("UPDATE remote_tasks SET state='claimed',lease_id=?,lease_until=?,updated=? WHERE id=(SELECT t.id FROM remote_tasks t JOIN remote_links l ON l.desktop=t.desktop AND l.mobile=t.mobile AND l.owner=t.owner WHERE t.desktop=? AND t.owner=? AND t.state='queued' AND l.revoked=0 ORDER BY t.created,t.id LIMIT 1) AND state='queued' AND NOT EXISTS (SELECT 1 FROM remote_tasks WHERE desktop=? AND state NOT IN ('queued','completed','failed','cancelled')) RETURNING id,prompt,lease_id").bind(crypto.randomUUID(),now+90000,now,desktopId,owner,desktopId).first();
+  }
+  return reply({success:true,pairs:pairs.results||[],task,active,enabled:Boolean(desktop.enabled)});
+ }
+ // Every mobile request is both account-scoped and tied to a desktop-approved grant.
+ if(!remoteId(desktopId)||!remoteId(body.mobile_id))return fail('Máy tính/điện thoại không hợp lệ.');
+ const link=await db.prepare('SELECT l.name,d.name AS desktop_name,d.enabled,d.seen FROM remote_links l JOIN remote_desktops d ON d.id=l.desktop WHERE l.desktop=? AND l.mobile=? AND l.owner=? AND l.secret_hash=? AND l.revoked=0').bind(desktopId,body.mobile_id,owner,await remoteHash(String(body.mobile_secret||''))).first();
+ if(!link)return fail('Chưa được máy tính cấp quyền hoặc quyền đã bị thu hồi.',403);
+ if(path==='/api/remote/mobile/status'){
+  const rows=await db.prepare('SELECT id,prompt,state,progress,result,created,updated,lease_until,command FROM remote_tasks WHERE desktop=? AND owner=? AND mobile=? ORDER BY created DESC LIMIT 50').bind(desktopId,owner,body.mobile_id).all();
+  return reply({success:true,desktop:{id:desktopId,name:link.desktop_name,enabled:Boolean(link.enabled),online:now-link.seen<60000},tasks:(rows.results||[]).map(t=>({...t,connection_lost:!remoteTerminal.has(t.state)&&t.state!=='queued'&&Number(t.lease_until)<now}))});
+ }
+ if(path==='/api/remote/mobile/send'){
+  if(!remoteId(body.task_id)||typeof body.prompt!=='string'||!body.prompt.trim()||body.prompt.length>12000)return fail('Lệnh cần 1–12000 ký tự.');
+  const existing=await db.prepare('SELECT desktop,mobile,owner,prompt FROM remote_tasks WHERE id=?').bind(body.task_id).first();
+  if(existing&&(existing.owner!==owner||existing.desktop!==desktopId||existing.mobile!==body.mobile_id||existing.prompt!==body.prompt.trim()))return fail('Mã tác vụ đã được dùng cho yêu cầu khác.',409);
+  if(!existing)await db.prepare('INSERT INTO remote_tasks(id,desktop,mobile,owner,prompt,created,updated) VALUES(?,?,?,?,?,?,?)').bind(body.task_id,desktopId,body.mobile_id,owner,body.prompt.trim(),now,now).run();
+  return reply({success:true,task_id:body.task_id});
+ }
+ if(path==='/api/remote/mobile/control'){
+  if(!remoteId(body.task_id)||!['pause','resume','cancel','reply'].includes(body.action)||typeof (body.text||'')!=='string'||String(body.text||'').length>12000)return fail('Điều khiển không hợp lệ.');
+  const task=await db.prepare('SELECT state FROM remote_tasks WHERE id=? AND desktop=? AND mobile=? AND owner=?').bind(body.task_id,desktopId,body.mobile_id,owner).first();
+  if(!task)return fail('Không tìm thấy tác vụ.',404);
+  if(remoteTerminal.has(task.state))return fail('Tác vụ đã kết thúc.',409);
+  if(task.state==='queued'){
+   if(body.action!=='cancel')return fail('Tác vụ chưa bắt đầu.',409);
+   await db.prepare("UPDATE remote_tasks SET state='cancelled',updated=? WHERE id=? AND state='queued'").bind(now,body.task_id).run();
+  }else{
+   if(['resume','reply'].includes(body.action)&&!['paused','needs_input'].includes(task.state))return fail('Chỉ tiếp tục tác vụ đang dừng hoặc chờ bổ sung.',409);
+   await db.prepare('UPDATE remote_tasks SET command=?,reply=?,updated=? WHERE id=?').bind(body.action,String(body.text||''),now,body.task_id).run();
+  }
+  return reply({success:true});
+ }
+ if(path==='/api/remote/desktop/ack')return fail('Unknown desktop action.',404);
+ return fail('Không có chức năng kết nối này.',404);
 }

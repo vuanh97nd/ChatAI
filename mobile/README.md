@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.2
+# ChatAI Android — bản thử nghiệm 0.3
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -15,13 +15,15 @@ DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấ
   ngừng khi ứng dụng xuống nền, khi hết hạn hoặc đã thanh toán.
 - Micro nhập câu hỏi tiếng Việt: hiển thị bản nháp, người dùng kiểm tra và bấm gửi.
 - Nút Đọc câu trả lời / Dừng đọc; tự dừng nghe/đọc khi xuống nền, đổi trang hoặc đăng xuất.
-- Không điều khiển hoặc ghi đè mô hình PLAXIS/GeoStudio.
+- Mục Máy tính: quét/dán QR, chờ Windows cấp quyền, gửi việc bằng chữ/giọng nói,
+  xem tiến trình/kết quả văn bản, tạm dừng/tiếp tục/hủy, bổ sung cho AI.
 
-Chưa có đọc PDF/Excel/ảnh, push notification, chạy tác vụ Windows,
+Chưa có gửi PDF/Excel/DXF trực tiếp lên Windows, ảnh màn hình từ xa, push notification,
 đồng bộ hội thoại desktop hay tự cập nhật APK. Kho hội thoại Android hiện là
 `ai_conversations`; desktop đang dùng `desktop_history`. Bộ nhớ cá nhân và ví dùng chung.
-Server hiện khóa một thiết bị cho mỗi tài khoản thường: đăng nhập Android có thể
-ảnh hưởng phiên desktop; không thay đổi chính sách này trong bản Android đầu tiên.
+Đăng nhập Android gửi `client_type=android_companion`, được cấp phiên riêng và
+không thay thế khóa thiết bị desktop. Quyền điều khiển máy chỉ có sau khi Windows
+xác nhận QR. Cần triển khai Worker mới để dùng luồng đồng hành này.
 
 ## Tải APK thử nghiệm
 
@@ -48,7 +50,7 @@ flutter build apk --debug
 
 File: `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
 Script lấy cấu trúc Android từ chính phiên bản Flutter đang dùng; không ghi đè
-mã ứng dụng và kiểm thử. Không cần cập nhật Worker cho bản này.
+mã ứng dụng và kiểm thử. Cần triển khai Worker mới cho mục Máy tính; chat/giọng nói dùng API sẵn có.
 
 ## Ký APK chính thức
 
@@ -87,3 +89,20 @@ của Android. Đây là hội thoại bằng nút bấm, chưa phải gọi tho
 Thử thêm: từ chối quyền → nhập chữ; cấp quyền → nói → chỉnh bản nháp → gửi;
 đọc câu trả lời dài → dừng; chuyển app xuống nền khi đang nghe/đọc;
 thiếu dịch vụ nhận dạng hoặc thiếu giọng Việt phải hiện thông báo thay vì treo app.
+
+## Kết nối Windows
+
+1. Cập nhật và mở ChatAI Windows, đăng nhập cùng tài khoản Android.
+2. Menu Tài khoản → Kết nối điện thoại (hoặc Cài đặt → Nâng cao).
+3. Android → Máy tính → Quét QR hoặc Dán mã. Windows xác nhận tên điện thoại.
+4. Gửi việc. Nếu máy offline, chưa cho phép nhận việc hoặc đang có tác vụ/bản nháp
+   cục bộ, yêu cầu chờ trong hàng đợi. ChatAI Windows phải đang mở và có mạng.
+5. Tạm dừng/hủy là yêu cầu dừng tại điểm an toàn, không bảo đảm ngắt ngay phần mềm
+   đang tính. Mất kết nối không tự chạy lại tác vụ đã nhận. Kết quả chưa rõ cần kiểm tra.
+6. Windows có nút thu hồi điện thoại và ngừng nhận việc mới. AI dùng quyền, model,
+   thư mục hiện có trong cấu hình Windows; chức năng này không cấp quyền ngoài cấu hình.
+
+Bản này trả văn bản kết quả; đọc file đã có trong thư mục Windows qua câu lệnh.
+Chưa chuyển file từ điện thoại, tải file kết quả hoặc điều khiển chuột/phím trực tiếp.
+Nếu PLAXIS Input đang mở, tác vụ có tên PLAXIS bị từ chối trước khi chạy để tránh
+thay thế mô hình hiện tại. Chuẩn bị project riêng trên Windows trước.

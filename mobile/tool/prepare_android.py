@@ -14,6 +14,8 @@ def configure(android):
         text = text.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
     if 'android.permission.RECORD_AUDIO' not in text:
         text = text.replace('<application', '<uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-feature android:name="android.hardware.microphone" android:required="false"/>\n    <application', 1)
+    if 'android.permission.CAMERA' not in text:
+        text = text.replace('<application', '<uses-permission android:name="android.permission.CAMERA"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <application', 1)
     intents = ''
     for action in ('android.speech.RecognitionService', 'android.intent.action.TTS_SERVICE'):
         if action not in text:
