@@ -1,14 +1,15 @@
 """Desktop pairing and delivery into the existing ChatAI executor."""
 import json
 import re
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QDialog,QVBoxLayout,QLabel,QPlainTextEdit,QPushButton,QCheckBox,QMessageBox
+from PySide6.QtWidgets import QDialog,QVBoxLayout,QLabel,QPlainTextEdit,QPushButton,QCheckBox,QMessageBox,QApplication
 from .remote_bridge import RemoteChannel,register_device,desktop_api,existing_plaxis_input
 
 class RemoteMixin:
     def init_remote(self):
         self.remote_channel=None;self.remote_device=None;self.remote_task=None
+        self.remote_screen_allowed=False
         self.remote_approval_seen=set();self.remote_stop_action=None
         self.remote_ready_timer=QTimer(self);self.remote_ready_timer.setInterval(1000)
         self.remote_ready_timer.timeout.connect(self.remote_ready);self.remote_ready_timer.start()
@@ -36,6 +37,7 @@ class RemoteMixin:
         def show(result):
             device,pair,links=result;self.remote_device=device
             if self.remote_channel and self.remote_channel.isRunning():self.remote_channel.stop()
+            self.remote_screen_allowed=False
             channel=RemoteChannel(session,device,self);self.remote_channel=channel
             channel.event.connect(self.remote_event);channel.finished.connect(lambda:self.remote_channel_ended(channel));channel.start()
             dialog=QDialog(self);dialog.setWindowTitle('Kết nối điện thoại');dialog.resize(540,650)
@@ -49,6 +51,10 @@ class RemoteMixin:
             text=QPlainTextEdit(pair['qr']);text.setReadOnly(True);text.setMaximumHeight(100);layout.addWidget(text)
             toggle=QCheckBox('Nhận việc từ điện thoại khi ChatAI đang mở');toggle.setChecked(True);layout.addWidget(toggle)
             toggle.toggled.connect(lambda enabled:self.work(lambda emit:desktop_api(session,device,'enable',enabled=enabled)))
+            screen_toggle=QCheckBox('Cho phép điện thoại yêu cầu ảnh màn hình trong phiên này')
+            screen_toggle.setToolTip('Ảnh toàn màn hình có thể chứa dữ liệu của ứng dụng khác. Mặc định tắt; không tự chụp định kỳ.')
+            layout.addWidget(screen_toggle)
+            screen_toggle.toggled.connect(lambda enabled:setattr(self,'remote_screen_allowed',enabled))
             for link in links['links']:
                 if link['revoked']:continue
                 button=QPushButton('Thu hồi quyền: '+link['name']);layout.addWidget(button)
@@ -60,7 +66,7 @@ class RemoteMixin:
     def remote_event(self,event):
         channel=self.remote_channel
         if not channel or self.sender() is not channel:return
-        if not self.server_session or self.server_session['username']!=channel.session['username']:return
+        if not self.server_session or self.server_session['username']!=channel.session['username'] or self.server_session['endpoint']!=channel.session['endpoint']:return
         kind=event['type']
         if kind=='pairs':
             for pair in event['pairs']:
@@ -69,6 +75,21 @@ class RemoteMixin:
                 yes=QMessageBox.question(self,'Ghép điện thoại',f"Cho phép {pair['mobile_name']} (mã {pair.get('mobile','')[:8]}) gửi việc, xem tiến trình và kết quả trên máy này?\nAI chỉ dùng quyền và thư mục đã cấp trong Cài đặt.")==QMessageBox.StandardButton.Yes
                 import threading
                 threading.Thread(target=self.remote_pair_decision,args=(channel,pair['id'],yes),daemon=True).start()
+        elif kind=='capture':
+            image=None
+            if self.remote_screen_allowed:
+                try:
+                    screen=QApplication.primaryScreen()
+                    pixmap=screen.grabWindow(0) if screen else QPixmap()
+                    if not pixmap.isNull():
+                        pixmap=pixmap.scaled(1600,1000,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation)
+                        raw=QByteArray();buffer=QBuffer(raw);buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+                        if pixmap.save(buffer,'JPEG',65) and raw.size()<=600000:
+                            import base64
+                            image=base64.b64encode(bytes(raw)).decode('ascii')
+                        buffer.close()
+                except Exception:pass
+            channel.submit_capture(event['id'],image)
         elif kind=='task':
             self.remote_accept(event['task'])
         elif kind=='orphan':

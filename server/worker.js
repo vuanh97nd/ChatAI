@@ -197,7 +197,7 @@ export async function requestNVIDIA(env,instructions,text,history,body,outputTok
  }catch(error){return fail(error?.name==='AbortError'?'NVIDIA AI quá thời gian chờ tổng 120 giây (gồm chờ thử lại).':'Không kết nối được NVIDIA AI. Vui lòng thử lại.',503);}
  finally{clearTimeout(timer);}
 }
-const b64=b=>btoa(String.fromCharCode(...b));
+const b64=b=>{let text='';for(let i=0;i<b.length;i+=8192)text+=String.fromCharCode(...b.subarray(i,i+8192));return btoa(text);};
 const unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const adminSecret=env=>String(env.ADMIN_KEY||env.CHAT_AI_ADMIN_KEY||'');
 const kvStore=env=>env.CHAT_AI_KV||env.MEMORY_KV||env.KV||null;
@@ -2365,6 +2365,8 @@ async function remoteSchema(db){
  const job=db.batch([
   db.prepare('CREATE TABLE IF NOT EXISTS remote_desktops(id TEXT PRIMARY KEY,owner TEXT NOT NULL,name TEXT NOT NULL,secret_hash TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 0,seen INTEGER NOT NULL DEFAULT 0)'),
   db.prepare('CREATE INDEX IF NOT EXISTS remote_desktop_owner ON remote_desktops(owner,id)'),
+  db.prepare("CREATE TABLE IF NOT EXISTS remote_captures(id TEXT PRIMARY KEY,owner TEXT NOT NULL,desktop TEXT NOT NULL,mobile TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'queued',message TEXT NOT NULL DEFAULT '',expires INTEGER NOT NULL,created INTEGER NOT NULL)"),
+  db.prepare('CREATE INDEX IF NOT EXISTS remote_capture_queue ON remote_captures(desktop,state,expires)'),
   db.prepare('CREATE TABLE IF NOT EXISTS remote_pairs(id TEXT PRIMARY KEY,desktop TEXT NOT NULL,owner TEXT NOT NULL,code_hash TEXT NOT NULL,expires INTEGER NOT NULL,mobile TEXT,mobile_name TEXT,mobile_hash TEXT,state TEXT NOT NULL DEFAULT \'offered\')'),
   db.prepare('CREATE INDEX IF NOT EXISTS remote_pair_waiting ON remote_pairs(desktop,state,expires)'),
   db.prepare('CREATE TABLE IF NOT EXISTS remote_links(desktop TEXT NOT NULL,mobile TEXT NOT NULL,owner TEXT NOT NULL,name TEXT NOT NULL,secret_hash TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(desktop,mobile))'),
@@ -2438,6 +2440,19 @@ export async function remoteAPI(env,actor,path,body,request){
  if(path==='/api/remote/desktop/links'){
   const rows=await db.prepare('SELECT mobile,name,revoked FROM remote_links WHERE desktop=? AND owner=?').bind(desktopId,owner).all();return reply({success:true,links:rows.results||[]});
  }
+ if(path==='/api/remote/desktop/capture'){
+  if(!remoteId(body.capture_id))return fail('Mã ảnh không hợp lệ.');
+  const capture=await db.prepare("SELECT c.* FROM remote_captures c JOIN remote_links l ON l.desktop=c.desktop AND l.mobile=c.mobile AND l.owner=c.owner WHERE c.id=? AND c.desktop=? AND c.owner=? AND c.state='claimed' AND c.expires>? AND l.revoked=0").bind(body.capture_id,desktopId,owner,now).first();
+  if(!capture)return fail('Yêu cầu ảnh hết hạn hoặc quyền đã bị thu hồi.',404);
+  if(body.denied===true){await db.prepare("UPDATE remote_captures SET state='denied',message=? WHERE id=?").bind('Windows chưa cho phép chụp màn hình trong phiên này.',capture.id).run();return reply({success:true});}
+  const image=body.image;
+  if(typeof image!=='string'||image.length>800000||image.length<8||image.length%4||!/^[A-Za-z0-9+/]+={0,2}$/.test(image)||!image.startsWith('/9j/'))return fail('Ảnh JPEG không hợp lệ hoặc quá lớn.');
+  const kv=personalStore(env);if(!kv||!env.MEMORY_ENCRYPTION_KEY)return fail('Server chưa cấu hình kho ảnh mã hóa.',503);
+  const keyName='remote-screen:'+capture.id;
+  await kv.put(keyName,await encryptMemory(env,keyName,{image}),{expirationTtl:300});
+  await db.prepare("UPDATE remote_captures SET state='ready' WHERE id=? AND state='claimed'").bind(capture.id).run();
+  return reply({success:true});
+ }
  if(path==='/api/remote/desktop/tick'){
   await db.prepare('UPDATE remote_desktops SET seen=? WHERE id=?').bind(now,desktopId).run();
   const update=body.update;
@@ -2452,12 +2467,38 @@ export async function remoteAPI(env,actor,path,body,request){
   if(!active&&desktop.enabled&&body.ready===true){
    task=await db.prepare("UPDATE remote_tasks SET state='claimed',lease_id=?,lease_until=?,updated=? WHERE id=(SELECT t.id FROM remote_tasks t JOIN remote_links l ON l.desktop=t.desktop AND l.mobile=t.mobile AND l.owner=t.owner WHERE t.desktop=? AND t.owner=? AND t.state='queued' AND l.revoked=0 ORDER BY t.created,t.id LIMIT 1) AND state='queued' AND NOT EXISTS (SELECT 1 FROM remote_tasks WHERE desktop=? AND state NOT IN ('queued','completed','failed','cancelled')) RETURNING id,prompt,lease_id").bind(crypto.randomUUID(),now+90000,now,desktopId,owner,desktopId).first();
   }
-  return reply({success:true,pairs:pairs.results||[],task,active,enabled:Boolean(desktop.enabled)});
+  let capture=null;
+  if(desktop.enabled)capture=await db.prepare("UPDATE remote_captures SET state='claimed' WHERE id=(SELECT c.id FROM remote_captures c JOIN remote_links l ON l.desktop=c.desktop AND l.mobile=c.mobile AND l.owner=c.owner WHERE c.desktop=? AND c.owner=? AND c.state='queued' AND c.expires>? AND l.revoked=0 ORDER BY c.created LIMIT 1) AND state='queued' RETURNING id,mobile").bind(desktopId,owner,now).first();
+  return reply({success:true,pairs:pairs.results||[],task,active,capture,enabled:Boolean(desktop.enabled)});
  }
  // Every mobile request is both account-scoped and tied to a desktop-approved grant.
  if(!remoteId(desktopId)||!remoteId(body.mobile_id))return fail('Máy tính/điện thoại không hợp lệ.');
  const link=await db.prepare('SELECT l.name,d.name AS desktop_name,d.enabled,d.seen FROM remote_links l JOIN remote_desktops d ON d.id=l.desktop WHERE l.desktop=? AND l.mobile=? AND l.owner=? AND l.secret_hash=? AND l.revoked=0').bind(desktopId,body.mobile_id,owner,await remoteHash(String(body.mobile_secret||''))).first();
  if(!link)return fail('Chưa được máy tính cấp quyền hoặc quyền đã bị thu hồi.',403);
+ if(path==='/api/remote/mobile/capture/request'){
+  if(!remoteId(body.capture_id))return fail('Mã ảnh không hợp lệ.');
+  const kv=personalStore(env);if(!kv||!env.MEMORY_ENCRYPTION_KEY)return fail('Server chưa cấu hình kho ảnh mã hóa.',503);
+  await personalKey(env);
+  const existing=await db.prepare('SELECT owner,desktop,mobile FROM remote_captures WHERE id=?').bind(body.capture_id).first();
+  if(existing){if(existing.owner!==owner||existing.desktop!==desktopId||existing.mobile!==body.mobile_id)return fail('Mã ảnh đã được sử dụng.',409);return reply({success:true,capture_id:body.capture_id});}
+  if(!link.enabled||now-link.seen>=60000)return fail('Máy tính chưa online hoặc đã ngừng nhận yêu cầu.',409);
+  await db.prepare('DELETE FROM remote_captures WHERE desktop=? AND expires<=?').bind(desktopId,now).run();
+  const pending=await db.prepare("SELECT id FROM remote_captures WHERE desktop=? AND mobile=? AND owner=? AND expires>? AND (state IN ('queued','claimed') OR created>?) LIMIT 1").bind(desktopId,body.mobile_id,owner,now,now-10000).first();
+  if(pending)return fail('Đang có yêu cầu ảnh; chờ ảnh trước hoặc hết hạn.',409);
+  await db.prepare('INSERT INTO remote_captures(id,owner,desktop,mobile,expires,created) VALUES(?,?,?,?,?,?)').bind(body.capture_id,owner,desktopId,body.mobile_id,now+300000,now).run();
+  return reply({success:true,capture_id:body.capture_id});
+ }
+ if(path==='/api/remote/mobile/capture/get'){
+  if(!remoteId(body.capture_id))return fail('Mã ảnh không hợp lệ.');
+  const row=await db.prepare('SELECT state,message,expires FROM remote_captures WHERE id=? AND owner=? AND desktop=? AND mobile=?').bind(body.capture_id,owner,desktopId,body.mobile_id).first();
+  if(!row||row.expires<=now)return reply({success:true,state:'expired'});
+  if(row.state!=='ready')return reply({success:true,state:row.state,message:row.message});
+  const kv=personalStore(env),keyName='remote-screen:'+body.capture_id;
+  const raw=kv?await kv.get(keyName):null;
+  if(!raw)return reply({success:true,state:'pending_storage'});
+  const item=await decryptMemory(env,keyName,raw);
+  return reply({success:true,state:'ready',image:item.image,expires:row.expires});
+ }
  if(path==='/api/remote/mobile/status'){
   const rows=await db.prepare('SELECT id,prompt,state,progress,result,created,updated,lease_until,command FROM remote_tasks WHERE desktop=? AND owner=? AND mobile=? ORDER BY created DESC LIMIT 50').bind(desktopId,owner,body.mobile_id).all();
   return reply({success:true,desktop:{id:desktopId,name:link.desktop_name,enabled:Boolean(link.enabled),online:now-link.seen<60000},tasks:(rows.results||[]).map(t=>({...t,connection_lost:!remoteTerminal.has(t.state)&&t.state!=='queued'&&Number(t.lease_until)<now}))});

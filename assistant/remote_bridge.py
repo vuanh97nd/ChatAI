@@ -45,7 +45,7 @@ class RemoteChannel(QThread):
         super().__init__(parent);self.session=dict(session);self.device=dict(device)
         self.request=request or desktop_api
         self.stop_event=threading.Event();self.lock=threading.Lock()
-        self.ready=False;self.update=None;self.current=None;self.last_command=None;self.version=0
+        self.ready=False;self.update=None;self.current=None;self.last_command=None;self.version=0;self.captures=[]
     def set_ready(self,ready):
         with self.lock:self.ready=ready
     def report(self,state,progress='',result='',ack=''):
@@ -55,12 +55,21 @@ class RemoteChannel(QThread):
             self.update={'id':self.current['id'],'lease_id':self.current['lease_id'],
                          'version':self.version,'state':state,'progress':progress[:2000],
                          'result':result[-48000:],'ack':ack or (self.update or {}).get('ack','')}
+    def submit_capture(self,capture_id,image=None):
+        with self.lock:self.captures.append({'capture_id':capture_id,'image':image,'denied':image is None})
     def tick(self):
         with self.lock:
             if self.update:
                 self.version+=1;self.update['version']=self.version
             packet={'ready':self.ready and self.current is None,'update':dict(self.update) if self.update else None}
         data=self.request(self.session,self.device,'tick',**packet)
+        capture=data.get('capture')
+        if capture:self.event.emit({'type':'capture','id':capture['id']})
+        with self.lock:
+            pending=list(self.captures);self.captures.clear()
+        for payload in pending:
+            try:self.request(self.session,self.device,'capture',**payload)
+            except Exception:self.event.emit({'type':'connection','text':'Không gửi được ảnh màn hình. Yêu cầu ảnh mới để thử lại.'})
         self.event.emit({'type':'pairs','pairs':data.get('pairs',[])})
         with self.lock:
             active=data.get('active')

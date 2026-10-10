@@ -46,6 +46,18 @@ class RemoteChannelTests(unittest.TestCase):
         ])
         for _ in range(5):channel.tick()
         self.assertEqual(len([e for e in events if e['type']=='command']),2)
+    def test_capture_event_does_not_capture_or_upload_without_gui_response(self):
+        channel,request,events=self.make([{'capture':{'id':'screen-id'},'pairs':[]}])
+        channel.tick()
+        self.assertEqual(events[0],{'type':'capture','id':'screen-id'})
+        self.assertEqual(request.call_count,1)
+    def test_capture_payload_sent_off_gui_tick_and_not_retried_automatically(self):
+        channel,request,events=self.make([{'pairs':[]},{'success':True},{'pairs':[]}])
+        channel.submit_capture('screen-id',None)
+        channel.tick();channel.tick()
+        uploads=[c for c in request.call_args_list if c.args[2]=='capture']
+        self.assertEqual(len(uploads),1)
+        self.assertTrue(uploads[0].kwargs['denied'])
     def test_open_plaxis_is_detected_before_phone_job(self):
         with patch('psutil.process_iter',return_value=[SimpleNamespace(info={'name':'Plaxis2DInput.exe'})]):
             self.assertTrue(existing_plaxis_input())
@@ -66,6 +78,20 @@ class RemoteUITests(unittest.TestCase):
         ui.remote_channel.report.assert_not_called()
         ui.worker.chat_cid='remote';ui.remote_progress({'type':'status','text':'Remote progress'})
         ui.remote_channel.report.assert_called_once_with('running','Remote progress')
+    def test_screen_is_denied_without_explicit_session_permission(self):
+        ui=RemoteMixin();channel=Mock();ui.remote_channel=channel;ui.sender=lambda:channel
+        ui.server_session={'username':'alice','endpoint':'https://example.org'}
+        channel.session=dict(ui.server_session);ui.remote_screen_allowed=False
+        with patch('assistant.remote_ui.QApplication.primaryScreen') as screen:
+            ui.remote_event({'type':'capture','id':'screen-id'})
+        screen.assert_not_called();channel.submit_capture.assert_called_once_with('screen-id',None)
+    def test_old_server_event_cannot_capture_screen_after_account_endpoint_changes(self):
+        ui=RemoteMixin();channel=Mock();ui.remote_channel=channel;ui.sender=lambda:channel
+        ui.server_session={'username':'alice','endpoint':'https://new.example.org'}
+        channel.session={'username':'alice','endpoint':'https://old.example.org'};ui.remote_screen_allowed=True
+        with patch('assistant.remote_ui.QApplication.primaryScreen') as screen:
+            ui.remote_event({'type':'capture','id':'screen-id'})
+        screen.assert_not_called();channel.submit_capture.assert_not_called()
     def test_existing_plaxis_model_prevents_execution(self):
         ui=RemoteMixin();ui.remote_channel=Mock();ui.busy=lambda:False
         ui.input=Mock();ui.input.toPlainText.return_value=''

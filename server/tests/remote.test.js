@@ -85,3 +85,43 @@ for(const [name,mod] of [['root',root],['server',server]]){
   }finally{env.DB.raw.close();}
  });
 }
+for(const [name,mod] of [['root',root],['server',server]]){
+ test(`${name}: screenshots require approved grants, are claimed once, encrypted, expired and revocable`,async()=>{
+  const values=new Map(),env={DB:database(),MEMORY_ENCRYPTION_KEY:Buffer.alloc(32,7).toString('base64'),MEMORY_KV:{async put(k,v,options){values.set(k,{v,options});},async get(k){return values.get(k)?.v||null;}}};
+  const owner={username:'alice'},desktop=crypto.randomUUID(),mobile=crypto.randomUUID();
+  const call=async(action,body={},actor=owner)=>{const r=await mod.remoteAPI(env,actor,'/api/remote/'+action,body,new Request('https://example.org'));return {status:r.status,data:await r.json()};};
+  try{
+   const device=(await call('desktop/register',{desktop_id:desktop,name:'PC'})).data;
+   const pc={desktop_id:desktop,desktop_secret:device.desktop_secret};
+   const offer=(await call('desktop/pair',pc)).data;
+   const phone={desktop_id:desktop,mobile_id:mobile,mobile_secret:'d'.repeat(64)};
+   const id=crypto.randomUUID();
+   assert.equal((await call('mobile/capture/request',{...phone,capture_id:id})).status,403);
+   await call('pair/request',{...phone,code:JSON.parse(offer.qr).code,name:'Phone'});
+   await call('desktop/approve',{...pc,pair_id:offer.pair_id,approve:true});
+   assert.equal((await call('mobile/capture/request',{...phone,capture_id:id})).status,409); // receiver disabled
+   await call('desktop/enable',{...pc,enabled:true});
+   await call('mobile/capture/request',{...phone,capture_id:id});
+   await call('mobile/capture/request',{...phone,capture_id:id}); // same request is safe to retry
+   assert.equal((await call('mobile/capture/request',{...phone,capture_id:crypto.randomUUID()})).status,409);
+   assert.equal((await call('desktop/tick',pc)).data.capture.id,id);
+   assert.equal((await call('desktop/tick',pc)).data.capture,null); // never auto recapture
+   assert.equal((await call('desktop/capture',{...pc,capture_id:id,image:'not-image'})).status,400);
+   const image='/9j/'+ 'A'.repeat(799996); // near upload limit, catches base64 argument-stack overflow
+   assert.equal((await call('desktop/capture',{...pc,capture_id:id,image})).status,200);
+   const stored=values.get('remote-screen:'+id);
+   assert.equal(stored.options.expirationTtl,300);
+   assert.ok(!stored.v.includes(image));
+   assert.equal((await call('mobile/capture/get',{...phone,capture_id:id})).data.image,image);
+   assert.equal((await call('mobile/capture/get',{...phone,capture_id:id},{username:'bob'})).status,403);
+   assert.equal((await call('mobile/status',phone)).data.image,undefined);
+   env.DB.raw.prepare('UPDATE remote_captures SET expires=1 WHERE id=?').run(id);
+   assert.equal((await call('mobile/capture/get',{...phone,capture_id:id})).data.state,'expired');
+   const denied=crypto.randomUUID();await call('mobile/capture/request',{...phone,capture_id:denied});await call('desktop/tick',pc);
+   await call('desktop/capture',{...pc,capture_id:denied,denied:true});
+   assert.equal((await call('mobile/capture/get',{...phone,capture_id:denied})).data.state,'denied');
+   await call('desktop/revoke',{...pc,mobile_id:mobile});
+   assert.equal((await call('mobile/capture/get',{...phone,capture_id:denied})).status,403);
+  }finally{env.DB.raw.close();}
+ });
+}

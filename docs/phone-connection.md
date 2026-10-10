@@ -1,6 +1,6 @@
 # Kết nối điện thoại với ChatAI Windows
 
-Android 0.3 + bản desktop/Worker cùng thay đổi này. GitHub Actions triển khai
+Android 0.4 + bản desktop/Worker cùng thay đổi này. GitHub Actions triển khai
 `work.js` và tạo APK thử nghiệm riêng; chỉ dùng sau khi cả hai workflow đạt.
 Windows cập nhật nguồn rồi mở lại; bộ cài cần build lại để có thư viện tạo QR.
 Nếu chưa có qrcode, dùng mã JSON hiển thị dưới QR và Dán mã trên Android.
@@ -50,7 +50,7 @@ yêu cầu ghép chờ và danh sách của điện thoại. Desktop tick 20 gi�
 ## Phạm vi và kiểm tra triển khai
 
 Có lệnh chữ/giọng nói, hàng đợi, tiến trình, kết quả văn bản, bổ sung, dừng/tiếp tục,
-thu hồi kết nối. Chưa có gửi file lên Windows, tải file kết quả, ảnh màn hình,
+thu hồi kết nối và yêu cầu ảnh màn hình. Chưa có gửi file lên Windows, tải file kết quả,
 điều khiển chuột/phím trực tiếp hay push notification.
 
 Kiểm thử trên Windows/Android thật trước dùng rộng rãi:
@@ -63,3 +63,21 @@ Kiểm thử trên Windows/Android thật trước dùng rộng rãi:
 
 Kiểm thử HTTP/SQLite giả lập không thay thế các kiểm tra này. Cloud environment
 không có phiên Windows/PLAXIS và hiện không tải được Flutter SDK để build cục bộ.
+
+## Ảnh màn hình theo yêu cầu
+
+Windows: trong Kết nối điện thoại, bật “Cho phép điện thoại yêu cầu ảnh màn hình
+trong phiên này”. Mặc định tắt và tắt lại khi tạo phiên mới. Android: Máy tính →
+Yêu cầu ảnh màn hình. Chụp màn hình chính, có thể chứa ứng dụng khác; chỉ bật khi
+đồng ý chia sẻ dữ liệu hiển thị. Mỗi yêu cầu chụp một lần, không tự chụp định kỳ.
+
+Ảnh JPEG tối đa 1600×1000 và 600 KB, gửi HTTPS trên thread riêng; nội dung mã hóa
+AES-GCM trong KV, TTL 5 phút. Server cần binding MEMORY_KV/CHAT_AI_KV/KV và secret
+MEMORY_ENCRYPTION_KEY (32 byte base64) đã dùng cho bộ nhớ cá nhân. Thiếu cấu hình
+thì báo lỗi, không lưu ảnh dạng rõ. Ảnh không được đính vào hội thoại hay tự gửi
+cho nhà cung cấp AI. Android chỉ tải ảnh sau yêu cầu, không tải lại mỗi tick.
+Thu hồi quyền chặn tải ảnh; hết hạn không xem lại qua API.
+
+Yêu cầu bị mất phản hồi không tự chụp lại. Có thể gửi yêu cầu mới sau khi yêu cầu
+cũ hết hạn. Cần thử trên Windows thật: tắt quyền phải bị từ chối, bật quyền nhận
+đúng màn hình, thu hồi không xem được, ảnh hết hạn.

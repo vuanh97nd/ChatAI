@@ -1,4 +1,4 @@
-# ChatAI Android — bản thử nghiệm 0.3
+# ChatAI Android — bản thử nghiệm 0.4
 
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
@@ -17,8 +17,10 @@ DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấ
 - Nút Đọc câu trả lời / Dừng đọc; tự dừng nghe/đọc khi xuống nền, đổi trang hoặc đăng xuất.
 - Mục Máy tính: quét/dán QR, chờ Windows cấp quyền, gửi việc bằng chữ/giọng nói,
   xem tiến trình/kết quả văn bản, tạm dừng/tiếp tục/hủy, bổ sung cho AI.
+- Yêu cầu ảnh màn hình Windows khi máy tính đã bật quyền riêng; phóng to ảnh,
+  ẩn ảnh, tự hết hạn sau 5 phút. Không chụp định kỳ hoặc tự gửi ảnh cho AI.
 
-Chưa có gửi PDF/Excel/DXF trực tiếp lên Windows, ảnh màn hình từ xa, push notification,
+Chưa có gửi PDF/Excel/DXF trực tiếp lên Windows, tải file kết quả, push notification,
 đồng bộ hội thoại desktop hay tự cập nhật APK. Kho hội thoại Android hiện là
 `ai_conversations`; desktop đang dùng `desktop_history`. Bộ nhớ cá nhân và ví dùng chung.
 Đăng nhập Android gửi `client_type=android_companion`, được cấp phiên riêng và

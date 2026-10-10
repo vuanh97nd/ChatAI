@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -23,7 +24,9 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
   List<dynamic> tasks = [];
   bool busy = false, active = true;
   String? error, requestId, pairId;
-  String? requestText;
+  String? requestText, captureId;
+  Uint8List? screenImage;
+  DateTime? screenExpires;
   Timer? timer;
   int delay = 10;
   late final String owner;
@@ -47,7 +50,12 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     if (state == AppLifecycleState.inactive) return;
     active = state == AppLifecycleState.resumed;
     if (!active) { timer?.cancel(); unawaited(voice.stop()); }
-    else { schedule(); }
+    else {
+      if (screenExpires != null && DateTime.now().isAfter(screenExpires!)) {
+        changed(() { screenImage = null; screenExpires = null; });
+      }
+      schedule();
+    }
   }
   Future<void> restore() async {
     try {
@@ -87,6 +95,19 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
       final result = await widget.api.post('/api/remote/mobile/status', credentials());
       changed(() { desktop = result['desktop'] as Map<String, dynamic>;
         tasks = result['tasks'] as List<dynamic>; });
+      if (screenExpires != null && DateTime.now().isAfter(screenExpires!)) {
+        changed(() { screenImage = null; screenExpires = null; });
+      }
+      if (captureId != null) {
+        final capture = await widget.api.post('/api/remote/mobile/capture/get', {...credentials(), 'capture_id': captureId});
+        if (capture['state'] == 'ready') {
+          final bytes = base64Decode(capture['image'] as String);
+          changed(() { screenImage = bytes; screenExpires = DateTime.fromMillisecondsSinceEpoch(capture['expires'] as int); });
+          captureId = null;
+        } else if (['denied', 'expired'].contains(capture['state'])) {
+          changed(() => error = capture['message'] as String? ?? 'Yêu cầu ảnh hết hạn.'); captureId = null;
+        }
+      }
       delay = 10;
     } catch (e) {
       changed(() => error = '$e'); delay = (delay * 2).clamp(10, 60).toInt();
@@ -112,7 +133,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     proposed['pending_pair_id'] = result['pair_id'];
     await vault.write(key: storageKey, value: jsonEncode(proposed));
     changed(() { link = proposed; pairId = result['pair_id'] as String;
-      desktop = null; tasks = []; active = true; delay = 10; });
+      desktop = null; tasks = []; screenImage = null; screenExpires = null; captureId = null; active = true; delay = 10; });
   }
   Future<void> scan() async {
     await voice.stop();
@@ -163,6 +184,14 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     });
     await refresh();
   }
+  Future<void> requestScreen() async {
+    await action(() async {
+      captureId ??= uuid.v4();
+      await widget.api.post('/api/remote/mobile/capture/request', {...credentials(), 'capture_id': captureId});
+      changed(() => screenImage = null);
+    });
+    await refresh();
+  }
   Future<void> dictate() async {
     if (voice.listening || voice.starting) { await voice.stop(); return; }
     final original = prompt.text.trimRight();
@@ -190,6 +219,13 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     if (busy) const LinearProgressIndicator(),
     if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(error!)),
     if (desktop != null && pairId == null) ...[
+      OutlinedButton.icon(onPressed: busy ? null : requestScreen, icon: const Icon(Icons.screenshot_monitor),
+        label: Text(captureId == null ? 'Yêu cầu ảnh màn hình' : 'Chờ ảnh · thử lại')) ,
+      if (screenImage != null) ...[
+        const Text('Ảnh màn hình vừa yêu cầu · hết hạn sau 5 phút'),
+        InteractiveViewer(maxScale: 5, child: Image.memory(screenImage!, gaplessPlayback: false)),
+        TextButton(onPressed: () => changed(() { screenImage = null; screenExpires = null; }), child: const Text('Ẩn ảnh')),
+      ],
       const SizedBox(height: 16),
       TextField(controller: prompt, minLines: 2, maxLines: 6, maxLength: 12000,
         decoration: const InputDecoration(labelText: 'Giao việc cho máy tính',
