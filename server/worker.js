@@ -1929,6 +1929,14 @@ async function billingCredit(env,order,receipt,actor,note){
 }
 async function billingAPI(env,actor,path,body,request){
  await billingSchema(env.DB);
+ if(path==='/api/billing/order/status'){
+  const id=body.order_id;
+  if(typeof id!=='string'||!/^[-a-f0-9]{36}$/.test(id))return billingError('Mã đơn không hợp lệ.');
+  const order=await env.DB.prepare('SELECT id,status,expires FROM billing_orders WHERE id=? AND owner=?').bind(id,actor.username).first();
+  if(!order)return billingError('Không tìm thấy đơn thanh toán.',404);
+  const status=order.status==='pending'&&order.expires<=Date.now()?'expired':order.status;
+  return reply({success:true,order_status:{...order,status}});
+ }
  const config=await billingConfig(env),db=env.DB;
  const admin=path.startsWith('/api/admin/billing/');
  if(admin&&!administrator(actor))return billingError('Chỉ admin được quản lý thanh toán.',403);

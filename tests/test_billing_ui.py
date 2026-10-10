@@ -23,10 +23,45 @@ class BillingUITests(unittest.TestCase):
     def test_poll_uses_background_refresh(self):
         dialog=self.dialog()
         try:
-            dialog.current_order={'kind':'topup','amount':20000}
+            dialog.current_order={'id':'order-1','kind':'topup','amount':20000,'expires':4102444800000}
             with patch.object(dialog,'send') as send:
-                dialog.poll();send.assert_called_once_with('/api/billing/status',background=True)
+                dialog.poll();send.assert_called_once_with('/api/billing/order/status',{'order_id':'order-1'},background=True)
         finally:dialog.close()
+
+    def test_paid_status_refreshes_once_and_ignores_old_order(self):
+        dialog=self.dialog()
+        try:
+            dialog.current_order={'id':'new','expires':4102444800000}
+            dialog.timer.start()
+            dialog.received('/api/billing/order/status',{'order_status':{'id':'old','status':'paid'}})
+            self.assertTrue(dialog.timer.isActive())
+            dialog.received('/api/billing/order/status',{'order_status':{'id':'new','status':'paid'}})
+            self.assertFalse(dialog.timer.isActive());self.assertIsNone(dialog.current_order)
+            with patch.object(dialog,'refresh') as refresh:
+                dialog.request_finished();dialog.request_finished()
+                refresh.assert_called_once()
+        finally:dialog.close()
+
+    def test_expired_qr_stops_without_reading_server(self):
+        dialog=self.dialog()
+        try:
+            dialog.current_order={'id':'expired','expires':1};dialog.timer.start()
+            with patch.object(dialog,'send') as send:
+                dialog.poll();send.assert_not_called()
+            self.assertFalse(dialog.timer.isActive());self.assertIsNone(dialog.current_order)
+        finally:dialog.close()
+
+    def test_poll_failures_back_off_and_success_resets_interval(self):
+        dialog=self.dialog()
+        try:
+            from unittest.mock import Mock
+            dialog.worker=Mock(path='/api/billing/order/status')
+            dialog.current_order={'id':'new','expires':4102444800000}
+            for _ in range(5):dialog.failed('D1 unavailable')
+            self.assertEqual(dialog.timer.interval(),60000)
+            dialog.received('/api/billing/order/status',{'order_status':{'id':'new','status':'pending'}})
+            self.assertEqual(dialog.timer.interval(),10000)
+        finally:dialog.worker=None;dialog.close()
 
     def test_custom_topup_amount_is_sent_and_validated(self):
         dialog=self.dialog()

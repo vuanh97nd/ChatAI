@@ -87,7 +87,7 @@ class BillingDialog(QDialog):
         if self.is_admin:self.build_admin()
         self.status=QLabel();self.status.setWordWrap(True);self.status.setTextFormat(Qt.PlainText);layout.addWidget(self.status)
         footer=QHBoxLayout();refresh=QPushButton('Làm mới');refresh.clicked.connect(self.refresh);footer.addWidget(refresh);footer.addStretch();close=QPushButton('Đóng');close.clicked.connect(self.close);footer.addWidget(close);layout.addLayout(footer)
-        self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.poll)
+        self.timer=QTimer(self);self.timer.setInterval(10000);self.timer.timeout.connect(self.poll)
         self.refresh()
 
     @staticmethod
@@ -141,11 +141,15 @@ class BillingDialog(QDialog):
         if self.worker:self.worker.deleteLater();self.worker=None
         if getattr(self,'pending_topup',False):
             self.pending_topup=False;self.create_order('topup');return
+        if getattr(self,'refresh_after_payment',False):
+            self.refresh_after_payment=False;self.refresh();return
         if getattr(self,'load_config_next',False):
             self.load_config_next=False;self.send('/api/admin/billing/config/get')
 
     def failed(self,text):
         self.status.setText(text)
+        if self.worker and self.worker.path=='/api/billing/order/status':
+            self.timer.setInterval(min(60000,self.timer.interval()*2))
         if self.summary.text()=='Đang tải số dư…':
             self.summary.setText('Chưa tải được số dư. Bấm Làm mới để thử lại.')
             self.month_summary.setText('Chưa tải được thống kê token.')
@@ -165,7 +169,11 @@ class BillingDialog(QDialog):
         if self.send('/api/billing/status') and self.is_admin:self.load_config_next=True
 
     def poll(self):
-        if self.current_order:self.send('/api/billing/status',background=True)
+        if not self.current_order:return
+        if self.current_order['expires']/1000<=datetime.now().timestamp():
+            self.timer.stop();self.current_order=None;self.qr.clear()
+            self.payment_info.setText('QR đã hết hạn. Hãy tạo yêu cầu mới.');return
+        self.send('/api/billing/order/status',{'order_id':self.current_order['id']},background=True)
 
     def topup_amount(self):
         return self.custom_amount.value() if self.amount.currentData() is None else self.amount.currentData()
@@ -201,6 +209,15 @@ class BillingDialog(QDialog):
         self.send('/api/admin/billing/reconcile',{'id':self.review_id.text().strip(),'tokens':self.review_tokens.value(),'note':self.reason.text().strip()})
 
     def received(self,path,result):
+        if path=='/api/billing/order/status':
+            order=result['order_status']
+            if not self.current_order or self.current_order['id']!=order['id']:return
+            self.timer.setInterval(10000)
+            if order['status'] in ('paid','expired','cancelled'):
+                self.timer.stop();self.current_order=None;self.qr.clear()
+                self.payment_info.setText('Đã nhận tiền, đang cập nhật ví.' if order['status']=='paid' else 'QR đã kết thúc. Hãy tạo yêu cầu mới.')
+                if order['status']=='paid':self.refresh_after_payment=True
+            return
         self.status.setText(result.get('message','Đã cập nhật.'))
         fee=result.get('service_fee',result.get('config',{}).get('service_fee'))
         price=result.get('token_price',result.get('price_per_million',result.get('config',{}).get('token_price')))
@@ -249,7 +266,7 @@ class BillingDialog(QDialog):
             states={'charged':'Đã tính phí','reserved':'Đang xử lý','pending_review':'Chờ đối soát','released':'Không tính phí','reconciled':'Đã đối soát','free':'Miễn phí','free_unknown_usage':'Miễn phí · thiếu usage'}
             self.fill(self.usage,[[date_label(u['created']),u['tokens'] if u['tokens'] is not None else '—',money(u['charged']/1000),states.get(u['state'],u['state']),u['id']] for u in result['usage']])
         if 'order' in result:
-            self.current_order=result['order'];self.timer.start()
+            self.current_order=result['order'];self.timer.setInterval(10000);self.timer.start()
             pix=QPixmap();pix.loadFromData(result.get('_qr_bytes',b''))
             if not pix.isNull():self.qr.setPixmap(pix.scaled(300,300,Qt.KeepAspectRatio,Qt.SmoothTransformation))
             else:self.qr.clear();self.qr.setText('Chưa tải được ảnh QR. Có thể chuyển khoản bằng thông tin dưới đây.')
