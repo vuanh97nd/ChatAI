@@ -202,7 +202,7 @@ class ApiDocumentClient:
             if not isinstance(content,str) or not content.strip():raise CloudError('API chưa trả nội dung; kiểm tra model hoặc token trả lời.')
             truncated=value['choices'][0].get('finish_reason')=='length'
             if truncated and model=='document-small':raise CloudError('Đoạn tổng hợp bị giới hạn token, chưa đọc/tổng hợp đầy đủ.')
-            return {'message':{'role':'assistant','content':content},'truncated':truncated}
+            return {'message':{'role':'assistant','content':content},'truncated':truncated,'usage':value.get('usage') or {}}
         except HTTPError as error:
             if error.code==400 and 'response_format' in payload:
                 # The model rejected JSON mode; resend once with only the schema instruction.
@@ -431,7 +431,7 @@ class ServerApiClient:
                 if self.on_status:self.on_status('Đang kết nối lại NVIDIA AI…')
         if not result.get('success') or not result.get('answer'):raise CloudError(result.get('message','AI trên server chưa trả nội dung.'))
         if result.get('truncated') and model=='document-small':raise CloudError('Đoạn tổng hợp bị giới hạn token, chưa tổng hợp đầy đủ.')
-        return {'message':{'role':'assistant','content':result['answer']},'truncated':bool(result.get('truncated'))}
+        return {'message':{'role':'assistant','content':result['answer']},'truncated':bool(result.get('truncated')),'usage':result.get('usage') or {}}
 
 
 def register_custom_ai(entries):

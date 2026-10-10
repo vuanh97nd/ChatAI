@@ -1867,7 +1867,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    if(testing)return reply({success:true,message:'API phản hồi HTTP 200 nhưng chưa có câu trả lời'+(limited?' vì hết giới hạn token.':reasoningOnly?'; chỉ nhận được phần suy luận.':'.')+' Chưa xác nhận AI hoạt động đầy đủ. Hãy chọn mã AI từ danh sách dịch vụ rồi kiểm tra lại.'});
    return reply({success:false,usage:result.usage,code:finish==='content_filter'||finish==='SAFETY'?'AI_CONTENT_FILTER':limited?'AI_OUTPUT_LIMIT':'EMPTY_AI_RESPONSE',message:limited?'AI đã dùng hết giới hạn token trước khi trả lời.':finish==='content_filter'||finish==='SAFETY'?'Dịch vụ AI đã chặn nội dung yêu cầu.':'API đã nhận yêu cầu nhưng trả văn bản rỗng.'},502);
   }
-  return reply({success:true,usage:result.usage,answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
+  return reply({success:true,usage:result.usage||(result.usageMetadata?{prompt_tokens:result.usageMetadata.promptTokenCount,completion_tokens:result.usageMetadata.candidatesTokenCount,prompt_cache_hit_tokens:result.usageMetadata.cachedContentTokenCount||0}:undefined),answer,truncated:finish==='MAX_TOKENS'||finish==='length',message:testing?'Kết nối thành công.':undefined});
  }catch(error){const detail=String(error?.message||'').split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').slice(0,240);return reply({success:false,code:'UPSTREAM_CONNECTION_ERROR',message:(provider==='nvidia'?'Không kết nối được NVIDIA AI':'Không kết nối được '+provider.toUpperCase())+' hoặc quá thời gian chờ.'+(detail?' Chi tiết: '+detail:'')},503);}finally{if(!streaming)clearTimeout(timer);}
 }
 

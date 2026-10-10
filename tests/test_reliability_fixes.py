@@ -693,3 +693,29 @@ class MidStringBracketTests(unittest.TestCase):
         g.commands.return_value = "setmaterial (sm)\n  <{1,...}: Feature'>' Material'"
         result = execute_commands(Mock(), g, [{'command': 'setmaterial', 'args': [{'ref': 'Line_1'}, 1]}])
         self.assertIn('g.Plates', result['object_hint'])
+
+
+class TokenSavingTests(unittest.TestCase):
+    def test_older_summary_is_separate_from_cached_prefix(self):
+        from assistant.online_automation import planning_messages
+        state = {'messages': [{'role': 'user', 'content': 'hỏi %d' % i} if i % 2 == 0 else {'role': 'assistant', 'content': 'đáp %d' % i} for i in range(60)]}
+        messages = planning_messages(state, 'CỐ ĐỊNH')
+        self.assertTrue(messages[0]['content'].startswith('CỐ ĐỊNH'))
+        self.assertNotIn('hỏi 0', messages[0]['content'])
+        self.assertEqual(messages[1]['role'], 'system')
+
+    def test_usage_recorded_for_any_provider(self):
+        from unittest.mock import Mock
+        from assistant.online_automation import OnlineAutomation
+        agent = OnlineAutomation.__new__(OnlineAutomation)
+        agent.store = Mock(); agent.cid = 'c'; agent.client = Mock(provider='nvidia')
+        state = {}
+        agent.record_usage(state, {'usage': {'prompt_tokens': 30000, 'completion_tokens': 200, 'prompt_tokens_details': {'cached_tokens': 25000}}}, 'plan')
+        agent.record_usage(state, {'usage': {'prompt_tokens': 10, 'completion_tokens': 5, 'prompt_cache_hit_tokens': 8}}, 'plan')
+        self.assertEqual(state['token_usage'], {'calls': 2, 'prompt': 30010, 'completion': 205, 'cache_hit': 25008})
+
+    def test_plaxis_toolset_excludes_other_apps(self):
+        from assistant.online_automation import _PLAXIS_TOOLSET, _OTHER_APP_REQUEST
+        self.assertIn('plaxis_commands', _PLAXIS_TOOLSET); self.assertNotIn('word_create_open', _PLAXIS_TOOLSET)
+        self.assertTrue(_OTHER_APP_REQUEST.search('mở Word viết báo cáo'))
+        self.assertFalse(_OTHER_APP_REQUEST.search('làm tiếp bài 2'))

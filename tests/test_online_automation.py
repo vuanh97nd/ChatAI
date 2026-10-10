@@ -288,8 +288,10 @@ class OnlineAutomationTest(unittest.TestCase):
         self.responses=[json.dumps({'answer':'Cần kiểm tra Chrome.','tool':'','arguments':{}})]
         self.agent.start(self.state,'có','DeepSeek Flash','admin')
         list(self.agent.run(self.state))
-        self.assertIn('Seequent',self.requests[0][0]['content'])
-        self.assertIn('vừa chấp thuận',self.requests[0][0]['content'])
+        # The approval note is per-step context, sent as a system message after the cached prefix.
+        system=' '.join(m['content'] for m in self.requests[0] if m['role']=='system')
+        self.assertIn('Seequent',system)
+        self.assertIn('vừa chấp thuận',system)
 
     def test_unsupported_3d_template_is_routed_to_generic_api_without_another_choice(self):
         self.cfg['windows_apps_auto_execute']=True

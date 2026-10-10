@@ -62,6 +62,16 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
 
+ test(`${name}: Gemini token usage is reported like other providers`,async()=>{
+  const env=environment(),original=globalThis.fetch;
+  try{
+   globalThis.fetch=async()=>Response.json({candidates:[{content:{parts:[{text:'OK'}]}}],usageMetadata:{promptTokenCount:1200,candidatesTokenCount:30,cachedContentTokenCount:800}});
+   const response=await call(worker,env,{provider:'gemini',messages:[{role:'user',content:'Chào'}]});
+   const value=await response.json();
+   assert.deepEqual(value.usage,{prompt_tokens:1200,completion_tokens:30,prompt_cache_hit_tokens:800});
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
+
  test(`${name}: more than two images in one turn are accepted`,async()=>{
   const env=environment(),original=globalThis.fetch;let payload;
   try{
