@@ -57,7 +57,7 @@ def main():
     python=stage/'python.exe'
     run([python,'-m','ensurepip','--upgrade'])
     run([python,'-m','pip','install','--disable-pip-version-check','--only-binary=:all:','-r',ROOT/'requirements-bundled.txt'])
-    run([python,'-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe()); print("Bundled imports OK")'])
+    run([python,'-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg,pywinauto,comtypes,psutil,plxscripting; print(imageio_ffmpeg.get_ffmpeg_exe()); print("Bundled imports OK")'])
     manifest={'python':sys.version,'version':'2.6.6','bundled':True,'requirements':'requirements-bundled.txt'}
     (stage/'chat-ai-runtime.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')
     freeze=subprocess.check_output([str(python),'-m','pip','freeze'],text=True)
@@ -65,7 +65,7 @@ def main():
     if target.exists():shutil.rmtree(target)
     stage.rename(target)
     # Verify after relocation too, not just before the rename.
-    run([target/'python.exe','-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg,sys; print(imageio_ffmpeg.get_ffmpeg_exe()); print(sys.prefix)'])
+    run([target/'python.exe','-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg,pywinauto,comtypes,psutil,plxscripting,sys; print(imageio_ffmpeg.get_ffmpeg_exe()); print(sys.prefix)'])
     run([target/'python.exe','-c','import runpy; runpy.run_path("build_runtime.py")["assets"]()'])
     csc=Path(os.environ.get('WINDIR',r'C:\Windows'))/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     if not csc.exists():

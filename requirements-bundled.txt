@@ -1,4 +1,5 @@
-# Small installer: chat UI + Ollama client + PDF + robot icon assets.
+# Bundled runtime: chat UI, Ollama, PDF/Office, image/video, DXF,
+# and Windows automation (AutoCAD UIA, PLAXIS scripting).
 PySide6-Essentials>=6.8,<7
 ollama>=0.6,<1
 pypdf>=5,<7
@@ -19,3 +20,11 @@ openpyxl>=3.1.5,<4
 python-docx>=1.1,<2
 ezdxf>=1.3,<2
 mapbox-earcut>=1,<3
+
+# Windows automation: AutoCAD UIA + PLAXIS remote scripting.
+# Build machine is always Windows so platform markers are met at build time.
+pywin32>=305; sys_platform == "win32"
+pywinauto>=0.6.9,<0.7; sys_platform == "win32"
+comtypes>=1.4,<2; sys_platform == "win32"
+psutil>=5.9,<8; sys_platform == "win32"
+plxscripting>=1,<2; sys_platform == "win32"
