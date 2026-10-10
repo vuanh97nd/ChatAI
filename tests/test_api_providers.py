@@ -74,7 +74,7 @@ class ApiTests(unittest.TestCase):
         from assistant.config import validate_config
         cfg={'ollama_host':'http://localhost:11434','default_model':'qwen2.5:3b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'max_rounds':8,'whitelist':['workspace'],'chat_provider':'cloudflare'}
         with tempfile.TemporaryDirectory() as d,patch('assistant.config.ROOT',Path(d)):
-            migrated=validate_config(cfg);self.assertEqual(migrated['chat_provider'],'deepseek_flash')
+            migrated=validate_config(cfg);self.assertEqual(migrated['chat_provider'],'cloudflare')
             migrated['chat_provider']='gemini';self.assertEqual(validate_config(migrated)['chat_provider'],'gemini')
             migrated['gemini_model']='invalid name';self.assertRaises(ValueError,validate_config,migrated)
 

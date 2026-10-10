@@ -61,7 +61,7 @@ Source: "{#SourceRoot}\logo_chat_ai.png"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\installer-assets\chat_ai.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceRoot}\runtime\python\*"; DestDir: "{app}\runtime\python"; Excludes: "__pycache__\*,*.pyc"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Recursively packages the full Python runtime, including bundled Pillow/imageio/ffmpeg/OpenCV and Windows automation wheels.
-Source: "{#SourceRoot}\config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "{#SourceRoot}\installer-assets\config.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#SourceRoot}\glossary.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#SourceRoot}\experts.yaml"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 Source: "{#SourceRoot}\README.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist

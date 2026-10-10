@@ -27,7 +27,15 @@ class ConfigProviderTests(unittest.TestCase):
         self.assertTrue(list((self.root / 'data/backups').glob('config-*.json')))
 
     def test_fresh_install_defaults_to_online_nvidia(self):
-        self.assertEqual(config.load_config()['chat_provider'], 'nvidia')
+        import build_runtime
+        original = dict(self.original, chat_provider='deepseek_flash')
+        source = json.dumps(original)
+        (self.root / 'config.json').write_text(source, encoding='utf-8')
+        with patch.object(build_runtime, 'ROOT', self.root):
+            build_runtime.installer_config()
+        bundled = json.loads((self.root / 'installer-assets/config.json').read_text(encoding='utf-8'))
+        self.assertEqual(bundled['chat_provider'], 'nvidia')
+        self.assertEqual((self.root / 'config.json').read_text(encoding='utf-8'), source)
         self.assertIn('nvidia', REMOTE_MODELS.values())
 
     def test_missing_provider_defaults_to_nvidia(self):

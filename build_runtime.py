@@ -10,6 +10,16 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 
 
+def installer_config():
+    """Set the first-install provider without changing the builder's settings."""
+    cfg=json.loads((ROOT/'config.json').read_text(encoding='utf-8'))
+    cfg['chat_provider']='nvidia'
+    cfg['api_provider_revision']=2
+    cfg.pop('roots',None)
+    folder=ROOT/'installer-assets';folder.mkdir(exist_ok=True)
+    (folder/'config.json').write_text(json.dumps(cfg,ensure_ascii=False,indent=2),encoding='utf-8')
+
+
 def run(args):
     subprocess.run([str(arg) for arg in args],check=True,cwd=ROOT)
 
@@ -67,6 +77,7 @@ def main():
     # Verify after relocation too, not just before the rename.
     run([target/'python.exe','-c','import PySide6.QtWidgets,ollama,pypdf,pypdfium2,PIL,imageio,cv2; import imageio_ffmpeg,pywinauto,comtypes,psutil,plxscripting,sys; print(imageio_ffmpeg.get_ffmpeg_exe()); print(sys.prefix)'])
     run([target/'python.exe','-c','import runpy; runpy.run_path("build_runtime.py")["assets"]()'])
+    installer_config()
     csc=Path(os.environ.get('WINDIR',r'C:\Windows'))/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     if not csc.exists():
         csc=Path(os.environ.get('WINDIR',r'C:\Windows'))/'Microsoft.NET/Framework/v4.0.30319/csc.exe'
