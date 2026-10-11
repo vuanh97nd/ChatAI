@@ -116,3 +116,20 @@ hội thoại trên máy bằng secure storage và khôi phục khi mở lại l
 vẫn lỗi. Không tự đồng bộ lại các lần ghi chưa rõ kết quả, tránh nhân đôi dữ liệu.
 Chế độ khách chưa đăng nhập không tự chuyển dự phòng. Hai server không đồng bộ
 lịch sử/tài khoản/khóa API; cần sao lưu dữ liệu riêng nếu muốn đồng bộ.
+
+#### Nhập API cho server dự phòng
+
+PC: bấm tên tài khoản → **Cấu hình API dự phòng**, hoặc mở **AI dự phòng** →
+**Cấu hình API dự phòng / Kiểm tra AI**. Android: sau khi kết nối dự phòng, menu
+có **Cấu hình API dự phòng**; trong hộp thoại AI dự phòng cũng có nút mở màn hình này.
+Kiểm tra URL **Server đích**, chọn nhà cung cấp, nhập khóa/model rồi bấm **Lưu API
+dự phòng**. Cần đăng nhập tài khoản Admin của server dự phòng; quyền Admin của
+server chính không thay thế được. Khóa được lưu mã hóa trong D1 dự phòng,
+không ghi vào config.json hay secure storage của ứng dụng. Để trống khóa để giữ
+khóa đã lưu. Cấu hình không được tự chuyển sang server khác hoặc tự gửi lại khi lỗi.
+
+Bấm **Kiểm tra AI** để gọi thực tế trên dự phòng (có thể tính phí nhà cung cấp).
+Chỉ báo thành công khi có nội dung trả lời; HTTP 200 không có câu trả lời chưa
+được coi là AI hoạt động. Nếu kiểm tra khóa/model vừa nhập, cần bấm Lưu để áp dụng
+cho các lượt dự phòng sau đó. Cloudflare AI không nhập khóa/model trong màn hình
+này: dùng binding `AI` và model trong cấu hình Worker, rồi bấm Kiểm tra AI.

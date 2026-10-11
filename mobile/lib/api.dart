@@ -81,7 +81,7 @@ class ChatApi {
       }
       final response = await client.post(server.resolve(path), headers: {
         'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json',
-      }, body: jsonEncode(body)).timeout(Duration(seconds: path == '/api/provider/model' ? 150 : 15));
+      }, body: jsonEncode(body)).timeout(Duration(seconds: (path == '/api/provider/model' || path == '/api/admin/providers/test') ? 150 : 15));
       Map<String, dynamic> value;
       try {
         value = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;

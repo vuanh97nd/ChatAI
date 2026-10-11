@@ -9,6 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'backup_provider_page.dart';
 import 'voice.dart';
 import 'cloud_voice.dart';
 import 'voice_chat.dart';
@@ -300,6 +301,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     api.backup = ChatApi(client: api.client, endpoint: value['endpoint'] as String)
       ..session = Session.fromJson(value['session'] as Map<String, dynamic>);
   }
+  Future<void> openBackupProviders() async {
+    final target = api.backup;
+    if (target == null) { changed(() => error = 'Kết nối tài khoản dự phòng trước.'); return; }
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => BackupProviderPage(api: target)));
+  }
   Future<void> connectBackup() async {
     if (api.session == null) { await openLogin(); return; }
     final endpoint = TextEditingController(text: defaultBackupServer);
@@ -312,6 +318,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         TextField(controller: name, decoration: const InputDecoration(labelText: 'Tài khoản dự phòng')),
         TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Mật khẩu')),
       ])), actions: [
+        if (api.backup != null) TextButton(onPressed: () {
+          Navigator.pop(c, false);
+          unawaited(openBackupProviders());
+        }, child: const Text('Cấu hình API / Kiểm tra AI')),
         TextButton(onPressed: () async {
           final navigator = Navigator.of(c);
           await storage.delete(key: backupKey);
@@ -761,6 +771,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
           }),
+        if (api.backup != null) ListTile(leading: const Icon(Icons.key_outlined),
+          title: const Text('Cấu hình API dự phòng'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openBackupProviders()); }),
         ListTile(leading: const Icon(Icons.cloud_sync_outlined), title: const Text('AI dự phòng'),
           onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(connectBackup()); }),
         ListTile(leading: const Icon(Icons.system_update_outlined),
