@@ -577,3 +577,9 @@ from .plaxis_geometry import GEOMETRY_INSTRUCTION
 for _module,_spec in EXTRA_TOOLS:
     if _spec['function']['name']=='plaxis_commands':
         _spec['function']['description']+=GEOMETRY_INSTRUCTION
+
+EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_tutorial_guide',
+    'Đọc hướng dẫn ngắn PLAXIS Tutorial 2025.1 theo 2D/3D và chương; không cần kết nối PLAXIS. '
+    'chapter=0 xem danh mục; chọn đúng chương/case rồi đọc PDF trang được chỉ ra. '
+    'Hướng dẫn không thay bộ số liệu, không chứng minh mô hình đã tính đúng.',
+    {'version':TEXT,'chapter':{'type':'integer','minimum':0}},['version'])))

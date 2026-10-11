@@ -353,9 +353,9 @@ CHƯA CHẠY THỬ trên máy này — dùng, và nếu lỗi tra signature ngay
 Mỗi lần đổi thứ gì, đọc model_state và tránh tạo trùng đối tượng trên cùng một đoạn.'''
 
 
-_PLAXIS_TOOLSET={'plaxis_commands','plaxis_run_problem','plaxis_generate_script','pdf_read','pdf_local_open','pdf_source_open',
+_PLAXIS_TOOLSET={'plaxis_tutorial_guide','plaxis_commands','plaxis_run_problem','plaxis_generate_script','pdf_read','pdf_local_open','pdf_source_open',
                  'document_read','browser_search','browser_run','windows_list_apps','windows_open','windows_inspect','windows_action'} | VISUAL_TOOLS
-_READING_TOOLS={'pdf_read','pdf_local_open','pdf_source_open','document_read','browser_search','browser_run'}
+_READING_TOOLS={'plaxis_tutorial_guide','pdf_read','pdf_local_open','pdf_source_open','document_read','browser_search','browser_run'}
 _OTHER_APP_REQUEST=re.compile(r'\b(?:word|excel|autocad|cad|cdm|geo[ -]?slope|geostudio|slope/w|foxit|chrome)\b|vẽ|trắc dọc',re.I)
 
 
@@ -1451,7 +1451,10 @@ class OnlineAutomation:
             if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script cũng tự thực hiện khi quyền tự động đã bật; giữ kiểm tra phạm vi, phương thức kết nối và nút dừng.'
             if plaxis_context:
                 from .plaxis_stage_guard import STAGE_INSTRUCTION
-                instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION
+                from .plaxis_tutorials import RULES
+                from .prompts import PLAXIS_MANUAL_POLICY
+                instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION+PLAXIS_MANUAL_POLICY
+                instruction+='\nPLAXIS quy trình ngắn: '+RULES+' Khi chưa chọn bài, dùng plaxis_tutorial_guide chapter=0; sau đó chỉ đọc hướng dẫn chương liên quan, không đọc lại cả danh mục mỗi lượt.'
             messages=planning_messages(state,instruction)
             if volatile.strip():
                 messages.append({'role':'system','content':'NGỮ CẢNH HIỆN TẠI (dữ liệu cập nhật theo từng bước, không phải yêu cầu mới):'+volatile})

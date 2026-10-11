@@ -421,6 +421,9 @@ class PlaxisRemoteApp:
         self.on_status=on_status
 
     def prepare(self, name, args):
+        if name=='plaxis_tutorial_guide':
+            from .plaxis_tutorials import tutorial_guide
+            return {'action':name,'guide':tutorial_guide(args.get('version',''),args.get('chapter',0))}
         version = args.get('version', '')
         if version not in ('2d', '3d'):
             raise ValueError("version phải là '2d' hoặc '3d'.")
@@ -456,6 +459,7 @@ class PlaxisRemoteApp:
         }
 
     def commit(self, plan):
+        if plan.get('action')=='plaxis_tutorial_guide':return plan['guide']
         if plan.get('action')=='plaxis_commands':
             from .plaxis_commands import run_batch,commands_from_json
             rows=commands_from_json(json.dumps(plan['commands']))

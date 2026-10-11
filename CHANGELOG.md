@@ -2,6 +2,8 @@
 
 ## Desktop 3.0.0
 
+- Bổ sung hướng dẫn ngắn theo 28 chương Tutorial 2D/3D 2025.1 và công cụ đọc riêng từng chương; phân biệt móng tròn 2D với Building 3D.
+
 - Mở rộng xác minh Active theo loại tải/kết cấu/chuyển vị và phase; bổ sung chẩn đoán kiểu dữ liệu đọc về.
 - Yêu cầu đối chiếu đúng bài/case manual, hệ tọa độ, vật liệu và ModelType trước khi dựng PLAXIS.
 
