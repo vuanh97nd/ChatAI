@@ -635,8 +635,17 @@ def unverified_completion(answer,state):
     """A PLAXIS answer that claims the model matches the manual, or that the task is done,
     needs a verify_model pass after the last model change. 'Calculation OK' only means the
     solver converged, not that the model is the tutorial's."""
-    if not re.search(r'(?:đúng|khớp|theo đúng|y hệt)\s+(?:với\s+)?(?:manual|tài liệu|hướng dẫn|bài)|đã\s+hoàn\s+(?:tất|thành)|hoàn\s+tất\s+mô\s+hình|đã\s+xác\s+minh\s+(?:toàn\s+bộ\s+)?(?:mô\s+hình|bài\s+toán)'
-                     r'|(?:đã\s+)?(?:chạy|tính|làm|dựng)\s+(?:toán\s+)?xong|xong\s+bài|hoàn\s+thành\s+bài',answer,re.I):
+    pattern=(r'(?:đúng|khớp|theo đúng|y hệt)\s+(?:với\s+)?(?:manual|tài liệu|hướng dẫn|bài)|đã\s+hoàn\s+(?:tất|thành)|hoàn\s+tất\s+mô\s+hình|đã\s+xác\s+minh\s+(?:toàn\s+bộ\s+)?(?:mô\s+hình|bài\s+toán)'
+             r'|(?:đã\s+)?(?:chạy|tính|làm|dựng)\s+(?:toán\s+)?xong|xong\s+bài|hoàn\s+thành\s+bài')
+    claims=[]
+    for match in re.finditer(pattern,answer,re.I):
+        prefix=re.split(r'[.!?\n;]',answer[:match.start()])[-1]
+        # Future repair and explicitly unverified progress are not completion.
+        # An explicit completed claim remains guarded even in a mixed sentence.
+        if not re.match(r'đã\s',match.group(),re.I) and re.search(r'\b(?:sẽ|chưa|cần|không)\b',prefix[-60:],re.I):
+            continue
+        claims.append(match)
+    if not claims:
         return None
     messages=state.get('messages',[])
     last_build=-1;verified_at=-1

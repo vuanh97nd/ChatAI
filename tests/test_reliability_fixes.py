@@ -404,6 +404,13 @@ class TutorialResolutionTests(unittest.TestCase):
 
 
 class CompletionGateTests(unittest.TestCase):
+    def test_future_or_unverified_repair_is_not_a_completed_manual_claim(self):
+        from assistant.online_automation import unverified_completion
+        for answer in ('Tôi sẽ sửa mực nước theo đúng manual.',
+                       'Mô hình chưa đúng manual; cần sửa nước.',
+                       'Tôi sẽ kiểm chứng rồi tính xong bài.'):
+            self.assertIsNone(unverified_completion(answer,self.state(False)))
+        self.assertIsNotNone(unverified_completion('Tôi sẽ đọc nước. Đã hoàn tất mô hình đúng manual.',self.state(False)))
     def state(self, verified):
         build = {'role': 'assistant', 'content': '', 'tool_calls': [{'function': {'name': 'plaxis_commands', 'arguments': {'commands': json.dumps([{'command': 'soilmat', 'args': []}])}}}]}
         msgs = [{'role': 'user', 'content': 'làm bài 1'}, build, {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True})}]
