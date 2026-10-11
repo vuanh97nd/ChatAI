@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 const defaultServer = String.fromEnvironment('CHAT_AI_SERVER',
     defaultValue: 'https://chatai.anhvn53.workers.dev');
 
+const defaultBackupServer = 'https://chatai-backup.vuanh97nd1.workers.dev';
+
 const autoSearchInstruction = '\nNếu hỏi thời tiết mà chưa biết địa điểm, hãy hỏi tỉnh/thành phố trước; không tự đoán vị trí. '
     'Bạn có thể tự tra web khi cần thông tin mới, giá/lịch hiện tại, tài liệu/API hoặc nguồn kiểm chứng. '
     'Nếu cần, chỉ trả JSON {"action":"web_search","query":"từ khóa công khai ngắn"}, không kèm văn bản. '
@@ -26,7 +28,8 @@ String? searchQuery(String answer) {
 class ApiException implements Exception {
   final String message;
   final int status;
-  ApiException(this.message, [this.status = 0]);
+  final String? code;
+  ApiException(this.message, [this.status = 0, this.code]);
   @override
   String toString() => message;
 }
@@ -44,10 +47,18 @@ class Session {
   );
 }
 
+bool serverUnavailable(Object error) => error is TimeoutException || error is http.ClientException ||
+    (error is ApiException && error.code != 'QUOTA_EXHAUSTED' &&
+        ([429, 500, 502, 503, 504, 530].contains(error.status) ||
+            ['CONNECTION', 'TIMEOUT'].contains(error.code)));
+
 class ChatApi {
   final http.Client client;
   final Uri server;
   Session? session;
+  ChatApi? backup;
+  bool usingBackup = false;
+  void Function(String)? onFailover;
   ChatApi({http.Client? client, String endpoint = defaultServer})
       : client = client ?? http.Client(), server = Uri.parse(endpoint) {
     if (server.scheme != 'https' || server.host.isEmpty ||
@@ -70,7 +81,7 @@ class ChatApi {
       }
       final response = await client.post(server.resolve(path), headers: {
         'Content-Type': 'application/json; charset=utf-8', 'Accept': 'application/json',
-      }, body: jsonEncode(body)).timeout(const Duration(seconds: 150));
+      }, body: jsonEncode(body)).timeout(Duration(seconds: path == '/api/provider/model' ? 150 : 15));
       Map<String, dynamic> value;
       try {
         value = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -79,13 +90,13 @@ class ChatApi {
       }
       if (response.statusCode >= 400 || value['success'] != true) {
         throw ApiException(value['message'] as String? ?? 'Yêu cầu thất bại.',
-            response.statusCode);
+            response.statusCode, value['code'] as String?);
       }
       return value;
     } on TimeoutException {
-      throw ApiException('Quá thời gian chờ. Kiểm tra kết quả trước khi gửi lại.');
+      throw ApiException('Quá thời gian chờ. Kiểm tra kết quả trước khi gửi lại.', 0, 'TIMEOUT');
     } on http.ClientException {
-      throw ApiException('Không kết nối được server. Kiểm tra mạng và thử lại.');
+      throw ApiException('Không kết nối được server. Kiểm tra mạng và thử lại.', 0, 'CONNECTION');
     }
   }
 
@@ -114,6 +125,27 @@ class ChatApi {
 
   Future<Map<String, dynamic>> modelAnswer(Map<String, dynamic> payload,
       {void Function(String)? onText, bool Function()? cancelled}) async {
+    final target = backup;
+    if (usingBackup && target != null) {
+      return target.modelAnswer(payload, onText: onText, cancelled: cancelled);
+    }
+    var received = false;
+    try {
+      return await _primaryModelAnswer(payload, onText: onText == null ? null : (text) {
+        received = true;
+        onText(text);
+      }, cancelled: cancelled);
+    } catch (error) {
+      final available = serverUnavailable(error);
+      if (received || target == null || !available || cancelled?.call() == true) rethrow;
+      usingBackup = true;
+      onFailover?.call('Đang dùng AI dự phòng. Lịch sử vẫn thuộc server chính.');
+      return target.modelAnswer(payload, onText: onText, cancelled: cancelled);
+    }
+  }
+
+  Future<Map<String, dynamic>> _primaryModelAnswer(Map<String, dynamic> payload,
+      {void Function(String)? onText, bool Function()? cancelled}) async {
     if (onText == null || !['nvidia', 'groq', 'deepseek_flash'].contains(payload['provider'])) {
       return post('/api/provider/model', payload);
     }
@@ -124,8 +156,10 @@ class ChatApi {
     final response = await client.send(request).timeout(const Duration(seconds: 150));
     if (!(response.headers['content-type'] ?? '').contains('text/event-stream')) {
       final raw = await response.stream.bytesToString().timeout(const Duration(seconds: 150));
-      final value = jsonDecode(raw) as Map<String, dynamic>;
-      if (response.statusCode >= 400 || value['success'] != true) throw ApiException(value['message'] as String? ?? 'Yêu cầu thất bại.', response.statusCode);
+      Map<String, dynamic> value;
+      try { value = jsonDecode(raw) as Map<String, dynamic>; }
+      catch (_) { throw ApiException('Server trả dữ liệu không hợp lệ.', response.statusCode); }
+      if (response.statusCode >= 400 || value['success'] != true) throw ApiException(value['message'] as String? ?? 'Yêu cầu thất bại.', response.statusCode, value['code'] as String?);
       return value;
     }
     var text = '', done = false;
@@ -182,7 +216,7 @@ class ChatApi {
       onStage?.call('Đang tra cứu Bing…');
       Map<String, dynamic> search;
       try {
-        search = await post('/api/chat/search', {'text': query});
+        search = await (usingBackup && backup != null ? backup! : this).post('/api/chat/search', {'text': query});
       } on ApiException {
         if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
         return 'Hiện tôi chưa lấy được nguồn từ Bing nên chưa thể xác minh thông tin mới. '

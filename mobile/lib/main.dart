@@ -131,6 +131,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     api = widget.api ?? ChatApi();
+    api.onFailover = (text) => changed(() => replyStatus = text);
     voice = VoiceController(engine: widget.voiceEngine ?? CloudVoiceEngine(api));
     WidgetsBinding.instance.addObserver(this);
     voice.addListener(voiceChanged);
@@ -235,6 +236,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final raw = await storage.read(key: 'session');
       if (raw != null) {
         api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        await restoreBackup();
         changed(() => loading = false);
         await refresh();
       } else {
@@ -242,7 +244,18 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         final status = await api.post('/api/mobile/guest/status', {'guest_token': guestToken}, authenticated: false);
         changed(() => guestRemaining = (status['remaining'] as num).toInt());
       }
-    } catch (e) { changed(() => error = '$e'); }
+    } catch (e) {
+      if (api.session != null && api.backup != null && serverUnavailable(e)) {
+        api.usingBackup = true;
+        final local = await storage.read(key: 'offline:$backupKey');
+        if (local != null) {
+          final saved = jsonDecode(local) as Map<String, dynamic>;
+          conversation = saved['conversation'] as String?;
+          messages = (saved['messages'] as List).map((row) => Map<String, String>.from(row as Map)).toList();
+        }
+      }
+      changed(() => error = '$e');
+    }
     finally { changed(() => loading = false); }
   }
   Future<void> guard(Future<void> Function() fn) async {
@@ -273,16 +286,64 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> authenticated(Session session) async {
     changed(() { messages = []; conversation = null; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); });
     await storage.write(key: 'session', value: jsonEncode(session.toJson()));
+    await restoreBackup();
     changed(() { loading = false; error = null; });
     await guard(refresh);
   }
+  String get backupKey => 'backup:${api.server.origin}:${api.session?.username}';
+  Future<void> restoreBackup() async {
+    api.backup = null; api.usingBackup = false;
+    if (api.session == null) return;
+    final raw = await storage.read(key: backupKey);
+    if (raw == null) return;
+    final value = jsonDecode(raw) as Map<String, dynamic>;
+    api.backup = ChatApi(client: api.client, endpoint: value['endpoint'] as String)
+      ..session = Session.fromJson(value['session'] as Map<String, dynamic>);
+  }
+  Future<void> connectBackup() async {
+    if (api.session == null) { await openLogin(); return; }
+    final endpoint = TextEditingController(text: defaultBackupServer);
+    final name = TextEditingController(), password = TextEditingController();
+    final accepted = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Kết nối AI dự phòng'),
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Đăng nhập riêng. Chỉ chuyển yêu cầu AI; không đồng bộ lịch sử hay thanh toán.'),
+        TextField(controller: endpoint, decoration: const InputDecoration(labelText: 'Server HTTPS')),
+        TextField(controller: name, decoration: const InputDecoration(labelText: 'Tài khoản dự phòng')),
+        TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Mật khẩu')),
+      ])), actions: [
+        TextButton(onPressed: () async {
+          final navigator = Navigator.of(c);
+          await storage.delete(key: backupKey);
+          api.backup = null; api.usingBackup = false;
+          navigator.pop(false);
+        }, child: const Text('Tắt dự phòng')),
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy')),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Kết nối')),
+      ]));
+    final url = endpoint.text.trim(), user = name.text, secret = password.text;
+    // Controllers may still be attached during the dialog's closing animation.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    endpoint.dispose(); name.dispose(); password.dispose();
+    if (accepted != true || !mounted) return;
+    await guard(() async {
+      final candidate = ChatApi(client: api.client, endpoint: url);
+      if (candidate.server.origin == api.server.origin) throw ApiException('Chọn server khác server chính.');
+      final owner = backupKey;
+      await candidate.login(user, secret, device);
+      await storage.write(key: owner, value: jsonEncode({'endpoint': url, 'session': candidate.session!.toJson()}));
+      api.backup = candidate; api.usingBackup = false;
+      changed(() => error = 'Đã kết nối AI dự phòng.');
+    });
+  }
+
   Future<void> signOut() async {
     poll?.cancel(); await voice.stop();
     try { await disableAccountNotifications(api); } catch (_) {}
     // Local logout always completes, including when the server is unavailable.
     try { await api.post('/api/logout', {'client_type': 'android_companion'}); } catch (_) {}
     await storage.delete(key: 'session');
-    api.session = null;
+    api.session = null; api.backup = null; api.usingBackup = false;
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
       conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); input.clear(); });
   }
@@ -303,13 +364,26 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     int? streamingIndex;
     bool userSaved = false;
     try {
-      if (conversation == null) {
-        final result = await api.post('/api/conversations/create', {'title': text});
-        conversation = (result['conversation'] as Map<String, dynamic>)['id'] as String;
+      var localOnly = api.usingBackup && api.backup != null;
+      if (!localOnly) {
+        try {
+          if (conversation == null) {
+            final result = await api.post('/api/conversations/create', {'title': text});
+            conversation = (result['conversation'] as Map<String, dynamic>)['id'] as String;
+          }
+          await api.post('/api/conversations/append', {'conversation_id': conversation,
+            'role': 'user', 'content': text, 'client_id': uuid.v4()});
+          userSaved = true;
+        } catch (e) {
+          if (api.backup == null || !serverUnavailable(e)) rethrow;
+          // The primary write may have completed. Do not replay it on either server.
+          api.usingBackup = true; localOnly = true;
+          changed(() => replyStatus = 'Đang dùng AI dự phòng; lịch sử tạm lưu trên máy.');
+        }
       }
-      await api.post('/api/conversations/append', {'conversation_id': conversation,
-        'role': 'user', 'content': text, 'client_id': uuid.v4()});
-      userSaved = true;
+      if (localOnly) {
+        await storage.write(key: 'offline:$backupKey', value: jsonEncode({'conversation': conversation, 'messages': messages}));
+      }
       final history = messages.length > 24 ? messages.sublist(messages.length - 24) : messages;
       if (stop.isCompleted) throw Exception('Đã dừng chờ.');
       final answer = await Future.any<String>([api.answer(provider, history, memories,
@@ -333,9 +407,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           messages[streamingIndex!]['content'] = answer;
         }
         attachments.clear(); });
+      localOnly = localOnly || api.usingBackup;
       try {
+        if (localOnly) {
+          await storage.write(key: 'offline:$backupKey', value: jsonEncode({'conversation': conversation, 'messages': messages}));
+          changed(() => error = 'Đang dùng AI dự phòng. Hội thoại này tạm lưu trên máy, chưa đồng bộ lên đám mây.');
+        } else {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
           'role': 'assistant', 'content': answer, 'client_id': uuid.v4()});
+        }
       } catch (_) {
         changed(() => error = 'Đã có câu trả lời nhưng chưa lưu lên server. Hãy sao chép để giữ lại.');
       }
@@ -681,6 +761,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
           }),
+        ListTile(leading: const Icon(Icons.cloud_sync_outlined), title: const Text('AI dự phòng'),
+          onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(connectBackup()); }),
         ListTile(leading: const Icon(Icons.system_update_outlined),
           title: const Text('Cập nhật ứng dụng'),
           onTap: () {

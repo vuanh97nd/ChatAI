@@ -85,3 +85,34 @@ Android → **Máy tính**; Windows → **Tài khoản → Kết nối điện t
 xác nhận trên Windows một lần rồi gửi việc bằng chữ/giọng nói, xem tiến trình và
 kết quả văn bản, tạm dừng/tiếp tục/hủy. Cần Worker mới và ChatAI Windows đang mở.
 Xem [hướng dẫn và giới hạn](docs/phone-connection.md).
+
+### AI dự phòng trên hai tài khoản Cloudflare
+
+Dự phòng chỉ chuyển yêu cầu suy luận AI, không chuyển tài khoản, lịch sử, số dư,
+đơn thanh toán hay tác vụ điều khiển máy tính. Hai Worker phải được triển khai
+cùng mã server, có binding `DB`, secret `ADMIN_KEY` và cấu hình nhà cung cấp AI.
+Dùng hai tài khoản Cloudflare để có hạn mức riêng. Tạo tài khoản Chat AI và cấu
+hình nhà cung cấp trên server dự phòng trước; token của server chính không dùng
+được ở server dự phòng. Model/plugin tự thêm cần cấu hình tương ứng ở cả hai bên.
+
+- PC: trong trang tài khoản chọn **Kết nối AI dự phòng**, nhập URL HTTPS và đăng
+  nhập tài khoản dự phòng. Token được lưu bằng Windows DPAPI, gắn với server và
+  tài khoản chính. **Tắt AI dự phòng** xóa đăng nhập dự phòng trên máy.
+- Android: mở menu **AI dự phòng**, nhập URL HTTPS và đăng nhập. Token lưu trong
+  secure storage theo server/tài khoản chính. Chọn **Tắt dự phòng** để xóa cấu hình.
+- URL gợi ý: `https://chatai-backup.vuanh97nd1.workers.dev`; đây chỉ là giá trị
+  trong biểu mẫu, ứng dụng không gửi dữ liệu sang đó cho tới khi kết nối thành công.
+
+Lỗi mạng hoặc HTTP 429/500/502/503/504/530 trước khi nhận nội dung AI sẽ chuyển
+sang dự phòng một lần. Không chuyển vì sai mật khẩu, bị cấm truy cập hay lỗi
+`QUOTA_EXHAUSTED` của nhà cung cấp. Không gửi lại câu trả lời đang hiển thị dở.
+Lỗi timeout vẫn có thể phát sinh phí ở server chính nếu nó đã xử lý yêu cầu;
+không có cam kết loại bỏ phí trùng giữa hai database độc lập.
+
+PC bỏ qua server lỗi trong 5 phút rồi thử lại; Android tiếp tục dùng dự phòng
+trong phiên hiện tại, kết nối lại hoặc mở lại ứng dụng để thử server chính.
+Android cho phép tiếp tục hỏi khi ghi lịch sử lên server chính thất bại, tạm lưu
+hội thoại trên máy bằng secure storage và khôi phục khi mở lại lúc server chính
+vẫn lỗi. Không tự đồng bộ lại các lần ghi chưa rõ kết quả, tránh nhân đôi dữ liệu.
+Chế độ khách chưa đăng nhập không tự chuyển dự phòng. Hai server không đồng bộ
+lịch sử/tài khoản/khóa API; cần sao lưu dữ liệu riêng nếu muốn đồng bộ.

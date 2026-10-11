@@ -56,6 +56,27 @@ def parse_events(lines):
 
 
 def cloud_events(endpoint, body, opener=urlopen):
+    from .failover import active_backup,load_backup,mark_unavailable
+    session={'endpoint':endpoint,'username':body.get('username','')}
+    active=active_backup(session) if body.get('username') else None
+    target=active or session
+    payload=dict(body)
+    if active:payload.update(username=active['username'],key=active['key'])
+    received=False
+    try:
+        for event in _primary_cloud_events(target['endpoint'],payload,opener):
+            received=True
+            yield event
+    except CloudError as error:
+        backup=load_backup(session) if body.get('username') and not active else None
+        available=error.code=='SERVER_UNAVAILABLE'
+        if received or not backup or not available:raise
+        mark_unavailable(session)
+        yield 'status',{'text':'Đang dùng AI ở server dự phòng.'}
+        yield from _primary_cloud_events(backup['endpoint'],dict(body,username=backup['username'],key=backup['key']),opener)
+
+
+def _primary_cloud_events(endpoint, body, opener=urlopen):
     url = urlparse(endpoint)
     if url.scheme != 'https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('', '/'):
         raise ValueError('URL server phải là URL gốc HTTPS.')
@@ -69,11 +90,13 @@ def cloud_events(endpoint, body, opener=urlopen):
             detail = json.loads(error.read(20000))
         except (ValueError, UnicodeDecodeError):
             detail = {}
-        raise CloudError(detail.get('message', 'Server HTTP ' + str(error.code)), detail.get('code', '')) from None
+        if not isinstance(detail,dict):detail={}
+        raise CloudError(detail.get('message', 'Server HTTP ' + str(error.code)),
+                         'SERVER_UNAVAILABLE' if error.code in (429,500,502,503,504,530) and detail.get('code')!='QUOTA_EXHAUSTED' else detail.get('code', '')) from None
     except (URLError, TimeoutError):
-        raise CloudError('Không kết nối được AI trên server. Bạn có thể chọn mô hình trên máy.') from None
+        raise CloudError('Không kết nối được AI trên server. Bạn có thể chọn mô hình trên máy.','SERVER_UNAVAILABLE') from None
     except (HTTPException, ConnectionError):
-        raise CloudError('Kết nối tới AI trên server bị ngắt giữa chừng. Hãy gửi lại câu hỏi.') from None
+        raise CloudError('Kết nối tới AI trên server bị ngắt giữa chừng. Hãy gửi lại câu hỏi.','SERVER_UNAVAILABLE') from None
 
 
 class CloudDocumentClient:
@@ -81,8 +104,8 @@ class CloudDocumentClient:
     def __init__(self,session): self.session=session
     def list(self): return {'models':[{'model':'document-small'}]}
     def chat(self,model,messages,**kwargs):
-        from .accounts import request_account
-        result=request_account(self.session['endpoint'],'/api/document/model',
+        from .failover import ai_request
+        result=ai_request(self.session,'/api/document/model',
             {'username':self.session['username'],'key':self.session['key'],
              'messages':messages,'format':kwargs.get('format'),
              'max_tokens':min(kwargs.get('options',{}).get('num_predict',700),1000)},timeout=90)
@@ -324,6 +347,11 @@ class ServerApiClient:
         if provider not in API_ENDPOINTS and provider!='cloudflare' and not __import__('re').fullmatch(r'ai_[a-f0-9]{32}',provider):raise ValueError('Dịch vụ API không hợp lệ.')
         self.session=dict(session);self.provider=provider;self.model=provider;self.on_status=on_status;self.cancel_event=cancel_event
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
+        from .failover import active_backup
+        backup=active_backup(self.session)
+        if backup:
+            self.session=dict(backup)
+            if self.on_status:self.on_status('Đang dùng AI ở server dự phòng.')
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def stream_answer(self,model,messages,**kwargs):
         # Streaming for every OpenAI-compatible provider (the Worker relays their SSE as is);
@@ -342,7 +370,7 @@ class ServerApiClient:
                         headers={'Content-Type':'application/json','Accept':'text/event-stream','User-Agent':'ChatAI-Desktop/3.0.0 (+Windows; account API)'})
         import time
         from .performance import record
-        started=time.monotonic();first_answer=True
+        started=time.monotonic();first_answer=True;received_output=False
         try:
             with urlopen(request,timeout=self.timeout) as response:
                 record('ai.wait_response_headers',time.monotonic()-started)
@@ -369,9 +397,12 @@ class ServerApiClient:
                     if choices and choices[0].get('finish_reason') is not None:completed=True
                     d=choices[0].get('delta',{}) if choices else {}
                     reasoning=d.get('reasoning_content','')
-                    if isinstance(reasoning,str) and reasoning:yield 'reasoning',reasoning
+                    if isinstance(reasoning,str) and reasoning:
+                        received_output=True
+                        yield 'reasoning',reasoning
                     delta=d.get('content','')
                     if isinstance(delta,str) and delta:
+                        received_output=True
                         if first_answer:
                             record('ai.wait_first_text_stream',time.monotonic()-started);first_answer=False
                         yield 'text',delta
@@ -381,13 +412,28 @@ class ServerApiClient:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}
             if not isinstance(detail,dict):detail={}
+            if not received_output and not (self.cancel_event is not None and self.cancel_event.is_set()) and error.code in (429,500,502,503,504,530) and detail.get('code')!='QUOTA_EXHAUSTED':
+                from .failover import load_backup,mark_unavailable
+                backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
+                if backup:
+                    mark_unavailable(self.session)
+                    if self.on_status:self.on_status('Đang dùng AI ở server dự phòng.')
+                    yield from ServerApiClient(backup,self.provider,cancel_event=self.cancel_event,timeout=self.timeout).stream_answer(model,messages,**kwargs)
+                    return
             message=str(detail.get('message') or 'Server HTTP '+str(error.code))
             message=message.replace(str(self.session['key']),'[ẨN]')
             if error.code==403:
                 message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
             raise CloudError(message,detail.get('code','')) from None
-        except (URLError,TimeoutError):raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
-        except (HTTPException,ConnectionError):raise CloudError('Kết nối tới AI bị ngắt giữa chừng. Hãy gửi lại câu hỏi.') from None
+        except (URLError,TimeoutError,HTTPException,ConnectionError):
+            from .failover import load_backup,mark_unavailable
+            backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
+            if not received_output and backup and not (self.cancel_event is not None and self.cancel_event.is_set()):
+                mark_unavailable(self.session)
+                if self.on_status:self.on_status('Mất kết nối server chính; đang dùng AI dự phòng.')
+                yield from ServerApiClient(backup,self.provider,cancel_event=self.cancel_event,timeout=self.timeout).stream_answer(model,messages,**kwargs)
+                return
+            raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
         finally:record('ai.request_total',time.monotonic()-started)
 
     def chat(self,model,messages,**kwargs):
@@ -407,7 +453,8 @@ class ServerApiClient:
         for attempt in range(attempts):
             if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
             try:
-                request=lambda:request_account(self.session['endpoint'],'/api/provider/model',body,timeout=self.timeout)
+                from .failover import ai_request
+                request=lambda:ai_request(self.session,'/api/provider/model',body,timeout=self.timeout,on_status=self.on_status)
                 result=cancellable_request(request,cancel,self.on_status) if self.cancel_event is not None else request()
                 break
             except AccountConnectionError:

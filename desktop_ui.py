@@ -25,6 +25,7 @@ from assistant import initialize_runtime
 initialize_runtime()
 
 from assistant.config import ROOT, load_config
+from assistant.failover import ai_request,forget_backup
 from assistant.locking import execution_lock
 from assistant.modules import ModuleManager, MODULES, ALLOWED_MODELS, CHAT_MODELS, MEDIA_VARIANTS, media_model_dir
 from assistant.storage import Store
@@ -1783,7 +1784,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                     _key = (session['endpoint'], session['username'], session['key'])
                     if _time.monotonic() - _cache.get(_key, 0) > 60:
                         try:
-                            request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                            ai_request(session,'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
                             _cache[_key] = _time.monotonic()
                             self._auth_check_cache = _cache
                         except Exception:raise RuntimeError('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử tạo nội dung.') from None
@@ -1959,7 +1960,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             from assistant.cad_app import CadApp
             from assistant.cad3d_app import Cad3DApp
             from assistant.cloud import cancellable_request
-            cancellable_request(lambda:request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8),self.worker.stop_requested)
+            cancellable_request(lambda:ai_request(session,'/api/models',{'username':session['username'],'key':session['key']},timeout=8),self.worker.stop_requested)
             with execution_lock(ROOT/'data/agent.lock'):
                 state=self.store.load(cid)
                 if state.get('account_username') not in (None,session['username']):raise RuntimeError('Hội thoại thuộc tài khoản khác.')
@@ -2060,7 +2061,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 _key = (session['endpoint'], session['username'], session['key'])
                 if _time.monotonic() - _cache.get(_key, 0) > 60:
                     try:
-                        request_account(session['endpoint'],'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
+                        ai_request(session,'/api/models',{'username':session['username'],'key':session['key']},timeout=8)
                         _cache[_key] = _time.monotonic()
                         self._auth_check_cache = _cache
                     except Exception:
@@ -2445,6 +2446,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         for label in (self.account_name_label,self.account_username_label,self.account_email_label,self.account_phone_label):label.setTextFormat(Qt.TextFormat.PlainText)
         self.account_register_button=self.button(box,'Đăng ký',self.register_dialog)
         self.account_login_button=self.button(box,'Đăng nhập',self.login_dialog)
+        self.button(box,'Kết nối AI dự phòng',self.backup_login_dialog)
+        self.button(box,'Tắt AI dự phòng',forget_backup)
         self.account_remember=QCheckBox('Ghi nhớ đăng nhập');self.account_remember.setChecked(True);box.addWidget(self.account_remember)
         self.account_edit_button=self.button(box,'Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
         self.account_password_button=self.button(box,'Đổi mật khẩu',self.change_password_dialog)
@@ -2682,6 +2685,31 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def chat_account_action(self):
         if self.server_session:self.account_menu()
         else:self.login_dialog()
+
+    def backup_login_dialog(self):
+        if self.busy():return
+        if not self.server_session:
+            QMessageBox.information(self,'AI dự phòng','Đăng nhập tài khoản chính trước.');return
+        from assistant.failover import DEFAULT_BACKUP,save_backup
+        dialog=QDialog(self);dialog.setWindowTitle('AI dự phòng — đăng nhập riêng')
+        form=QFormLayout(dialog);endpoint=QLineEdit(DEFAULT_BACKUP);username=QLineEdit();password=QLineEdit()
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        form.addRow(QLabel('Chỉ chuyển yêu cầu AI. Không đồng bộ lịch sử hay thanh toán.'))
+        form.addRow('Server HTTPS:',endpoint);form.addRow('Tài khoản dự phòng:',username);form.addRow('Mật khẩu:',password)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        primary={k:self.server_session[k] for k in ('endpoint','username')}
+        target=endpoint.text().strip().rstrip('/');name=username.text().strip();secret=password.text()
+        if target==primary['endpoint']:
+            QMessageBox.warning(self,'AI dự phòng','Chọn server khác server chính.');return
+        def task(emit):
+            from assistant.accounts import request_account
+            value=request_account(target,'/api/login',{'username':name,'key':secret,'device_id':self.device_id})
+            user=value.get('user',{})
+            save_backup(primary,{'endpoint':target,'username':user.get('username') or value.get('username') or name,'key':value.get('session_token') or secret})
+            return value
+        self.work(task,lambda value:QMessageBox.information(self,'AI dự phòng','Đã lưu đăng nhập dự phòng được mã hóa. AI tự chuyển khi server chính lỗi.'))
 
     def login_dialog(self):
         if self.server_session:
