@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'provider_icon.dart';
+import 'math_markdown.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -43,6 +44,8 @@ class _AssistantReplyState extends State<AssistantReply> {
           style: Theme.of(context).textTheme.labelLarge))]),
       const SizedBox(height: 12),
       MarkdownBody(data: widget.text, selectable: true,
+        inlineSyntaxes: [MathSyntax()],
+        builders: {'math-inline': MathBuilder(), 'math-block': MathBuilder(display: true)},
         onTapLink: (_, href, _) => openLink(href)),
       const SizedBox(height: 8),
       Wrap(spacing: 4, children: [

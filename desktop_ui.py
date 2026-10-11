@@ -1041,10 +1041,27 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         def markdown(content):
             doc = QTextDocument()
             font=self.view.font();font.setPointSizeF(self.preview_font_size*72.0/max(1,self.view.logicalDpiY()));doc.setDefaultFont(font)
+            from assistant.math_format import formulas,math_png
+            replacements=[]
+            # Insert generated local images after Markdown conversion so model
+            # HTML never gains permission to access files or execute markup.
+            for index,(match,tex) in reversed(list(enumerate(formulas(content)))):
+                try:
+                    color=self.view.palette().text().color().name()
+                    image=QImage.fromData(math_png(tex,color,self.preview_font_size),'PNG')
+                    if image.isNull():continue
+                    key='chat-math:'+__import__('hashlib').sha256((tex+color+str(self.preview_font_size)).encode()).hexdigest()
+                    self.view.document().addResource(QTextDocument.ResourceType.ImageResource,QUrl(key),image)
+                    marker='CHATAIMATHPLACEHOLDER'+str(index)+'END'
+                    replacements.append((marker,'<img src="'+key+'" width="'+str(max(1,int(image.width()/1.6)))+'" height="'+str(max(1,int(image.height()/1.6)))+'" />'))
+                    content=content[:match.start()]+marker+content[match.end():]
+                except Exception:pass
             doc.setMarkdown(content, flags)
             body = re.search(r'<body[^>]*>(.*)</body>', doc.toHtml(), re.S)
             from assistant.themes import normalize_chat_html
-            return normalize_chat_html(body.group(1)) if body else html.escape(content)
+            rendered=normalize_chat_html(body.group(1)) if body else html.escape(content)
+            for marker,image_html in replacements:rendered=rendered.replace(marker,image_html)
+            return rendered
         def assistant_block(content, cache=True, message_index=None, media=None):
             from assistant.code_files import fences
             has_code=bool(fences(content))

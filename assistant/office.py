@@ -107,7 +107,8 @@ class OfficeTools:
                     for line in letter:doc.add_paragraph(line)
                 else:
                     doc.add_heading(plan.get('title','Tài liệu'),0)
-                    for line in plan['content'].splitlines():doc.add_paragraph(line)
+                    from .math_format import word_document_text
+                    word_document_text(doc,plan['content'])
                 if 'font_name' in plan:
                     from docx.shared import Pt,Cm,RGBColor
                     from docx.enum.text import WD_ALIGN_PARAGRAPH

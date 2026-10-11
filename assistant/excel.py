@@ -231,7 +231,8 @@ class ExcelTools:
                         raise ValueError(f"Sheet không tồn tại trong template: {item['sheet']!r}.")
                     ws = wb[item['sheet']]
                     target = ws[item['cell']]
-                    target.value = item['value']
+                    from .math_format import excel_math
+                    target.value = excel_math(item['value'])
                     if isinstance(item['value'], str):
                         target.data_type = 's'
                 wb.calculation.fullCalcOnLoad = True
@@ -300,7 +301,8 @@ class ExcelTools:
                 if sum((s.max_row or 0) * (s.max_column or 0) for s in wb) > MAX_CELLS:
                     raise ValueError("Tổng workbook vượt 200000 ô; không sửa.")
                 target = wb[plan["sheet"]][plan["cell"]]
-                target.value = plan["value"]
+                from .math_format import excel_math
+                target.value = excel_math(plan["value"])
                 # Text luôn là literal, tránh biến text của model thành công thức.
                 if isinstance(plan["value"], str):
                     target.data_type = "s"
