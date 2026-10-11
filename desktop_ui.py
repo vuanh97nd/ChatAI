@@ -529,7 +529,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.button(doc_row,'Bỏ tài liệu',self.remove_documents);self.document_box.hide();cl.addWidget(self.document_box)
         cl.addWidget(self.input)
         self.task_autonomy_check=QCheckBox('Tự thực hiện công việc')
-        self.task_autonomy_check.setToolTip('Cấp quyền cho yêu cầu này trong các thư mục đã cho phép. AI tiếp tục các bước liên quan; có nút dừng, nhật ký và backup. Mã macro/script được duyệt trước khi chạy.')
+        self.task_autonomy_check.setChecked(self.cfg.get('ai_tools_auto_execute',True))
+        self.task_autonomy_check.setToolTip('Cấp quyền cho yêu cầu này trong các thư mục đã cho phép. AI tiếp tục các bước liên quan; có nút dừng, nhật ký và backup. Mã macro/script tự thực hiện khi quyền tự động đã bật.')
         cl.addWidget(self.task_autonomy_check)
         actions = QHBoxLayout(); cl.addLayout(actions)
         hint = QLabel('Enter để gửi · Shift + Enter xuống dòng'); hint.setStyleSheet('color:#9aa0a6;font-size:11px;background:transparent;')
@@ -1936,7 +1937,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
         if prompt is not None:
             cfg['task_autonomy']=self.task_autonomy_check.isChecked()
-            self.task_autonomy_check.setChecked(False)
         attachment_paths=list(self.pending_documents) if prompt is not None else []
         attachment_image=self.pending_image if prompt is not None else None
         if state.get('account_username') not in (None,session['username']):
@@ -2194,7 +2194,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def resume(self):
         state = self.store.load(self.cid)
         if state.get('online_automation') and state.get('running'):
-            if state.get('pending') and not (self.cfg.get('windows_apps_auto_execute') and not state['pending'].get('decision_started')):self.approve_pending(state['pending'])
+            if state.get('pending') and not ((self.cfg.get('windows_apps_auto_execute') or self.cfg.get('ai_tools_auto_execute')) and not state['pending'].get('decision_started')):self.approve_pending(state['pending'])
             else:self.online_windows_task()
             return
         if state.get('model') in REMOTE_MODELS and state['running']:
@@ -2202,13 +2202,14 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self.status.setText('Luồng AI trên server đã bị ngắt. Nội dung đã lưu được giữ; bạn có thể gửi câu hỏi mới.');return
         action=(state.get('pending') or {}).get('plan',{}).get('action','')
         automatic_app=self.cfg.get('windows_apps_auto_execute') and (action.startswith(('windows_','browser_','pdf_')) or action in {'word_create_open','cad_create_open','cad3d_create_open'}) and not (state.get('pending') or {}).get('decision_started')
+        automatic_app=automatic_app or bool(self.cfg.get('ai_tools_auto_execute') and not (state.get('pending') or {}).get('decision_started'))
         if state['pending'] and not automatic_app: self.approve_pending(state['pending'])
         elif state['running']: self.chat_task()
 
     def approve_pending(self, pending):
         action=pending['plan'].get('action','')
         app_action=action in {'windows_list_apps','windows_open','windows_inspect','windows_action','browser_search','browser_run','pdf_source_open','pdf_read','word_create_open','cad_create_open','cad3d_create_open'}
-        if app_action and self.cfg.get('windows_apps_enabled') and self.cfg.get('windows_apps_auto_execute'):
+        if self.cfg.get('ai_tools_auto_execute') or (app_action and self.cfg.get('windows_apps_enabled') and self.cfg.get('windows_apps_auto_execute')):
             if pending.get('decision_started'):
                 self.status.setText('Thao tác trước chưa rõ kết quả; không chạy lại. Đang ghi nhận trạng thái.')
                 self.chat_task(recover=True)
@@ -2331,7 +2332,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         note=QLabel('Đọc chữ trong PDF trước, chỉ gửi ảnh trang thiếu chữ hoặc lỗi mã hóa khi cả hai quyền được bật. Quyền được lưu một lần. Dùng AI trực tuyến đã chọn (DeepSeek, NVIDIA, Gemini, OpenAI, Groq hoặc AI bổ sung) với key trên server; không chạy Foxit OCR. Đặt số trang bằng 0 để đọc lần lượt không giới hạn tổng số trang. Có thể phát sinh phí API. Trang chưa đọc sẽ được báo rõ; công cụ trên máy vẫn cần cài đặt.');note.setWordWrap(True);network_form.addRow(note)
         group_layout.addWidget(network_group)
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
-        self.ai_tools_auto_check=QCheckBox('AI tự thực hiện các công cụ trong phạm vi đã cấp quyền, không hỏi lại từng bước');self.ai_tools_auto_check.setChecked(self.cfg.get('ai_tools_auto_execute',False))
+        self.ai_tools_auto_check=QCheckBox('AI tự thực hiện các công cụ trong phạm vi đã cấp quyền, không hỏi lại từng bước');self.ai_tools_auto_check.setChecked(self.cfg.get('ai_tools_auto_execute',True))
         tools_form.addRow(self.ai_tools_auto_check)
         self.button(tools_form,'Cấp các quyền công việc cho AI',self.grant_work_permissions)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))

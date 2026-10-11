@@ -227,3 +227,17 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(first['chat_font_revision'],2)
         first['font_size']=15;config.save_config(first)
         self.assertEqual(config.load_config()['font_size'],15)
+
+    def test_automatic_execution_migrates_once_and_preserves_later_opt_out(self):
+        path=self.root/'config.json'
+        import json
+        original=json.loads(path.read_text())
+        original.pop('task_execution_revision',None)
+        original.update(ai_tools_auto_execute=False,windows_apps_auto_execute=False)
+        path.write_text(json.dumps(original))
+        cfg=config.load_config()
+        self.assertTrue(cfg['ai_tools_auto_execute']);self.assertTrue(cfg['windows_apps_auto_execute'])
+        cfg.update(ai_tools_auto_execute=False,windows_apps_auto_execute=False)
+        config.save_config(cfg)
+        self.assertFalse(config.load_config()['ai_tools_auto_execute'])
+        self.assertFalse(config.load_config()['windows_apps_auto_execute'])

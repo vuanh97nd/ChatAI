@@ -128,3 +128,15 @@ class OnlineTaskToolsTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class AutomaticCodePermissionTests(unittest.TestCase):
+    def test_global_auto_execution_includes_code_plans(self):
+        from unittest.mock import Mock
+        from assistant.online_automation import OnlineAutomation
+        windows=Mock();windows.check.return_value={'ai_tools_auto_execute':True}
+        agent=OnlineAutomation(Mock(),{'ai_tools_auto_execute':True},Mock(),None,windows,Mock())
+        state={'pending':{'plan':{'action':'task_script','requires_code_approval':True}},'task_autonomy':True}
+        self.assertTrue(agent.auto_execute_allowed(state))
+        state['task_autonomy']=False
+        self.assertFalse(agent.auto_execute_allowed(state))

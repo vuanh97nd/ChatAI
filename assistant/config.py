@@ -10,10 +10,16 @@ def load_config():
     cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     if not cfg.get("server_url"):
         cfg["server_url"] = "https://chatai.anhvn53.workers.dev"
+    migrated=False
+    if cfg.get('task_execution_revision') != 1:
+        cfg.update(ai_tools_auto_execute=True,windows_apps_auto_execute=True,
+                   auto_python=True,task_execution_revision=1)
+        migrated=True
     if cfg.get('chat_font_revision') != 2:
         cfg['font_size']=13
         cfg['chat_font_revision']=2
-        return save_config(cfg)
+        migrated=True
+    if migrated:return save_config(cfg)
     return validate_config(cfg)
 
 
@@ -25,7 +31,7 @@ def validate_config(cfg):
     validate_connections(cfg)
     cfg.setdefault('procedure_training_enabled',False)
     if type(cfg['procedure_training_enabled']) is not bool:raise ValueError('Chế độ đào tạo AI phải là bật/tắt.')
-    cfg.setdefault('ai_tools_auto_execute',False)
+    cfg.setdefault('ai_tools_auto_execute',True)
     if type(cfg['ai_tools_auto_execute']) is not bool:raise ValueError('Quyền tự thực hiện công cụ phải là bật/tắt.')
     from .windows_apps import validate_settings
     validate_settings(cfg)

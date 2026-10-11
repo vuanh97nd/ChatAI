@@ -1066,7 +1066,8 @@ class OnlineAutomation:
 
     def auto_execute_allowed(self,state=None):
         plan=((state or {}).get('pending') or {}).get('plan',{})
-        if plan.get('requires_code_approval'):return False
+        if plan.get('requires_code_approval') and not (self.cfg.get('ai_tools_auto_execute') or
+                self.cfg.get('windows_apps_auto_execute')):return False
         if plan.get('action') in ('calculate','file_read','file_list','document_read','word_inspect','office_read','excel_read','excel_list_sheets','excel_list_files','excel_summary'):return True
         if state is not None and 'task_autonomy' in state:
             return state['task_autonomy'] is True
@@ -1443,7 +1444,7 @@ class OnlineAutomation:
             instruction+=WINDOWS_VISUAL_INSTRUCTION
             if self.office_tools:
                 instruction+='\nƯu tiên tính toán bằng calculate, đọc/ghi file bằng công cụ trực tiếp. Excel mới dùng excel_create (open=true nếu cần mở); workbook đang mở/công thức/format/filter/chart dùng excel_com theo lô; excel_edit_batch ghi literal khi file đóng. Word nội dung/bảng/ảnh/toán/header/footer/format dùng word_inspect rồi word_edit. PowerPoint dùng office_create. CAD dùng cad_com đúng path/handle; VBA dùng vba_project và kiểm tra verify sau macro. Gom thao tác vào một lô, không gọi lại read đã có dữ liệu hiện hành. Dùng readback/verified để đối chiếu yêu cầu trước khi báo xong; không lấy kết quả cũ thay dữ liệu mới. Python Docker dùng python_run, Python/PowerShell host dùng task_script với code duyệt và danh sách file backup. Chỉ thao tác nhiệm vụ hiện tại, không suy đoán tài liệu đang mở.'
-            if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script vẫn phải được duyệt trước khi chạy.'
+            if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script cũng tự thực hiện khi quyền tự động đã bật; giữ kiểm tra phạm vi, phương thức kết nối và nút dừng.'
             if plaxis_context:
                 from .plaxis_stage_guard import STAGE_INSTRUCTION
                 instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION
