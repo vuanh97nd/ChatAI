@@ -8,6 +8,19 @@ from assistant.windows_apps import resume_automation
 
 class TabulatedActiveTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_phase_rows_select_requested_phase_and_reject_ambiguity(self):
+        from assistant.plaxis_active import tabulated_active
+        obj=NS();phase=NS()
+        for separator in ('\t',' '):
+            table=separator.join(('Object','Active'))+'\n'+separator.join(('InitialPhase','True'))+'\n'+separator.join(("Phase_1'",'False'))
+            g=NS(tabulate=Mock(return_value=table))
+            self.assertIs(tabulated_active(g,obj,phase,'Soil_1_1','Phase_1'),False)
+            self.assertEqual(g.tabulate.call_count,2)
+        for table in ('Object\tActive\nInitialPhase\tTrue\nPhase_2\tFalse',
+                      "Object\tActive\nPhase_1\tTrue\nPhase_1'\tFalse",
+                      "Object\tActive\nPhase_1'\tNone"):
+            with self.assertRaises(ValueError):
+                tabulated_active(NS(tabulate=Mock(return_value=table)),obj,phase,'Soil_1_1','Phase_1')
     def test_native_whitespace_quotes_and_named_object_column(self):
         from assistant.plaxis_active import tabulated_active
         obj=NS();phase=NS()

@@ -6,7 +6,11 @@ import shlex
 def cells(line):
     if '\t' in line:return [cell.strip().strip('"') for cell in line.split('\t')]
     # Native tables may use whitespace and quote names with embedded spaces.
-    return shlex.split(line)
+    lexer=shlex.shlex(line,posix=True)
+    lexer.whitespace_split=True
+    lexer.quotes='"'
+    lexer.commenters=''
+    return list(lexer)
 
 
 def tabulated_active(g,obj,phase,object_name,phase_name):
@@ -35,6 +39,12 @@ def tabulated_active(g,obj,phase,object_name,phase_name):
             identity_column=identity_columns[0]
             rows=[cells(line) for line in lines[1:]]
             matching=[row for row in rows if len(row)>identity_column and row[identity_column]==object_name]
+            # Native property tables transpose the scoped object's values:
+            # Object/Active rows are phase names, including a trailing prime.
+            # Accept only the explicitly requested property call and exact phase.
+            if not matching and len(arguments)==3 and header[columns[0]]=='Active':
+                matching=[row for row in rows if len(row)>identity_column and
+                          row[identity_column] in (phase_name,phase_name+"'")]
             if len(matching)!=1:raise ValueError('không có đúng một dòng đối tượng '+object_name)
             row=matching[0];index=columns[0]
             if len(row)!=len(header):raise ValueError('số cột dòng đối tượng không khớp header; không đoán vị trí Active')
