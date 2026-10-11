@@ -2091,7 +2091,7 @@ async function billingProvider(env,actor,path,body){
  if(path==='/api/provider/model'&&actualProvider==='openai'&&!administrator(actor))return billingError('OpenAI chưa có bảng giá. Hiện dùng DeepSeek, Cloud AI hoặc NVIDIA.',402,'OPENAI_PRICING_UNSET');
  const enabled=await billingEnabled(env);
  if(!enabled||path!=='/api/provider/model')return providerAPI(env,path,body);
- if(administrator(actor)||body.provider==='nvidia')return billingFreeProvider(env,actor,path,body);
+ if(administrator(actor)||actualProvider==='nvidia'||actualProvider==='cloudflare')return billingFreeProvider(env,actor,path,body);
  if(String(body.provider||'').startsWith('ai_')){const custom=await readProviderConfig(env,body.provider);if(custom.provider==='nvidia')return billingFreeProvider(env,actor,path,body);}
  const wallet=await billingWallet(env,actor);
  if(!wallet.service_active)return billingError('Hết 30 ngày dùng thử. Gia hạn phí duy trì '+billingServiceFee(await billingConfig(env)).toLocaleString('vi-VN')+' đ/30 ngày trong Số dư và thanh toán.',402,'SERVICE_EXPIRED');

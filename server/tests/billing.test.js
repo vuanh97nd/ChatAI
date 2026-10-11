@@ -70,6 +70,14 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    assert.equal((await call('/api/provider/model',ai,'alice')).value.code,'SERVICE_EXPIRED');
    // NVIDIA bypasses both subscription and wallet checks.
    assert.equal((await call('/api/provider/model',{...ai,provider:'nvidia'},'alice')).status,200);
+   // Cloudflare bypasses subscription and wallet checks, but retains its quota.
+   env.AI={run:async()=>({response:'Cloudflare miễn phí'})};
+   const cloud=await call('/api/provider/model',{...ai,provider:'cloudflare'},'alice');
+   assert.equal(cloud.status,200,JSON.stringify(cloud.value));
+   assert.equal(cloud.value.answer,'Cloudflare miễn phí');
+   const walletAfterCloud=await call('/api/billing/status',{},'alice');
+   assert.equal(walletAfterCloud.value.wallet.balance_vnd,0);
+   assert.equal(walletAfterCloud.value.wallet.held_vnd,0);
    assert.equal((await call('/api/provider/model',ai)).status,200); // admin exempt
    r=await call('/api/billing/order',{kind:'service',amount:100000,request_id:crypto.randomUUID()},'alice');const renewal=r.value.order;
    assert.equal((await hook({...tx,id:123458,content:renewal.memo,transferAmount:100000})).value.matched,true);
