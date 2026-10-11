@@ -464,6 +464,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA', overflow: TextOverflow.ellipsis)),
                 DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek', overflow: TextOverflow.ellipsis)),
                 DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare AI', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'gemini', child: Text('Gemini', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'groq', child: Text('Groq', overflow: TextOverflow.ellipsis)),
               ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))))),
           IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
             onPressed: sending || working ? null : dictate,
