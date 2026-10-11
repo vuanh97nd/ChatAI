@@ -378,6 +378,9 @@ def phase_changes(g,session=None):
         for name,obj,soil in objects:
             try:
                 active=_value(obj.Active[phase])
+                if active is None:
+                    from .plaxis_stage_guard import active as read_active
+                    active=read_active(obj,phase,g)
                 if type(active) is not bool:continue
             except Exception:continue
             material=None
@@ -604,8 +607,11 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     args=points
             if row['command']=='read':
                 # A second argument reads a per-phase value (Active, Material) in that phase.
-                result=args[0][args[1]] if len(args)==2 else args[0]
                 ref=row['args'][0].get('ref','')
+                result=args[0] if ref.endswith('.Active') and len(args)==2 else args[0][args[1]] if len(args)==2 else args[0]
+                if len(args)==2 and ref.endswith('.Active'):
+                    from .plaxis_stage_guard import active
+                    result=active(resolve({'ref':ref[:-7]}),args[1],g)
                 try:raw=result.value
                 except Exception:raw=result
                 explained=_explain_log(ref,raw)
@@ -762,7 +768,8 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 # Read the value back: a model state that wrongly said "no change" made the
                 # model repeat the same deactivation ten times.
                 try:
-                    actual=_value(args[0][args[1]])
+                    from .plaxis_stage_guard import active as read_active
+                    actual=read_active(resolve({'ref':raw_args[0]['ref'][:-7]}),args[1],g)
                     if type(actual) is not bool:
                         entry['readback']=None
                         entry['readback_warning']='Active chưa đọc được boolean; không coi là False hoặc xác minh thành công.'

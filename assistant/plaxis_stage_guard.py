@@ -7,7 +7,7 @@ import re
 
 COLLECTIONS={'soil':'Soils','displacement':'LineDisplacements','plate':'Plates',
              'line_load':'LineLoads','point_load':'PointLoads','point_displacement':'PointDisplacements',
-             'anchor':'NodeToNodeAnchors'}
+             'anchor':'NodeToNodeAnchors','interface':'Interfaces','embedded_beam':'EmbeddedBeams'}
 
 class StageGuardError(RuntimeError):
     pass
@@ -25,20 +25,28 @@ def name(obj):
     return result
 
 
-def active(obj,phase):
-    result=value(obj.Active[phase])
+def active(obj,phase,g=None):
+    try:result=value(obj.Active[phase])
+    except Exception:result=None
     attempts=1
     if result is None:
         # A second read is safe; a missing/inherited value is never activation=false.
         from .windows_apps import wait_automation,_STOP
         wait_automation()
         if _STOP.is_set():raise StageGuardError('Đã dừng đọc Active.')
-        result=value(obj.Active[phase]);attempts=2
+        try:result=value(obj.Active[phase])
+        except Exception:result=None
+        attempts=2
+    diagnostic=''
+    if result is None and g is not None:
+        from .plaxis_active import tabulated_active
+        try:return tabulated_active(g,obj,phase,name(obj),name(phase))
+        except ValueError as error:diagnostic=' '+str(error)
     if type(result) is not bool:
         raw=repr(result)[:100] if type(result) in (str,int,float,type(None)) else '<proxy>'
         raise StageGuardError(f'Active của {name(obj)} tại {name(phase)} chưa là boolean: '
                               f'kiểu={type(result).__name__}, giá trị={raw}, đã đọc {attempts} lần. Không ép chuỗi/số; '
-                              'đọc lại g.Soils/g.Phases bằng inspect_progress; xác định đúng đối tượng Staged construction. Không tạo lại/xóa hoặc đổi Active khi chưa đọc chắc chắn.')
+                              'đọc lại g.Soils/g.Phases bằng inspect_progress; xác định đúng đối tượng Staged construction. Không tạo lại/xóa hoặc đổi Active khi chưa đọc chắc chắn.'+diagnostic)
     return result
 
 
@@ -63,7 +71,7 @@ def check_spec(raw):
     if not isinstance(spec,dict) or set(spec) not in (required,required|{'kind'}):
         raise StageGuardError('verify_stage cần target, phase, parent_phase, before, parent_active, after, region, shape, source.')
     if spec.get('kind','soil') not in COLLECTIONS:
-        raise StageGuardError('kind phải là soil, displacement, point_displacement, plate, line_load, point_load hoặc anchor.')
+        raise StageGuardError('kind phải là '+', '.join(COLLECTIONS)+'.')
     for key in ('target','phase','parent_phase'):
         if not isinstance(spec[key],str) or not re.fullmatch(r'(?:g\.)?[A-Za-z][A-Za-z0-9_]*',spec[key]):
             raise StageGuardError('Dùng tên đối tượng và phase tường minh; không dùng chỉ số collection.')
@@ -77,7 +85,7 @@ def check_spec(raw):
     if not isinstance(region,dict) or set(region) not in ({'x','y'},{'x','y','z'}):
         raise StageGuardError('region cần x/y cho 2D, x/y/z cho 3D; mỗi trục là [min,max].')
     for interval in region.values():
-        if not isinstance(interval,list) or len(interval)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) for n in interval) or interval[0]>=interval[1]:
+        if not isinstance(interval,list) or len(interval)!=2 or any(type(n) not in (int,float) or not math.isfinite(n) for n in interval) or interval[0]>interval[1] or (spec.get('kind','soil')=='soil' and interval[0]==interval[1]):
             raise StageGuardError('Phạm vi đào phải có giới hạn hữu hạn, min < max.')
     return spec
 
@@ -91,7 +99,7 @@ def snapshot(g,obj,phase,include_soils=True,kind='soil'):
     for soil in (g.Soils if include_soils else []):
         wait_automation()
         if _STOP.is_set():raise StageGuardError('Đã dừng xác minh vùng đào.')
-        soil_states[name(soil)]=active(soil,phase)
+        soil_states[name(soil)]=active(soil,phase,g)
     if include_soils and kind=='soil' and name(obj) not in soil_states:
         raise StageGuardError('Đối tượng không thuộc g.Soils; khai đúng kind cho tải/kết cấu/chuyển vị.')
     other_states={}
@@ -99,10 +107,10 @@ def snapshot(g,obj,phase,include_soils=True,kind='soil'):
         members=list(getattr(g,COLLECTIONS[kind]))
         if not any(str(member)==str(obj) and name(member)==name(obj) for member in members):
             raise StageGuardError('Đối tượng không thuộc collection '+COLLECTIONS[kind]+'. Không dùng quy trình đất đào để bật tải/chuyển vị.')
-        other_states={name(member):active(member,phase) for member in members}
+        other_states={name(member):active(member,phase,g) for member in members}
     return {'kind':kind,'other_states':other_states,'target':name(obj),'identity':str(obj),'geometry_identity':str(obj.Parent),
             'phase':name(phase),'phase_identity':str(phase),'parent_phase':name(parent),
-            'parent_identity':str(parent),'before':active(obj,phase),'parent_active':active(obj,parent),
+            'parent_identity':str(parent),'before':active(obj,phase,g),'parent_active':active(obj,parent,g),
             'bounds':bounds(obj),'soil_states':soil_states}
 
 
@@ -198,6 +206,7 @@ def inspect(g,phase,objects):
 
 
 STAGE_INSTRUCTION = (
+    '\nActive đọc trực tiếp=None: wrapper tự thử tabulate tối đa hai lần, chỉ chấp nhận bảng có đúng tên đối tượng và cột phase tường minh, không bỏ verify_stage. Interface tường: inspect_progress báo wall_interfaces theo Parent từng đoạn plate; đối chiếu manual để bổ sung positive/negative thiếu, giữ interface đã có. Dùng verify_stage kind=interface hoặc embedded_beam cho đúng collection. Vùng hộp của kết cấu đường cho phép một trục min=max; đất đào vẫn yêu cầu min<max. '
     '\nActive=None/null là chưa đọc được, không chứng minh phase trống hoặc chưa thiết lập staged construction. Nhật ký phiên không có lệnh cũng không chứng minh phase trống; có thể người dùng đã thiết lập trong UI hoặc phiên trước. Thiếu OCR mục staged construction: tự đọc lại đúng trang/ảnh còn thiếu hoặc nguồn chính thức trước khi hỏi người dùng số liệu, không đọc lại toàn bộ manual. '
     '\ninspect_stage, verify_stage, inspect_progress, plan_resume là wrapper của Chat AI trong plaxis_commands, không phải phương thức của g. Gọi bằng trường command; không dùng info/signature/read g.inspect_stage hay g.verify_stage để dò sự tồn tại. '
     '\nNếu tiếp tục bài đang dở: inspect_progress/plan_resume args [chuỗi JSON với source và checks (ref,expected,stage; thêm phase cho Active)] đọc trạng thái thật; expected lấy từ manual, không tự đặt. Với Active thêm phase và expected boolean. Giữ verified, sửa missing_or_wrong, chẩn đoán unreadable trước khi ghi; không dựng lại chỉ vì lỗi đọc. '
@@ -205,7 +214,7 @@ STAGE_INSTRUCTION = (
     'phase cũng dùng đọc thuộc tính phụ thuộc phase như Material hoặc tải/chuyển vị: ref là thuộc tính, phase là chuỗi tên phase thực, expected là giá trị scalar đúng kiểu. Active luôn expected boolean JSON true/false; Material đối chiếu tên vật liệu đọc thật. Không thêm phase cho thuộc tính toàn dự án hoặc phép đếm collection. '
     'Trước khi đổi Active: inspect_stage args [ref phase, ref collection như g.Soils] đọc ứng viên; '
     'verify_stage args [chuỗi JSON với target, phase, parent_phase, before, parent_active, after, '
-    'kind=soil/displacement/point_displacement/plate/line_load/point_load/anchor (mặc định soil), shape="box", region={"x":[min,max],"y":[min,max],"z":[min,max] cho 3D}, source="manual mục/trang"]. '
+    'kind=soil/displacement/point_displacement/plate/line_load/point_load/anchor/interface/embedded_beam (mặc định soil), shape="box", region={"x":[min,max],"y":[min,max],"z":[min,max] cho 3D}, source="manual mục/trang"]. '
     'Tọa độ, chiều sâu đợt đào, phase cha và trạng thái dự kiến phải lấy từ manual, không sao chép số mô hình '
     'để hợp thức hóa lựa chọn. Box chỉ dùng phạm vi đào hình hộp/chữ nhật; không khai shape=box cho tunnel cong. '
     'Với móng cứng: xác minh đối tượng chuyển vị bằng kind=displacement hoặc point_displacement, không coi là đất đào. Vùng region lấy từ vị trí đối tượng trong manual; box kiểm tra vị trí, không chứng minh mô hình vật lý. verify_stage thành công mới set Tên.Active theo đúng phase và after. Tắt đất đào khác với bật kết cấu chống. '

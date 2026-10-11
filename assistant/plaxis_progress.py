@@ -54,6 +54,35 @@ def describe(obj):
     if not isinstance(result,str) or not result:raise ValueError('Chưa đọc được tên đối tượng.')
     return result
 
+def wall_interfaces(g):
+    """Read parent links; a global interface count proves no wall coverage."""
+    try:plates=list(g.Plates);interfaces=list(g.Interfaces)
+    except Exception as error:return {'status':'unreadable','error':str(error)[:200]}
+    links={};errors=[]
+    for interface in interfaces:
+        try:
+            label=describe(interface)
+            side=('positive' if label.startswith('PositiveInterface') else
+                  'negative' if label.startswith('NegativeInterface') else None)
+            if side is None:raise ValueError('Chưa xác định mặt interface '+label)
+            parent=scalar(interface.Parent)
+            if parent is None:raise ValueError('Không đọc được parent interface')
+            links.setdefault(str(parent),{'positive':[],'negative':[]})[side].append(label)
+        except Exception as error:errors.append(str(error)[:200])
+    rows=[]
+    for plate in plates:
+        try:
+            parent=scalar(plate.Parent)
+            if parent is None:raise ValueError('Không đọc được parent plate')
+            linked=links.get(str(parent),{'positive':[],'negative':[]})
+            missing=[side for side in ('positive','negative') if not linked[side]]
+            rows.append({'plate':describe(plate),'parent':str(parent),'interfaces':linked,
+                         'status':'unreadable' if errors else 'missing' if missing else 'present',
+                         'missing_sides':missing if not errors else []})
+        except Exception as error:rows.append({'status':'unreadable','error':str(error)[:200]})
+    return {'walls':rows,'read_errors':errors,'read_only':True,
+            'note':'Cùng Parent chỉ kiểm tra interface gắn với từng đoạn plate; chưa chứng minh đủ theo manual hoặc Active đúng phase. Chỉ thêm mặt thiếu mà manual yêu cầu, không tạo lại tường hoặc interface đã có.'}
+
 def inspect_progress(g,raw,resolve):
     spec=specification(raw)
     inventory={}
@@ -95,7 +124,7 @@ def inspect_progress(g,raw,resolve):
                 if ref.endswith('.Active'):
                     target=resolve({'ref':ref[:-7]})
                     # Read the actual per-phase property; None never becomes False.
-                    actual=active(target,phase)
+                    actual=active(target,phase,g)
                 else:
                     actual=scalar(obj[phase])
                     if ref.endswith('.Material') and type(actual) not in (str,int,float,bool,type(None)):
@@ -116,7 +145,7 @@ def inspect_progress(g,raw,resolve):
     covered={check.get('stage','project') for check in spec['checks']}
     for stage in STAGES:
         if stage not in covered:groups['unverified'].append({'stage':stage,'reason':'Chưa cung cấp điều kiện đối chiếu từ manual.'})
-    return {'inventory':inventory,'phases':phases,**groups,'source':spec.get('source',''),
+    return {'inventory':inventory,'phases':phases,'wall_interfaces':wall_interfaces(g),**groups,'source':spec.get('source',''),
             'model_completion_verified':False,'read_only':True,
             'note':'verified chỉ xác nhận các giá trị đã đọc khớp expected được cung cấp, chưa chứng minh nguồn manual hay toàn bộ mô hình. Không đổi chế độ, không ghi/xóa/tính toán.'}
 
@@ -126,6 +155,11 @@ def plan_resume(g,raw,resolve):
     for row in progress['unreadable']:
         actions.append({'action':'diagnose_read','ref':row['ref'],'phase':row.get('phase'),
                         'reason':row['error'],'instruction':'Đọc lại tên trong inventory và đúng chế độ; không coi là thiếu, không tạo/xóa/bật tắt đối tượng khi chưa đọc chắc chắn.'})
+    for wall in progress.get('wall_interfaces',{}).get('walls',[]):
+        if wall.get('status')=='missing':
+            actions.append({'action':'check_manual_then_add_missing_interface','plate':wall['plate'],
+                            'parent':wall['parent'],'missing_sides':wall['missing_sides'],
+                            'instruction':'Đối chiếu manual để xác nhận đây là tường cần interface mặt nào; chỉ tạo mặt thiếu trên Parent đã đọc, giữ plate/interface đã có. Sau khi chia lưới đọc tên mới, verify_stage kind=interface để bật đúng phase và đọc lại.'})
     for row in sorted(progress['missing_or_wrong'],key=lambda r:STAGES.index(r.get('stage','project'))):
         active_change=row['ref'].endswith('.Active')
         actions.append({'action':'verify_stage_then_set' if active_change else 'repair_after_fresh_inspection',
