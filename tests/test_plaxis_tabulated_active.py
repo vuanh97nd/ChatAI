@@ -8,6 +8,16 @@ from assistant.windows_apps import resume_automation
 
 class TabulatedActiveTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_native_whitespace_quotes_and_named_object_column(self):
+        from assistant.plaxis_active import tabulated_active
+        obj=NS();phase=NS()
+        for table in ('Object Active\nSoil_1_1 False',
+                      'Object\tActive\n"Soil_1_1"\tFalse',
+                      'Active\tObject\nFalse\tSoil_1_1'):
+            self.assertIs(tabulated_active(NS(tabulate=Mock(return_value=table)),obj,phase,'Soil_1_1','Phase_1'),False)
+        table='Object\tActive\nSoil_2_1\tFalse'
+        with self.assertRaisesRegex(ValueError,'Bảng thô.*Soil_2_1'):
+            tabulated_active(NS(tabulate=Mock(return_value=table)),obj,phase,'Soil_1_1','Phase_1')
     def test_none_recovers_only_from_correct_named_phase_boolean(self):
         obj=NS(Name='Plate_1_1',Active={'phase':NS(value=None)})
         phase=NS(Name='Phase_1')

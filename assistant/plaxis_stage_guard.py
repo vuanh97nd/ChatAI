@@ -46,7 +46,7 @@ def active(obj,phase,g=None):
         raw=repr(result)[:100] if type(result) in (str,int,float,type(None)) else '<proxy>'
         raise StageGuardError(f'Active của {name(obj)} tại {name(phase)} chưa là boolean: '
                               f'kiểu={type(result).__name__}, giá trị={raw}, đã đọc {attempts} lần. Không ép chuỗi/số; '
-                              'đọc lại g.Soils/g.Phases bằng inspect_progress; xác định đúng đối tượng Staged construction. Không tạo lại/xóa hoặc đổi Active khi chưa đọc chắc chắn.'+diagnostic)
+                              +diagnostic+' Đọc lại g.Soils/g.Phases; không tạo lại/xóa hoặc đổi Active khi chưa đọc chắc chắn.')
     return result
 
 
