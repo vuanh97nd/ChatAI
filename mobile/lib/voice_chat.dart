@@ -14,7 +14,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   late final VoiceController voice;
   late final AnimationController pulse;
   String draft = '', response = '', phase = 'Sẵn sàng', failure = '';
-  bool showContent = false;
+  bool showContent = true;
   bool processing = false, paused = false, closed = false;
   int generation = 0;
   @override
@@ -52,14 +52,15 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     await voice.start((words) { if (mounted && !closed) setState(() => draft = words); });
   }
   Future<void> reply() async {
-    if (processing || closed) return;
+    if (processing || closed || draft.trim().isEmpty) return;
+    final question = draft.trim();
     final run = ++generation;
     setState(() { processing = true; phase = 'Đang suy nghĩ…'; });
     await voice.stop();
     try {
-      final text = await widget.answer(draft);
+      final text = await widget.answer(question);
       if (!mounted || closed || run != generation) return;
-      setState(() { response = text; phase = 'Đang trả lời…'; });
+      setState(() { response = text; showContent = true; phase = 'Đang trả lời…'; });
       await voice.read(text);
       if (!mounted || closed || run != generation) return;
       if (voice.error != null) { paused = true; failure = voice.error!; }
@@ -126,7 +127,11 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 20),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
-        if (showContent && draft.isNotEmpty) Text('Bạn: $draft'),
+        if (showContent && draft.isNotEmpty) Text('Bạn: $draft', textAlign: TextAlign.center),
+        if (!processing && draft.trim().isNotEmpty)
+          FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Gửi câu nói')),
+        if (voice.listening && draft.isEmpty && !processing)
+          const Text('Hãy nói câu hỏi. Chữ nhận dạng sẽ hiện ở đây.', textAlign: TextAlign.center),
         if (showContent && response.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: SelectableText(response)),
         if (failure.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: Text(failure, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (failure.isNotEmpty) Wrap(alignment: WrapAlignment.center, children: [

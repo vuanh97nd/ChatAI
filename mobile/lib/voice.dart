@@ -29,11 +29,18 @@ Future<void> openVoiceSettings(bool tts) => const MethodChannel('vn.chatai/voice
 
 class AndroidVoiceEngine implements VoiceEngine {
   void Function(double)? onLevel;
+  // SpeechToText is a process-wide singleton and retains initialize callbacks.
+  // Route those callbacks to the current dictation/voice-chat session.
+  static void Function(String)? _status;
+  static void Function(String)? _error;
   final SpeechToText speech = SpeechToText();
   final FlutterTts tts = FlutterTts();
   @override
-  Future<bool> initialize(void Function(String) status, void Function(String) error) =>
-      speech.initialize(onStatus: status, onError: (e) => error(e.errorMsg));
+  Future<bool> initialize(void Function(String) status, void Function(String) error) {
+    _status = status; _error = error;
+    return speech.initialize(onStatus: (value) => _status?.call(value),
+      onError: (e) => _error?.call(e.errorMsg));
+  }
   @override
   // Some Android recognizers hang while enumerating installed locales.
   // Request Vietnamese directly; the recognizer reports unsupported languages.
