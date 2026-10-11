@@ -13,6 +13,18 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_indexed_collection_is_resolved_before_parent_properties(self):
+        parent=SimpleNamespace(BoundingBox=[40,14,40,30],Geometry='native geometry')
+        g=SimpleNamespace(Plates=[SimpleNamespace(Parent=parent)])
+        rows=commands_from_json(json.dumps([
+            {'command':'read','args':['g.Plates[0].Parent.BoundingBox']},
+            {'command':'read','args':[{'ref':'g.Plates[0].Parent.Geometry'}]}]))
+        result=execute_commands(Mock(),g,rows)
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(result['results'][0]['value'],[40,14,40,30])
+        self.assertEqual(result['results'][1]['value'],'native geometry')
+        for ref in ('g.Plates[-1].Parent','g.Plates[0:2].Parent','g.Plates[0].Parent()'):
+            with self.assertRaises(ValueError):commands_from_json(json.dumps([{'command':'read','args':[ref]}]))
     def test_general_api_builds_material_and_geometry_without_problem_template(self):
         material=SimpleNamespace(Identification='SoilMat_1')
         g=SimpleNamespace(soilmat=Mock(return_value=material),setproperties=Mock(return_value='OK'),
@@ -58,7 +70,7 @@ class PlaxisCommandTests(unittest.TestCase):
     def test_python_expressions_and_file_commands_are_rejected(self):
         for rows in ([{'command':'exec','args':['bad']}],[{'command':'open','args':['C:/private']}],
                      [{'command':'read','args':[{'ref':'g.__class__'}]}],
-                     [{'command':'read','args':[{'ref':'g.Soils[0]'}]}],
+                     [{'command':'read','args':[{'ref':'g.Soils[0:2]'}]}],
                      [{'command':'surface','args':[{'python':'eval()'}]}]):
             with self.assertRaises(ValueError):commands_from_json(json.dumps(rows))
     def test_error_stops_remaining_commands_and_reports_partial_execution(self):

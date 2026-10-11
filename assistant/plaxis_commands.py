@@ -6,6 +6,7 @@ from .plaxis_stage_guard import StageGuardError
 
 _NAME=re.compile(r'[A-Za-z][A-Za-z0-9_]*\Z')
 _INDEXED=re.compile(r'([A-Za-z][A-Za-z0-9_.]*)\[(\d{1,5})\]\Z')
+_REF_PART=re.compile(r'([A-Za-z][A-Za-z0-9_]*)(?:\[(\d{1,5})\])?\Z')
 _LOCAL_HELPERS={'inspect_stage','verify_stage','inspect_progress','plan_resume','verify_model'}
 _BLOCKED={'open','save','saveas','import','export','run','exec','execute','system','apply','evaluate','python','runscript','runpython'}
 
@@ -24,7 +25,7 @@ def _read_ref(arg):
         name,index=match.group(1),int(match.group(2))
         if all(_NAME.fullmatch(p) for p in name.split('.')):return {'ref':name,'index':index}
         return None
-    if all(_NAME.fullmatch(p) for p in arg.split('.')):return {'ref':arg}
+    if all(_REF_PART.fullmatch(p) for p in arg.split('.')):return {'ref':arg}
     return None
 
 
@@ -73,7 +74,7 @@ def commands_from_json(raw):
                 'Toạ độ và số dùng trực tiếp, không gói vào đối tượng: ví dụ [x1,y1,x2,y2] thay vì [{"x":x1,"y":y1},...].')
             if any(p in _LOCAL_HELPERS for p in v['ref'].split('.')):
                 raise ValueError('Đây là wrapper Chat AI, không phải đối tượng/phương thức PLAXIS. Gọi tên wrapper trong trường command của plaxis_commands, không dùng ref g.'+v['ref'].split('.')[-1])
-            if not all(_NAME.fullmatch(p) for p in v['ref'].split('.')):raise ValueError('ref phải là tên đối tượng/property PLAXIS, không phải biểu thức Python.')
+            if not all(_REF_PART.fullmatch(p) for p in v['ref'].split('.')):raise ValueError('ref phải là tên đối tượng/property PLAXIS, không phải biểu thức Python.')
             if 'index' in v and (type(v['index']) is not int or not 0<=v['index']<100000):raise ValueError('index không hợp lệ.')
         elif isinstance(v,list):
             if len(v)>1000:raise ValueError('Mảng tham số quá lớn.')
@@ -567,7 +568,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
     aliases={**session['aliases'],'g':g};results=[];started=False;failed_properties=[]
     def resolve(v):
         if isinstance(v,dict):
-            parts=v['ref'].split('.')
+            tokens=[_REF_PART.fullmatch(part) for part in v['ref'].split('.')]
+            if not all(tokens):raise ValueError('Tham chiếu PLAXIS không hợp lệ.')
+            parts=[token.group(1) for token in tokens]
             root=aliases.get(parts[0])
             if root is None and parts[0][:1].islower():
                 # A lowercase root is a result name, not a PLAXIS object (those are
@@ -577,9 +580,11 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 raise NameError(f"Tên '{parts[0]}' chưa được định nghĩa trong dự án PLAXIS này (tên đã có: {known}). "
                                 "Dùng tên đối tượng PLAXIS như Borehole_1 hoặc g.Boreholes[0], hoặc tạo lại với result.")
             if root is None:
-                root=getattr(g,parts.pop(0))
-            else:parts=parts[1:]
-            for part in parts:root=getattr(root,part)
+                root=getattr(g,parts[0])
+            if tokens[0].group(2) is not None:root=root[int(tokens[0].group(2))]
+            for token in tokens[1:]:
+                root=getattr(root,token.group(1))
+                if token.group(2) is not None:root=root[int(token.group(2))]
             return root[v['index']] if 'index' in v else root
         if isinstance(v,list):return [resolve(x) for x in v]
         return v
