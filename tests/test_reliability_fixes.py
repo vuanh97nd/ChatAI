@@ -250,7 +250,9 @@ class PlaxisSessionTests(unittest.TestCase):
         def borehole(head):
             item = Mock(name='bh'); item.Name.value = 'Borehole_%d' % (len(self.boreholes) + 1); self.boreholes.append(item); return item
         self.soillayer = Mock(return_value='layer')
-        self.g = self.Proxy(Project='<Project {A}>', borehole=borehole, soillayer=self.soillayer, Boreholes=self.boreholes)
+        # Stable native GUIDs identify the same project across separate connections.
+        self.g = self.Proxy(Project=self.Proxy(_guid='A'), InitialPhase=self.Proxy(_guid='initial'), Soils=[],
+                            borehole=borehole, soillayer=self.soillayer, Boreholes=self.boreholes)
         self.run = lambda rows: plaxis_commands.run_batch(Mock(), self.g, rows, port=10001)
 
     def test_names_survive_between_calls_and_retry_does_not_duplicate(self):

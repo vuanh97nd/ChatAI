@@ -742,8 +742,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 result=method(*args)
                 if stage_checked:
                     result={'api_result':plain(result),'stage_readback':after_change(g,stage_checked)}
-            if row['command']=='new_project':
-                session['aliases'].clear();session['created'].clear();session.pop('excavation_draws',None)
+            if row['command'] in ('new_project','mesh'):
+                from .plaxis_session import invalidate
+                invalidate(session)
                 aliases={'g':g}
             if row.get('result'):
                 aliases[row['result']]=result
@@ -761,9 +762,13 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 # model repeat the same deactivation ten times.
                 try:
                     actual=_value(args[0][args[1]])
-                    entry['readback']=bool(actual)
-                    if bool(actual)!=raw_args[2]:
-                        entry['readback_warning']=f"Đọc lại {raw_args[0]['ref']} ở phase này = {bool(actual)}, khác giá trị vừa đặt."
+                    if type(actual) is not bool:
+                        entry['readback']=None
+                        entry['readback_warning']='Active chưa đọc được boolean; không coi là False hoặc xác minh thành công.'
+                    else:
+                        entry['readback']=actual
+                        if actual!=raw_args[2]:
+                            entry['readback_warning']=f"Đọc lại {raw_args[0]['ref']} ở phase này = {actual}, khác giá trị vừa đặt."
                 except Exception as exc:
                     entry['readback']=f'không đọc lại được: {str(exc)[:80]}'
             _log_phase_change(session,row,args)
@@ -919,11 +924,18 @@ def run_batch(server,g,rows,on_status=None,port=None,version=None):
     try:project=str(g.Project)
     except Exception:project='unknown'
     session=_SESSIONS.setdefault((port,project),{'aliases':{},'created':{}})
+    from .plaxis_session import live_scope,bind
+    invalidated=bind(session,live_scope(g,version,port))
     assigns=any(r.get('command')=='setmaterial' for r in rows)
     before=set(_soils_without_material(g)) if assigns else set()
     import time
     api_started=time.perf_counter()
     result=execute_commands(server,g,rows,on_status,session)
+    session['live_scope']=live_scope(g,version,port)
+    result['runtime_scope']=session['live_scope']
+    if invalidated or any(r['command'] in ('new_project','mesh') for r in rows):
+        result['references_invalidated']=True
+        result['reference_note']='Tham chiếu cũ đã bỏ vì dự án/lưới thay đổi hoặc chưa nhận diện được phiên. Đọc lại g.Soils, g.Phases và collection liên quan; không dùng alias cũ.'
     result['api_elapsed_seconds']=round(time.perf_counter()-api_started,3)
     if assigns and before:
         still=before&set(_soils_without_material(g))
@@ -933,7 +945,9 @@ def run_batch(server,g,rows,on_status=None,port=None,version=None):
     if any(r['command']=='new_project' for r in rows):
         try:project=str(g.Project)
         except Exception:pass
-        _SESSIONS[(port,project)]={'aliases':{},'created':{}}
+        # execute_commands already cleared the old project at new_project; keep
+        # objects created by later steps in this same batch under the new key.
+        _SESSIONS[(port,project)]=session
     first=not session.get('seen');session['seen']=True
     # First contact with this project: show what is already there before anything is built.
     if first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):

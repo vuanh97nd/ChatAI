@@ -394,6 +394,13 @@ def _recently_failed(state,command):
 def remember_working_forms(state,call,result):
     """When a command that failed earlier now succeeds (often after a web lookup), keep
     the exact working form so later steps reuse it instead of searching again."""
+    scope=result.get('runtime_scope')
+    if result.get('references_invalidated') or (scope and state.get('plaxis_learned_scope')!=scope):
+        state['plaxis_learned']=[]
+    if 'runtime_scope' in result:
+        state['plaxis_runtime_scope']=scope
+        state['plaxis_learned_scope']=scope
+    if result.get('references_invalidated'):return
     try:rows=json.loads(call['function']['arguments'].get('commands','[]'))
     except (ValueError,TypeError,AttributeError,KeyError):return
     done={r.get('step') for r in result.get('results',[]) if isinstance(r,dict) and 'error' not in r}
