@@ -25,8 +25,10 @@ class Job:
 
 
 class Jobs:
-    def __init__(self, model: Any, runtime: Any, capacity: int = 32) -> None:
+    def __init__(self, model: Any, runtime: Any, capacity: int = 32, memory: Any = None, knowledge: Any = None) -> None:
         self.model, self.runtime, self.capacity = model, runtime, capacity
+        self.memory = memory
+        self.knowledge = knowledge
         self.jobs: dict[str, Job] = {}
         self.tasks: set[asyncio.Task[Any]] = set()
         self.lock = asyncio.Lock()
@@ -53,13 +55,19 @@ class Jobs:
             job.status = 'running'
             logger.info('job_start id=%s version=%s', job.id, job.request.version)
             try:
+                context = await asyncio.to_thread(self.memory.load, job.request.project_id, job.request.version) if self.memory and job.request.project_id else {}
+                if self.knowledge:
+                    sources = await asyncio.to_thread(self.knowledge.rag_search, job.request.prompt[:2000])
+                    context = {'historical_project': context, 'retrieved_sources_untrusted': sources}
                 job.result = await run_agent(self.model, self.runtime, job.request.prompt,
-                    job.request.version, job.request.max_steps, job.stop, job.events)
-                job.status = 'stopped' if job.stop.is_set() else 'failed' if job.result['halted'] or job.result['limit_reached'] else 'finished'
+                    job.request.version, job.request.max_steps, job.stop, job.events, job.request.criteria, job.request.max_reviews, context)
+                job.status = 'stopped' if job.stop.is_set() else 'failed' if job.result['halted'] or job.result['limit_reached'] or job.result.get('criteria_failed') else 'finished'
             except Exception as error:
                 logger.exception('job_failed id=%s', job.id)
                 job.result = {'error': str(error)[:1000], 'model_completion_verified': False}
                 job.status = 'failed'
+            if self.memory and job.request.project_id:
+                await asyncio.to_thread(self.memory.save, job.request.project_id, job.request.version, job.events, job.result or {})
             logger.info('job_end id=%s status=%s', job.id, job.status)
 
     async def close(self) -> None:

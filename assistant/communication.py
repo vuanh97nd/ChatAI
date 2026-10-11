@@ -26,6 +26,7 @@ def validate_methods(cfg):
     cfg['communication_methods']={k:selected.get(k,default) for k,(_,_,default) in METHODS.items()}
 
 def method_for(tool):
+    if tool == 'plaxis_safe_geo_calculate':return None
     if tool.startswith('plaxis_safe_'):return 'application_api'
     if tool=='windows_clipboard':return 'clipboard'
     if tool in ('application_connections','plugin_call','office_addin'):return 'plugin' if tool!='application_connections' else None

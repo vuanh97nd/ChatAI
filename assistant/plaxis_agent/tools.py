@@ -3,14 +3,16 @@ import json
 import hashlib
 from typing import Any
 from pydantic import BaseModel, ValidationError
-from .schemas import Inspect, Material, Layer, Calculate
+from .schemas import Inspect, Material, Layer, Calculate, GeoCalculation
 from .utils import logger
 
 MODELS: dict[str, type[BaseModel]] = {
+    'plaxis_safe_geo_calculate': GeoCalculation,
     'plaxis_safe_inspect': Inspect, 'plaxis_safe_material': Material,
     'plaxis_safe_layer': Layer, 'plaxis_safe_calculate': Calculate,
 }
 DESCRIPTIONS = {
+    'plaxis_safe_geo_calculate': 'Tính Python xác định: settlement(H,e0,Cc,sigma0,delta_sigma), bearing_capacity(c,phi,gamma,B,Df), earth_pressure(gamma,H,phi), mohr_coulomb(c,phi,sigma_n). SI m/kN/kPa/độ; slope chỉ sơ bộ. Không thao tác PLAXIS.',
     'plaxis_safe_inspect': 'Đọc trạng thái PLAXIS Input hiện tại; kiểm tra trước khi ghi, không tạo mới dự án.',
     'plaxis_safe_material': 'Tạo vật liệu Mohr-Coulomb theo số liệu có nguồn, SI kN/m/kPa; dùng kết quả tên API thật để đọc lại. Không dùng cho HS hay Undrained B.',
     'plaxis_safe_layer': 'Thêm một lớp đất 2D có bề dày xác định vào borehole đã có; chưa gán vật liệu. Không tự tạo borehole.',
@@ -34,6 +36,14 @@ def execute(remote: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]
     """Validate again at the write boundary; never retry an uncertain write."""
     try:
         data = prepare(name, arguments)['input']
+        if name == 'plaxis_safe_geo_calculate':
+            from assistant.geo_solver import geo_calculate
+            result = geo_calculate(data['formula'], json.dumps(data['params']))
+            units = {'S_m': 'm', 'S_mm': 'mm', 'FS': '1', 'qu_kPa': 'kPa', 'tau_failure_kPa': 'kPa'}
+            metrics = {key: {'value': result[key], 'unit': unit} for key, unit in units.items() if key in result}
+            if 'qa_kPa (FS=3)' in result:
+                metrics['qa_kPa'] = {'value': result['qa_kPa (FS=3)'], 'unit': 'kPa'}
+            return {'ok': 'error' not in result, 'metrics': metrics, **result}
         version = data['version']
         alias='safe_mat_'+hashlib.sha256(str(data.get('name','')).encode()).hexdigest()[:12]
         if name == 'plaxis_safe_inspect':

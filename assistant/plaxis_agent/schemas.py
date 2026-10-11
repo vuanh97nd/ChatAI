@@ -49,7 +49,46 @@ class Calculate(Input):
     source: str = Field(min_length=1, max_length=500)
 
 
+class Criterion(Input):
+    metric: str = Field(min_length=1, max_length=80, pattern=r'^[A-Za-z][A-Za-z0-9_]*$')
+    operator: Literal['le', 'ge']
+    target: float
+    unit: str = Field(min_length=1, max_length=30)
+
+
 class JobRequest(Input):
     prompt: str = Field(min_length=1, max_length=12000)
     version: Literal['2d', '3d']
     max_steps: int = Field(default=12, ge=1, le=40)
+    project_id: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[\w.-]+$")
+    criteria: list[Criterion] = Field(default_factory=list, max_length=20)
+    max_reviews: int = Field(default=2, ge=1, le=4)
+
+
+
+class GeoCalculation(Input):
+    version: Literal['2d', '3d']
+    formula: Literal['bearing_capacity', 'settlement', 'earth_pressure', 'mohr_coulomb', 'spt_correlation', 'slope_stability']
+    params: dict = Field(description='JSON parameters in SI units: lengths m, stress kPa, unit weight kN/m³, angles degrees; no code.')
+
+    @model_validator(mode='after')
+    def validate_parameters(self) -> 'GeoCalculation':
+        import json
+        from assistant.geo_solver import _finite_data
+        required = {
+            'settlement': {'H', 'e0', 'Cc', 'sigma0', 'delta_sigma'},
+            'bearing_capacity': {'c', 'phi', 'gamma', 'B', 'Df'},
+            'earth_pressure': {'gamma', 'H', 'phi'},
+            'slope_stability': {'c', 'phi', 'gamma', 'H', 'slope_angle'},
+            'spt_correlation': {'N'}, 'mohr_coulomb': {'c', 'phi'},
+        }
+        if not required[self.formula].issubset(self.params):
+            raise ValueError('Thiếu tham số: ' + ', '.join(sorted(required[self.formula] - self.params.keys())))
+        if len(json.dumps(self.params, allow_nan=False)) > 4000:
+            raise ValueError('Parameters exceed 4000 characters.')
+        _finite_data(self.params)
+        return self
+
+
+class DocumentIndex(Input):
+    path: str = Field(min_length=1, max_length=1000)

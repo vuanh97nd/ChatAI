@@ -4,7 +4,7 @@ Supported formulas (pass as `formula` parameter):
   bearing_capacity   — Terzaghi/Meyerhof/Hansen bearing capacity of shallow footing
   settlement         — Terzaghi consolidation settlement
   earth_pressure     — Rankine active/passive earth pressure
-  slope_stability    — Simplified Bishop / Fellenius factor of safety
+  slope_stability    — single-slice approximation, preliminary screening only
   spt_correlation    — SPT N-value → friction angle, undrained shear strength, etc.
   mohr_coulomb       — Mohr-Coulomb failure envelope & principal stresses
 
@@ -117,7 +117,7 @@ def _settlement(p: dict) -> dict:
     Cs = float(p.get('Cs', 0))
     sp = float(p.get('sigma_p', s0))  # preconsolidation; default = normally consolidated
 
-    if H <= 0 or e0 <= 0 or Cc <= 0 or s0 <= 0 or ds < 0:
+    if H <= 0 or e0 <= 0 or Cc <= 0 or s0 <= 0 or ds < 0 or Cs < 0 or sp <= 0:
         raise ValueError("Thông số không hợp lệ (H,e0,Cc,σ₀>0; Δσ≥0).")
 
     s1 = s0 + ds
@@ -191,7 +191,7 @@ def _earth_pressure(p: dict) -> dict:
 
 def _slope_stability(p: dict) -> dict:
     """
-    Simplified Bishop method (circular slip, homogeneous slope).
+    Single-slice approximation, not a Bishop multi-slice solver.
     Required: c (kPa), phi (°), gamma (kN/m³), H (m), slope_angle (°)
     Optional: water_table_ratio (0–1, phần trăm chiều cao có nước; default 0)
               radius_ratio (R/H, default 1.5)
@@ -234,6 +234,8 @@ def _slope_stability(p: dict) -> dict:
 
     return {
         "method": "Fellenius (slice đơn, sơ bộ) + kiểm tra biểu đồ Taylor",
+        "preliminary_only": True,
+        "design_verified": False,
         "FS_fellenius": round(FS, 2),
         "FS_taylor_approx": round(FS_taylor, 2),
         "stability_number_Ns": round(Ns, 4),
@@ -375,7 +377,7 @@ FORMULAS_HELP = (
     "Params: H, e0, Cc, sigma0, delta_sigma. Tuỳ chọn: Cs, sigma_p. | "
     "earth_pressure: áp lực đất chủ động/bị động Rankine. "
     "Params: gamma, H, phi. Tuỳ chọn: c, surcharge. | "
-    "slope_stability: hệ số an toàn mái dốc (Fellenius + Taylor). "
+    "slope_stability: ước lượng sơ bộ một lát mái dốc; không dùng để nghiệm thu. "
     "Params: c, phi, gamma, H, slope_angle. Tuỳ chọn: water_table_ratio, radius_ratio. | "
     "spt_correlation: N-SPT → thông số đất. "
     "Params: N, soil_type (sand/clay/silt). Tuỳ chọn: effective_stress_kPa, energy_ratio. | "
@@ -384,9 +386,24 @@ FORMULAS_HELP = (
 )
 
 
+def _finite_data(value):
+    if isinstance(value,dict):
+        for item in value.values():_finite_data(item)
+    elif isinstance(value,list):
+        for item in value:_finite_data(item)
+    elif type(value) is bool:
+        raise ValueError('Không dùng boolean thay số trong dữ liệu địa kỹ thuật.')
+    elif isinstance(value,(int,float)) and not math.isfinite(value):
+        raise ValueError('Dữ liệu/kết quả phải hữu hạn; không nhận NaN hoặc Infinity.')
+    elif isinstance(value,str):
+        try:number=float(value)
+        except ValueError:return
+        if not math.isfinite(number):raise ValueError('Chuỗi số không hữu hạn.')
+
+
 def geo_calculate(formula: str, params: str) -> dict:
     """Main entry point called by the agent tool handler."""
-    if formula not in _HANDLERS:
+    if not isinstance(formula,str) or formula not in _HANDLERS:
         return {
             "error": f"formula '{formula}' không có. Các công thức hỗ trợ: {', '.join(_HANDLERS)}",
             "help": FORMULAS_HELP,
@@ -400,8 +417,18 @@ def geo_calculate(formula: str, params: str) -> dict:
     if not isinstance(p, dict):
         return {"error": "params phải là JSON object."}
     try:
+        _finite_data(p)
         result = _HANDLERS[formula](p)
-    except (KeyError, TypeError, ValueError) as exc:
+        # Result metadata may contain booleans, so validate numeric output separately.
+        def check_result(value):
+            if isinstance(value,dict):
+                for item in value.values():check_result(item)
+            elif isinstance(value,list):
+                for item in value:check_result(item)
+            elif type(value) in (int,float) and not math.isfinite(value):
+                raise ValueError('Kết quả tính toán không hữu hạn.')
+        check_result(result)
+    except (KeyError, TypeError, ValueError, ArithmeticError) as exc:
         return {"error": str(exc), "formula": formula, "help": FORMULAS_HELP}
     result["formula_used"] = formula
     return result

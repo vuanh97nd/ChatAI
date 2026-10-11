@@ -1,8 +1,9 @@
 """Local API routes; optional bearer token for a deliberately exposed service."""
 import secrets
+import asyncio
 from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from .schemas import JobRequest
+from .schemas import JobRequest, DocumentIndex
 
 router = APIRouter(prefix='/plaxis', tags=['PLAXIS'])
 
@@ -40,3 +41,16 @@ async def stop(request: Request, job_id: str) -> dict[str, str]:
         job.status = 'stopping'
     return {'id': job.id, 'status': job.status,
             'note': 'Dừng trước bước tiếp theo; không hủy giả thao tác PLAXIS đang thực hiện.'}
+
+
+@router.post('/documents/index', dependencies=[Depends(authorized)])
+async def index_document(request: Request, payload: DocumentIndex) -> dict[str, Any]:
+    knowledge = request.app.state.jobs.knowledge
+    if knowledge is None:
+        raise HTTPException(409, 'Cần cấu hình CHATAI_AGENT_DOCUMENT_ROOTS và cài requirements-rag.txt.')
+    def index():
+        return knowledge.commit(knowledge.prepare(payload.path))
+    try:
+        return await asyncio.to_thread(index)
+    except (ValueError, PermissionError, FileNotFoundError) as error:
+        raise HTTPException(422, str(error)) from error

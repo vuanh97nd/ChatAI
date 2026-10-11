@@ -6,7 +6,7 @@ from .storage import dumps
 from .tools import TOOLS, validate_call
 from .tools import WRITES
 
-from .prompts import SYSTEM, FAST_SYSTEM
+from .prompts import SYSTEM, FAST_SYSTEM, VISION_SYSTEM
 from .routing import classify_question
 from .calculator import CALCULATOR_SCHEMA, calculate
 from .answer_policy import evidence_record, guard_answer
@@ -526,7 +526,8 @@ class Agent:
                 document_turn=bool((state.get("document_intent") or {}).get("target_type")=="document" and state["routing"]["category"]!="coding")
                 review_needed=bool(state.get('deep_analysis') or state['routing'].get('complex') or state['routing'].get('high_accuracy'))
                 internal_stage=bool((plan.get('enabled') and plan['stage'] in ('media','vision')) or state.get('ui_mode') in (2,3))
-                instruction = SYSTEM if self.schemas else FAST_SYSTEM
+                latest_user=next((m for m in reversed(state['messages']) if m.get('role')=='user'),{})
+                instruction = SYSTEM if self.schemas else VISION_SYSTEM if latest_user.get('images') else FAST_SYSTEM
                 if self.schemas:
                     from .communication import method_status
                     instruction+='\n'+method_status(self.cfg)

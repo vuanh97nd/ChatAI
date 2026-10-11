@@ -47,3 +47,38 @@ Wrapper thêm lớp cần đúng một borehole đã có. Chưa tạo contour/bo
 Stop không thể hủy solver đang chạy: chờ lời gọi native hiện tại kết thúc và dừng trước bước sau. Job lưu trong RAM, không tự phát lại sau restart; 32 job tối đa, job kết thúc cũ sẽ bị loại khi đầy. Dùng một worker Uvicorn và chỉ một ứng dụng điều khiển dự án; khóa Python không khóa giữa tiến trình API và một EXE desktop khác.
 
 Test API cần dependencies trong requirements-agent-api.txt. Kiểm tra native Windows và các phiên bản PLAXIS vẫn phải thực hiện trên máy có phần mềm thật; mock không chứng minh đúng mô hình địa kỹ thuật.
+
+### Bộ nhớ, RAG và thẩm tra số liệu
+
+API nhận thêm `project_id` (tùy chọn). Checkpoint SQLite được lưu tại
+`CHATAI_AGENT_STATE_DIR`, mặc định trong thư mục log `agent-state`.
+Mỗi khóa được tách theo project/product 2D–3D. Khởi động lại không chạy lại
+lệnh ghi; dữ liệu cũ không thay thế inspect hiện tại. Lịch sử job vẫn ở RAM.
+
+Để dùng RAG: cài `requirements-rag.txt`, tải embedding Ollama `bge-m3`, đặt
+`CHATAI_AGENT_DOCUMENT_ROOTS` là JSON danh sách thư mục tài liệu và tùy chọn
+`CHATAI_AGENT_CORPUS_OWNER` (mặc định `local`). Gửi POST
+`/plaxis/documents/index` với `{"path":"đường dẫn tài liệu"}` và cùng Bearer token.
+Endpoint chỉ index trong các thư mục cấu hình; không tự tải tiêu chuẩn trên mạng.
+Tài liệu cần có chữ và tối đa 100.000 ký tự mỗi file; chia manual theo chương.
+Agent tìm tối đa 5 đoạn, giữ nguồn/trang/hash và loại nguồn đã thay đổi.
+Không có nguồn đủ mạnh thì chưa được khẳng định đúng tiêu chuẩn.
+
+Ví dụ job kiểm tra lún:
+```json
+{
+  "prompt": "Tính lún cố kết với H=10m, e0=1, Cc=0.2, sigma0=100kPa, delta_sigma=50kPa. Không thay dữ liệu đầu vào.",
+  "version": "2d",
+  "project_id": "foundation-a",
+  "criteria": [{"metric":"S_m","operator":"le","target":0.2,"unit":"m"}],
+  "max_reviews": 2
+}
+```
+
+`plaxis_safe_geo_calculate` tính bằng Python, không kết nối PLAXIS.
+Thẩm tra chỉ nhận giá trị hữu hạn và đúng đơn vị từ kết quả công cụ, không nhận
+lời khẳng định của LLM. Có thể yêu cầu tính lại tối đa `max_reviews`, vẫn chịu
+`max_steps`; không tự đổi dữ liệu địa chất hay lặp lại thao tác ghi. Tiêu chí
+chưa đạt khiến job failed. Đây là critic xác định, chưa phải kỹ sư thẩm tra LLM
+độc lập. Ước lượng mái dốc một lát không phải Bishop và không được nghiệm thu.
+`model_completion_verified` vẫn false: chưa có verifier trọn mô hình/Output.

@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from fastapi import FastAPI
 from .jobs import Jobs
+from .project_memory import ProjectMemory
+from .knowledge import configured_knowledge
 from .router import router
 from .runtime import NativeRuntime
 from .utils import logger
@@ -32,7 +34,8 @@ def create_app(model: Any = None, runtime: Any = None, api_token: str | None = N
             if runtime is None:
                 from assistant.plaxis_remote import PlaxisRemoteApp
                 runtime = NativeRuntime(PlaxisRemoteApp(None))
-            app.state.jobs = Jobs(model, runtime)
+            memory = ProjectMemory(Path(os.environ.get('CHATAI_AGENT_STATE_DIR', str(folder / 'agent-state'))) / 'projects.sqlite3')
+            app.state.jobs = Jobs(model, runtime, memory=memory, knowledge=configured_knowledge(memory.path.parent))
             yield
         finally:
             if hasattr(app.state, 'jobs'):
