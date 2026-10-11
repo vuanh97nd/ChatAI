@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -13,20 +14,37 @@ abstract class VoiceEngine {
   Future<void> stopSpeaking();
 }
 
+bool vietnameseLocale(String value) => value.toLowerCase().replaceAll('_', '-').split('-').first == 'vi';
+Map<String, String>? vietnameseVoice(dynamic values) {
+  if (values is! List) return null;
+  for (final value in values) {
+    if (value is Map && value['locale'] is String && value['name'] is String && vietnameseLocale(value['locale'] as String)) {
+      return {'name': value['name'] as String, 'locale': value['locale'] as String};
+    }
+  }
+  return null;
+}
+Future<void> openVoiceSettings(bool tts) => const MethodChannel('vn.chatai/voice_settings')
+    .invokeMethod<void>(tts ? 'tts' : 'speech');
+
 class AndroidVoiceEngine implements VoiceEngine {
+  void Function(double)? onLevel;
   final SpeechToText speech = SpeechToText();
   final FlutterTts tts = FlutterTts();
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) =>
       speech.initialize(onStatus: status, onError: (e) => error(e.errorMsg));
   @override
-  Future<List<String>> locales() async => (await speech.locales()).map((l) => l.localeId).toList();
+  // Some Android recognizers hang while enumerating installed locales.
+  // Request Vietnamese directly; the recognizer reports unsupported languages.
+  Future<List<String>> locales() async => ['vi-VN'];
   @override
   Future<void> listen(String locale, void Function(String) words) async {
     await speech.listen(localeId: locale, listenFor: const Duration(seconds: 60),
       pauseFor: const Duration(seconds: 4),
       listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),
+      onSoundLevelChange: (level) => onLevel?.call(level),
       onResult: (result) => words(result.recognizedWords));
     // Some Android recognition services return without starting or throwing.
     for (var attempt = 0; attempt < 10 && !speech.isListening; attempt++) {
@@ -41,12 +59,28 @@ class AndroidVoiceEngine implements VoiceEngine {
   @override
   Future<void> speak(String text) async {
     final run = ++_readRun;
-    final available = await tts.isLanguageAvailable('vi-VN');
+    var selected = vietnameseVoice(await tts.getVoices.timeout(const Duration(seconds: 12)));
     if (run != _readRun) return;
-    if (available != true) {
-      throw Exception('Chưa có giọng tiếng Việt. Cài giọng đọc trong cài đặt Android.');
+    if (selected == null) {
+      final engines = await tts.getEngines.timeout(const Duration(seconds: 8));
+      if (run != _readRun) return;
+      if (engines is List && engines.contains('com.google.android.tts')) {
+        await tts.setEngine('com.google.android.tts').timeout(const Duration(seconds: 10));
+        selected = vietnameseVoice(await tts.getVoices.timeout(const Duration(seconds: 12)));
+      }
     }
-    await tts.setLanguage('vi-VN');
+    if (run != _readRun) return;
+    if (selected != null) {
+      await tts.setLanguage(selected['locale']!);
+      await tts.setVoice(selected);
+    } else {
+      final available = await tts.isLanguageAvailable('vi-VN').timeout(const Duration(seconds: 8));
+      if (run != _readRun) return;
+      if (available != true && available != 1) {
+        throw Exception('Chưa có giọng đọc tiếng Việt trên máy. Mở cài đặt giọng đọc để chọn hoặc tải tiếng Việt.');
+      }
+      await tts.setLanguage('vi-VN');
+    }
     await tts.setSpeechRate(0.45);
     await tts.awaitSpeakCompletion(true);
     // Keep each utterance within Android's TTS input limit; preserve full answer.
@@ -66,16 +100,24 @@ class AndroidVoiceEngine implements VoiceEngine {
 class VoiceController extends ChangeNotifier {
   final VoiceEngine engine;
   bool listening = false, speaking = false, starting = false;
+  double soundLevel = 0;
   String? error;
   bool _disposed = false;
   int _generation = 0;
-  VoiceController({VoiceEngine? engine}) : engine = engine ?? AndroidVoiceEngine();
+  VoiceController({VoiceEngine? engine}) : engine = engine ?? AndroidVoiceEngine() {
+    if (this.engine is AndroidVoiceEngine) {
+      (this.engine as AndroidVoiceEngine).onLevel = (level) {
+        if (!_disposed && listening) { soundLevel = ((level + 2) / 12).clamp(0.0, 1.0).toDouble(); _changed(); }
+      };
+    }
+  }
   void _changed() { if (!_disposed) notifyListeners(); }
 
   Future<void> start(void Function(String) onWords) async {
     if (_disposed || starting || listening) return;
     final run = ++_generation;
     var receivedWords = false;
+    var ended = false;
     starting = true; error = null; _changed();
     try {
       await engine.stopSpeaking();
@@ -83,7 +125,9 @@ class VoiceController extends ChangeNotifier {
       speaking = false;
       final available = await engine.initialize((status) {
         if (run != _generation || _disposed) return;
+        if (status == 'listening') { listening = true; _changed(); }
         if (status == 'done' || status == 'notListening') {
+          ended = true;
           listening = false;
           if (!starting && !receivedWords && error == null) {
             error = 'Chưa nghe được lời nói. Hãy bấm mic và nói lại; kiểm tra quyền micro nếu vẫn không nhận chữ.';
@@ -100,7 +144,7 @@ class VoiceController extends ChangeNotifier {
       if (!available) {
         throw Exception('Chưa được cấp quyền micro hoặc máy chưa có dịch vụ nhận dạng giọng nói.');
       }
-      final locales = await engine.locales().timeout(const Duration(seconds: 10));
+      final locales = await engine.locales().timeout(const Duration(seconds: 10), onTimeout: () => throw Exception('Không lấy được ngôn ngữ nhận dạng. Mở cài đặt dịch vụ giọng nói và thử lại.'));
       if (run != _generation || _disposed) return;
       final vietnamese = locales.where((l) => l.toLowerCase() == 'vi' || l.toLowerCase().replaceAll('-', '_').startsWith('vi_')).toList();
       if (vietnamese.isEmpty) {
@@ -111,8 +155,8 @@ class VoiceController extends ChangeNotifier {
           receivedWords = true;
           onWords(words);
         }
-      }).timeout(const Duration(seconds: 10));
-      if (run == _generation && !_disposed && error == null) { listening = true; }
+      }).timeout(const Duration(seconds: 15), onTimeout: () => throw Exception('Dịch vụ nhận dạng không mở được mic. Kiểm tra quyền micro, dịch vụ nhận dạng và kết nối mạng rồi thử lại.'));
+      if (run == _generation && !_disposed && error == null && !ended) { listening = true; }
     } catch (e) {
       if (run == _generation && !_disposed) {
         _generation++;

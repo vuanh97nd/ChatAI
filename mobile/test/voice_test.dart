@@ -35,6 +35,13 @@ class FakeVoice implements VoiceEngine {
 }
 
 void main() {
+  test('Vietnamese voice selection accepts Android locale formats', () {
+    expect(vietnameseVoice([{'name': 'English', 'locale': 'en-US'},
+      {'name': 'Vietnamese', 'locale': 'vi_VN'}]), {'name': 'Vietnamese', 'locale': 'vi_VN'});
+    expect(vietnameseVoice([{'name': 'vi', 'locale': 'vi'}]), isNotNull);
+    expect(vietnameseVoice([{'name': 'English', 'locale': 'en-US'}]), isNull);
+  });
+
   test('recognizer start failure resets mic and shows the error', () async {
     final engine = FakeVoice()..failListen = true;
     final voice = VoiceController(engine: engine); addTearDown(voice.dispose);

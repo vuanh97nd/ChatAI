@@ -704,6 +704,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       child: Scaffold(key: scaffoldKey, onDrawerChanged: (v) => changed(() => drawerOpen = v), drawer: navigationDrawer(), appBar: topBar(),
       body: SafeArea(child: Column(children: [
         if (error != null) MaterialBanner(content: Text(error!), actions: [
+          if (voice.error != null) TextButton(onPressed: () async {
+            try { await openVoiceSettings(true); }
+            catch (e) { changed(() => error = '$e'); }
+          }, child: const Text('Cài đặt giọng đọc')),
           TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
         if (working) const LinearProgressIndicator(),
         Expanded(child: pageContent()),

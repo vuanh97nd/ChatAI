@@ -104,6 +104,31 @@ def configure(android):
     if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs' not in text:
         text += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
     build.write_text(text)
+    activity = android / 'app/src/main/kotlin/vn/chatai/chatai_mobile/MainActivity.kt'
+    activity.parent.mkdir(parents=True, exist_ok=True)
+    activity.write_text("""package vn.chatai.chatai_mobile
+import android.content.Intent
+import android.net.Uri
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+class MainActivity: FlutterActivity() {
+  override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+    super.configureFlutterEngine(flutterEngine)
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/voice_settings").setMethodCallHandler { call, result ->
+      if (call.method != "tts" && call.method != "speech") { result.notImplemented() }
+      else {
+        try {
+          val action = if (call.method == "tts") "com.android.settings.TTS_SETTINGS" else "android.settings.VOICE_INPUT_SETTINGS"
+          try { startActivity(Intent(action)) }
+          catch (e: Exception) { startActivity(Intent("android.settings.APPLICATION_DETAILS_SETTINGS", Uri.parse("package:$packageName"))) }
+          result.success(null)
+        } catch (e: Exception) { result.error("settings", "Không mở được cài đặt giọng nói", null) }
+      }
+    }
+  }
+}
+""")
     branding(android)
 
 
