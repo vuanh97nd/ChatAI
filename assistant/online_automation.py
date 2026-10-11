@@ -1155,7 +1155,7 @@ class OnlineAutomation:
         if name=='cad_create_open':return self.cad_app
         if name=='word_create_open':return self.word_app
         if name in {'pdf_source_open','pdf_local_open','pdf_read'}:return self.pdf_source
-        if name in ('plaxis_run_problem','plaxis_commands'):return self.plaxis_remote
+        if name in ('plaxis_run_problem','plaxis_commands','plaxis_tutorial_guide'):return self.plaxis_remote
         if name=='plaxis_generate_script':return self.plaxis_app
         return self.browser if name.startswith('browser_') else self.windows
 
@@ -1477,9 +1477,16 @@ class OnlineAutomation:
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
                 try:
+                    import time
+                    plan_started=time.perf_counter()
                     response=self.client.chat(self.client.model,messages,format=plan_format,
                         options={'num_predict':planning_tokens,'temperature':.1})
+                    elapsed=round(time.perf_counter()-plan_started,3)
+                    timing=state.setdefault('planning_timing',{'calls':0,'seconds':0})
+                    timing['calls']+=1;timing['seconds']=round(timing['seconds']+elapsed,3)
+                    self.store.audit(self.cid,'automation_plan_timing',{'seconds':elapsed,'calls':timing['calls'],'total_seconds':timing['seconds']})
                     self.record_usage(state,response,'plan')
+                    yield {'type':'status','text':f'AI phản hồi sau {elapsed:g} giây · {timing["calls"]} lượt lập kế hoạch.'}
                 except RuntimeError as error:
                     last_plan_error=str(error)[:300]
                     self.store.audit(self.cid,'automation_plan_call_failed',{'error':last_plan_error,'attempt':attempt})

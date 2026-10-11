@@ -2,6 +2,9 @@
 
 ## Desktop 3.0.0
 
+- Giảm lượt sửa lỗi phase bằng ánh xạ CalculationType sang DeformCalcType khi API đích hỗ trợ; sửa đường gọi hướng dẫn tutorial trong bộ điều khiển trực tuyến.
+- Đo/hiển thị thời gian phản hồi AI và ghi thời gian nhóm lệnh PLAXIS để phân biệt chờ model với tính toán.
+
 - Bổ sung hướng dẫn ngắn theo 28 chương Tutorial 2D/3D 2025.1 và công cụ đọc riêng từng chương; phân biệt móng tròn 2D với Building 3D.
 
 - Mở rộng xác minh Active theo loại tải/kết cấu/chuyển vị và phase; bổ sung chẩn đoán kiểu dữ liệu đọc về.

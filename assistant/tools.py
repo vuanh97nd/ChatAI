@@ -316,6 +316,7 @@ EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_commands',
     'Tên đúng khác với ký hiệu trong manual: plate dùng EA1/EA2/EI/StructNu/W/Isotropic (không phải EA, nu, d, IsIsotropic); soil Hardening Soil dùng E50Ref/EOedRef/EURRef/nuUR/PowerM/cRef/phi/psi/gammaUnsat/gammaSat; '
     'anchormat dùng EA/LSpacing (sau khi đặt MaterialType); line load dùng qx_start/qy_start (không phải qy, qyStart). '
     'Lưới: {"command":"gotomesh"} rồi {"command":"mesh","args":[0.06]} (không có generate_mesh); sửa vật liệu/hình học/design approach sau khi mesh thì phải mesh lại trước khi calculate. '
+    'Phase dùng DeformCalcType (ví dụ Plastic), không dùng CalculationType; đọc lại trạng thái trước khi tính. '
     'calculate chỉ chạy các phase có ShouldCalculate=True; phase đã tính (kể cả phase lỗi) bị đặt False và không tự bật lại khi sửa vật liệu/hình học. '
     'Sau khi sửa, đặt {"command":"setproperties","args":[{"ref":"g.Phase_n"},"ShouldCalculate",true]} cho phase lỗi và mọi phase sau nó (sửa vật liệu đất thì từ InitialPhase) rồi mới calculate; '
     'LogInfo cũ vẫn giữ mã lỗi lần trước cho tới khi phase được tính lại. '

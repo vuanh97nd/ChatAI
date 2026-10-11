@@ -565,7 +565,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
         if isinstance(v,list):return [resolve(x) for x in v]
         return v
     for index,row in enumerate(rows):
-        started=False;method_on_object=False;stage_checked=None
+        started=False;method_on_object=False;stage_checked=None;normalized_properties=[]
         try:
             wait_automation()
             if _STOP.is_set():raise RuntimeError('Đã dừng điều khiển PLAXIS.')
@@ -699,6 +699,16 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                                          "đặt đối tượng làm tham số đầu tiên, ví dụ {\"command\":\"initializerectangular\",\"args\":[{\"ref\":\"g.SoilContour\"},0,0,5,4]}; "
                                          "dùng command 'signature' với tên lệnh để xem đúng cú pháp.")
                 else:method=getattr(g,row['command'])
+                normalized_properties=[]
+                if (row['command']=='setproperties' and args
+                        and any(isinstance(prop,str) and prop.casefold()=='calculationtype' for prop in args[1::2])
+                        and _has(args[0],'DeformCalcType')):
+                    # A phase UI label is not its API property. Normalize only
+                    # when the live target exposes the actual phase property.
+                    for prop_index in range(1,len(args),2):
+                        if isinstance(args[prop_index],str) and args[prop_index].casefold()=='calculationtype':
+                            args[prop_index]='DeformCalcType'
+                            normalized_properties.append({'from':'CalculationType','to':'DeformCalcType'})
                 wait_automation()
                 if _STOP.is_set():raise StageGuardError('Đã dừng trước khi gửi lệnh PLAXIS.')
                 started=True
@@ -716,6 +726,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             entry={'step':index+1,'command':row['command'],
                    'value':result if row['command'] in {'inspect_stage','verify_stage','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
+            if normalized_properties:entry['normalized_properties']=normalized_properties
             raw_args=row.get('args',[])
             if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
                     and isinstance(raw_args[0],dict) and str(raw_args[0].get('ref','')).endswith('.Active')):
@@ -878,7 +889,10 @@ def run_batch(server,g,rows,on_status=None,port=None):
     session=_SESSIONS.setdefault((port,project),{'aliases':{},'created':{}})
     assigns=any(r.get('command')=='setmaterial' for r in rows)
     before=set(_soils_without_material(g)) if assigns else set()
+    import time
+    api_started=time.perf_counter()
     result=execute_commands(server,g,rows,on_status,session)
+    result['api_elapsed_seconds']=round(time.perf_counter()-api_started,3)
     if assigns and before:
         still=before&set(_soils_without_material(g))
         if still:

@@ -24,6 +24,14 @@ class TutorialTests(unittest.TestCase):
         connect.assert_not_called();self.assertTrue(result['ok'])
         self.assertNotIn('plaxis_tutorial_guide',WRITES)
         self.assertTrue(any(s['function']['name']=='plaxis_tutorial_guide' for _,s in EXTRA_TOOLS))
+    def test_online_dispatches_guide_to_remote_component(self):
+        from assistant.online_automation import OnlineAutomation
+        from types import SimpleNamespace
+        owner=SimpleNamespace(cfg={},windows=SimpleNamespace(),office_tools=None,
+                              plaxis_remote=object())
+        with patch('assistant.communication.require_method'):
+            self.assertIs(OnlineAutomation.component(owner,'plaxis_tutorial_guide'),owner.plaxis_remote)
+
     def test_bad_product_or_chapter_never_chooses_another_recipe(self):
         for version,chapter in [('2d',20),('3d',10),('2d',True),('2d','1'),('other',1)]:
             with self.assertRaises(ValueError):tutorial_guide(version,chapter)

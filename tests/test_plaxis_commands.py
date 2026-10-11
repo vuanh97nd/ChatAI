@@ -28,6 +28,23 @@ class PlaxisCommandTests(unittest.TestCase):
         self.assertTrue(result['ok']);self.assertEqual(result['results'][3]['value'],'Plate_1')
         self.assertEqual(result['results'][5]['value'],'Sand')
         g.setproperties.assert_called_once_with(material,'Identification','Sand','E50ref',43000)
+    def test_phase_ui_calculation_type_maps_to_live_api_property(self):
+        phase=SimpleNamespace(DeformCalcType='Plastic')
+        g=SimpleNamespace(Phase_1=phase,setproperties=Mock(return_value='OK'))
+        result=execute_commands(Mock(),g,[{'command':'setproperties','args':[
+            {'ref':'Phase_1'},'Identification','Rigid footing','CalculationType','Plastic']}])
+        self.assertTrue(result['ok'],result)
+        g.setproperties.assert_called_once_with(phase,'Identification','Rigid footing','DeformCalcType','Plastic')
+        self.assertEqual(result['results'][0]['normalized_properties'][0]['to'],'DeformCalcType')
+
+    def test_material_property_is_not_renamed_to_phase_type(self):
+        mat=SimpleNamespace()
+        g=SimpleNamespace(Material_1=mat,setproperties=Mock(return_value='OK'))
+        result=execute_commands(Mock(),g,[{'command':'setproperties','args':[
+            {'ref':'Material_1'},'CalculationType','Plastic']}])
+        self.assertTrue(result['ok'])
+        g.setproperties.assert_called_once_with(mat,'CalculationType','Plastic')
+
     def test_polygon_point_collection_is_sent_as_separate_points(self):
         points=[[0,0],[0,18],[18,18],[18,0]]
         g=SimpleNamespace(polygon=Mock(return_value='Polygon_1'))
