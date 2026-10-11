@@ -69,10 +69,15 @@ Future<bool> enableAccountNotifications(ChatApi api) async {
   final items = await api.post('/api/notifications/list', {});
   final scope = notificationScope(api);
   await notificationVault.write(key: 'notify-seen:$scope', value: jsonEncode((items['notifications'] as List<dynamic>).map((n) => n['id']).toList()));
-  await notificationVault.write(key: 'notify-enabled:$scope', value: 'true');
-  await Workmanager().initialize(notificationDispatcher);
-  await Workmanager().registerPeriodicTask(notificationJob, notificationJob,
-    frequency: const Duration(minutes: 15), constraints: Constraints(networkType: NetworkType.connected));
+  try {
+    await Workmanager().initialize(notificationDispatcher);
+    await Workmanager().registerPeriodicTask(notificationJob, notificationJob,
+      frequency: const Duration(minutes: 15), constraints: Constraints(networkType: NetworkType.connected));
+    await notificationVault.write(key: 'notify-enabled:$scope', value: 'true');
+  } catch (_) {
+    await notificationVault.write(key: 'notify-enabled:$scope', value: 'false');
+    throw ApiException('Chưa bật được thông báo nền. Bạn vẫn có thể xem thông báo trong menu; hãy thử bật lại sau.');
+  }
   return true;
 }
 Future<void> disableAccountNotifications(ChatApi api) async {

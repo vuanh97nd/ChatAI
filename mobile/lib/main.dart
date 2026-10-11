@@ -706,7 +706,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       onPopInvokedWithResult: (didPop, result) { if (!didPop) goBack(); },
       child: Scaffold(key: scaffoldKey, onDrawerChanged: (v) => changed(() => drawerOpen = v), drawer: navigationDrawer(), appBar: topBar(),
       body: SafeArea(child: Column(children: [
-        if (error != null) MaterialBanner(content: Text(error!), actions: [
+        if (error != null) MaterialBanner(content: Text(error!, maxLines: 3, overflow: TextOverflow.ellipsis), actions: [
+          TextButton(onPressed: () => showDialog<void>(context: context,
+            builder: (c) => AlertDialog(title: const Text('Chi tiết'),
+              content: SingleChildScrollView(child: SelectableText(error!)),
+              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])), child: const Text('Chi tiết')),
           if (voice.error != null) TextButton(onPressed: () async {
             try { await openVoiceSettings(true); }
             catch (e) { changed(() => error = '$e'); }
