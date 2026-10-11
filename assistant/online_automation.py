@@ -349,14 +349,17 @@ CHƯA CHẠY THỬ trên máy này — dùng, và nếu lỗi tra signature ngay
 - Neo đầu cố định (thanh chống đối xứng): {"command":"fixedendanchor","args":[50,19]}; neo hai đầu dùng n2nanchor [x1,y1,x2,y2].
 - Mặt phân cách đất–tường: {"command":"posinterface","args":[{"ref":"Line_1"}]} và {"command":"neginterface","args":[{"ref":"Line_1"}]} trên đường của tường; bật trong phase cùng tường.
 - Cao độ đào: vẽ đường ngang trong structures, ví dụ {"command":"line","args":[[50,18],[65,18]]}, để tách khối đất cần tắt.
-- Mực nước theo phase (đào ngập nước, hạ nước): làm theo đúng mục của manual; tra signature của lệnh mực nước trước khi gọi.
-- Trước calculate: mỗi phase Plastic phải bật/tắt hoặc đổi vật liệu ít nhất một đối tượng; model_state ghi "KHÔNG THAY ĐỔI GÌ" là phase rỗng.
+- Mực nước theo phase: dùng chữ ký đã đọc, không tra lại toàn API. waterlevel nhận dãy cặp Coords; tạo đường riêng rồi gán theo phase, không đòi lệnh tạo waterlevel có tham số phase. Không đoán g.Water: lấy đúng đối tượng Water từ collection thực và giữ result.
+- Nếu commands của Water xác nhận setproperties là PropPhaseValue (Text, phase, Any), thứ tự là [ref Water, "GlobalWaterLevel", ref phase, ref đường_nước], KHÔNG [ref Water, ref phase, "GlobalWaterLevel", ref đường_nước]. Đọc lại thuộc tính theo phase và PorePresCalcType, đối chiếu manual; cú pháp chưa thử trực tiếp phải kiểm tra phản hồi.
+- Thuộc tính prestress theo phase: set [ref neo.AdjustPrestress, ref phase, true] và set [ref neo.PrestressForce, ref phase, giá_trị_manual]; đọc lại cả hai, không dùng setproperties thiếu phase.
+- Nhật ký "không đổi" không chứng minh phase rỗng: phase có thể thay đổi tải, nước hoặc tham số khác; dùng bằng chứng thuộc tính thực. Không tự tạo thay đổi Active chỉ để vượt kiểm tra.
 - Tính: {"command":"calculate","args":[]}; kết quả đọc bằng target output (Chat AI tự mở Output).
 - Đối chiếu với manual trước khi tính: {"command":"verify_model","args":[{"ref":"Borehole_1.Head","expected":18},{"ref":"g.Soillayers","expected":2,"kind":"count"},{"ref":"Sand.phi","expected":32,"tolerance":0.01}]} (mỗi phép kiểm tra là một đối tượng ref/expected; giá trị lấy từ manual).
 - Đọc kết quả (plaxis_commands với "target":"output"; đã chạy đúng trên máy này):
   {"command":"getresults","args":[{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Soil.Uy"},"node"],"result":"uy"} (N = số thứ tự phase cuối, đọc g.Phases) rồi {"command":"summarize","args":[{"ref":"uy"}]} (min/max/max_abs).
   Ux: g.ResultTypes.Soil.Ux; nội lực tường: getresults [{"ref":"Plate_1"},{"ref":"g.Phases","index":N},{"ref":"g.ResultTypes.Plate.M2D"},"node"] (tra signature nếu lỗi); hệ số an toàn: đọc Reached.SumMsf của phase Safety.
-Mỗi lần đổi thứ gì, đọc model_state và tránh tạo trùng đối tượng trên cùng một đoạn.'''
+Tiến trình: chỉ xử lý hạng mục còn thiếu/sai -> đọc lại đúng giá trị vừa sửa -> verify_model -> đạt thì calculate trong lượt này -> đọc CalculationResult và kết quả. Khi verify_model không đạt, chỉ sửa mục lỗi; không quay lại dò toàn bộ mô hình/PDF. Không lặp nhóm ghi đã thành công khi readback khớp. Chỉ đọc lại phần đã xác minh nếu hình học/phase đã thay đổi hoặc có bằng chứng mâu thuẫn.
+Quyền tra API và thao tác trong công việc đã giao là đủ; không hỏi lại "cho phép tra commands/info" hoặc "tiếp tục chứ". Chỉ hỏi khi thực sự thiếu dữ kiện kỹ thuật không thể tra, hoặc có thao tác phá dữ liệu ngoài phạm vi giao. Không hứa sẽ tính rồi kết thúc; hoặc thực hiện bước tiếp, hoặc báo đúng lệnh/args và dữ kiện đang chặn. Không tạo trùng đối tượng.'''
 
 
 _PLAXIS_TOOLSET={'plaxis_tutorial_guide','plaxis_commands','plaxis_run_problem','plaxis_generate_script','pdf_read','pdf_local_open','pdf_source_open',
