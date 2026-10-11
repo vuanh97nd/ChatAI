@@ -15,7 +15,7 @@ void main() {
     const backup = 'https://backup.example';
     const scope = 'backup:$primary:alice';
     FlutterSecureStorage.setMockInitialValues({
-      'session': jsonEncode(Session('alice', 'primary-token', 'Alice').toJson()),
+      'session:$primary': jsonEncode(Session('alice', 'primary-token', 'Alice').toJson()),
       scope: jsonEncode({'endpoint': backup, 'session': Session('alice', 'backup-token', 'Alice').toJson()}),
     });
     var offline = false, creates = 0, aiCalls = 0;

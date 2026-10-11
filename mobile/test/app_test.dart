@@ -50,7 +50,7 @@ void main() {
     await tester.pumpWidget(testApp(home: SizedBox()));
   });
   testWidgets('signed-in drawer opens memory and notifications and can return to chat', (tester) async {
-    FlutterSecureStorage.setMockInitialValues({'session': jsonEncode(Session('alice', 'session:test', 'Alice').toJson())});
+    FlutterSecureStorage.setMockInitialValues({'session:${Uri.parse(defaultServer).origin}': jsonEncode(Session('alice', 'session:test', 'Alice').toJson())});
     final api = ChatApi(client: MockClient((request) async {
       final result = <String, dynamic>{'success': true};
       switch (request.url.path) {

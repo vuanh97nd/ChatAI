@@ -234,7 +234,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         guestPending = jsonDecode(pendingRaw) as Map<String, dynamic>;
         input.text = guestPending!['text'] as String;
       }
-      final raw = await storage.read(key: 'session');
+      final raw = await storage.read(key: api.sessionStorageKey);
       if (raw != null) {
         api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
         await restoreBackup();
@@ -286,7 +286,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Future<void> authenticated(Session session) async {
     changed(() { messages = []; conversation = null; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); });
-    await storage.write(key: 'session', value: jsonEncode(session.toJson()));
+    await storage.write(key: api.sessionStorageKey, value: jsonEncode(session.toJson()));
     await restoreBackup();
     changed(() { loading = false; error = null; });
     await guard(refresh);
@@ -352,7 +352,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     try { await disableAccountNotifications(api); } catch (_) {}
     // Local logout always completes, including when the server is unavailable.
     try { await api.post('/api/logout', {'client_type': 'android_companion'}); } catch (_) {}
-    await storage.delete(key: 'session');
+    await storage.delete(key: api.sessionStorageKey);
     api.session = null; api.backup = null; api.usingBackup = false;
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
       conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); input.clear(); });

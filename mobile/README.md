@@ -3,6 +3,11 @@
 Ứng dụng Flutter Android 6.0+ dùng server ChatAI hiện có. Mặc định NVIDIA;
 DeepSeek tính phí theo bảng giá server. Không đưa API key nhà cung cấp vào APK.
 
+Server mặc định: `https://chatai-backup.vuanh97nd1.workers.dev`.
+Mục kết nối AI dự phòng mặc định trỏ tới `https://chatai.anhvn53.workers.dev`.
+Phiên đăng nhập được lưu riêng theo server. Sau cập nhật này, đăng nhập lại vào
+server mặc định mới; lịch sử và số dư của server cũ không tự chuyển sang.
+
 ## Chức năng bản này
 
 - Đăng nhập bằng email/tên tài khoản; đăng ký bắt buộc email, tự đăng nhập.

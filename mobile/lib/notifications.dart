@@ -18,14 +18,14 @@ Future<void> initializeLocalNotifications() async {
 void notificationDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     WidgetsFlutterBinding.ensureInitialized();
-    final raw = await notificationVault.read(key: 'session');
-    if (raw == null) return true;
     final api = ChatApi();
     try {
+      final raw = await notificationVault.read(key: api.sessionStorageKey);
+      if (raw == null) return true;
       api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       if (await notificationVault.read(key: 'notify-enabled:${notificationScope(api)}') != 'true') return true;
       final result = await api.post('/api/notifications/list', {});
-      if (await notificationVault.read(key: 'session') != raw) return true;
+      if (await notificationVault.read(key: api.sessionStorageKey) != raw) return true;
       await showAccountNotifications(api, result['notifications'] as List<dynamic>);
       return true;
     } catch (_) { return false; }
@@ -47,7 +47,7 @@ Future<void> showAccountNotifications(ChatApi api, List<dynamic> items) async {
   final seen = raw == null ? <String>{} : (jsonDecode(raw) as List<dynamic>).cast<String>().toSet();
   await initializeLocalNotifications();
   for (final item in unseenNotifications(items, seen)) {
-    final session = await notificationVault.read(key: 'session');
+    final session = await notificationVault.read(key: api.sessionStorageKey);
     if (session == null || Session.fromJson(jsonDecode(session) as Map<String, dynamic>).username != api.session!.username) return;
     await localNotifications.show((item['id'] as String).hashCode & 0x7fffffff,
       item['title'] as String, item['text'] as String,
