@@ -189,6 +189,17 @@ class PlaxisCommandTests(unittest.TestCase):
         self.assertEqual(state['plaxis_read_streak'],0)
         self.assertIsNone(_plaxis_read_stall(state,'browser_search',reads))
 
+    def test_distinct_reads_and_safety_verification_are_not_stalled(self):
+        from assistant.online_automation import _plaxis_read_stall,PLAXIS_READ_STALL_LIMIT
+        state={}
+        for i in range(PLAXIS_READ_STALL_LIMIT*2):
+            args={'commands':[{'command':'read','args':[{'ref':f'Plate_1_{i}.Active'}]}]}
+            self.assertIsNone(_plaxis_read_stall(state,'plaxis_commands',args))
+        for command in ('verify_stage','verify_model','inspect_stage'):
+            args={'commands':[{'command':command,'args':[]}]}
+            for _ in range(PLAXIS_READ_STALL_LIMIT+1):
+                self.assertIsNone(_plaxis_read_stall(state,'plaxis_commands',args))
+
     def test_generic_followup_does_not_replay_an_old_embankment_template(self):
         from assistant.online_automation import _plaxis_history_call
         state={'messages':[{'role':'assistant','tool_calls':[{'function':{'name':'plaxis_run_problem','arguments':{'version':'2d'}}}]},

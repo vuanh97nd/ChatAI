@@ -825,13 +825,7 @@ PLAXIS_READ_STALL_LIMIT=20
 
 
 def _plaxis_read_stall(state, name, args):
-    """Refuse a read-only PLAXIS batch once reads alone have run too long.
-
-    A model that keeps re-checking state it already holds never fails, so the
-    repeated-failure guard never fires; it simply spends every planning round
-    on reads and ends the turn without building anything. Any batch that
-    changes the model resets the count.
-    """
+    """Stop identical read loops, not legitimate verification of new targets."""
     if name!='plaxis_commands':return None
     try:
         raw=args.get('commands')
@@ -841,14 +835,24 @@ def _plaxis_read_stall(state, name, args):
         return None
     if not commands or not commands<=_PLAXIS_READS:
         state['plaxis_read_streak']=0
+        state.pop('plaxis_read_fingerprint',None)
         return None
+    # Safety checks must remain available before writes or calculation.
+    if commands & {'verify_stage','verify_model','inspect_stage','inspect_progress','plan_resume'}:
+        state['plaxis_read_streak']=0
+        state.pop('plaxis_read_fingerprint',None)
+        return None
+    fingerprint=json.dumps(rows,sort_keys=True,ensure_ascii=False)
+    if fingerprint!=state.get('plaxis_read_fingerprint'):
+        state['plaxis_read_streak']=0
+        state['plaxis_read_fingerprint']=fingerprint
     streak=state.get('plaxis_read_streak',0)
     if streak>=PLAXIS_READ_STALL_LIMIT:
         state['plaxis_read_streak']=PLAXIS_READ_STALL_LIMIT//2
-        return (f'Đã có {streak} lượt plaxis_commands liên tiếp chỉ đọc/tra cứu mà không thay đổi mô hình. '
-                'Trạng thái đã được đọc đủ trong các kết quả trên; không đọc lại. Lượt này phải gọi lệnh tạo hoặc sửa '
-                'cho bước kế tiếp còn thiếu của bài (ví dụ n2nanchor, embeddedbeamrow, lineload, setmaterial, mesh, '
-                'phase, calculate), hoặc trả lời người dùng nếu thực sự thiếu dữ kiện kỹ thuật.')
+        return (f'Đã có {streak} lượt đọc giống hệt liên tiếp mà không thay đổi mô hình. '
+                'Dừng lặp đúng batch này; xem kết quả hoặc lỗi đã có. Chỉ đọc tiếp dữ kiện còn thiếu '
+                'bằng truy vấn có mục tiêu, hoặc báo chẩn đoán cụ thể nếu chưa đọc được. Không bắt buộc '
+                'tạo/sửa mô hình để vượt chốt; vẫn phải verify_stage trước đổi Active và verify_model trước calculate.')
     state['plaxis_read_streak']=streak+1
     return None
 
@@ -1329,7 +1333,7 @@ class OnlineAutomation:
                     state['messages'].append({'role':'tool','tool_name':name,'content':json.dumps(
                         {'ok':False,'not_executed':True,'read_only_stall':True,'error':stalled},ensure_ascii=False)})
                     state['queue']=[];self.save(state)
-                    yield {'type':'status','text':'AI đọc trạng thái lặp lại; yêu cầu chuyển sang bước dựng tiếp theo…'}
+                    yield {'type':'status','text':'Dừng batch đọc giống hệt; cần truy vấn dữ kiện còn thiếu hoặc báo chẩn đoán…'}
                     continue
                 repeated=None
                 try:
