@@ -277,6 +277,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     await voice.stop();
     final pending = <String, String>{'role': 'user', 'content': text};
     changed(() { messages.add(pending); input.clear(); });
+    int? streamingIndex;
     bool userSaved = false;
     try {
       if (conversation == null) {
@@ -290,9 +291,22 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (stop.isCompleted) throw Exception('Đã dừng chờ.');
       final answer = await Future.any<String>([api.answer(provider, history, memories,
         onStage: (status) { if (!stop.isCompleted) changed(() => replyStatus = status); },
+        onText: (chunk) {
+          if (stop.isCompleted || !mounted) return;
+          changed(() {
+            replyStatus = 'Đang trả lời…';
+            if (streamingIndex == null) {
+              streamingIndex = messages.length;
+              messages.add({'role': 'assistant', 'content': chunk, 'provider': provider});
+            } else { messages[streamingIndex!]['content'] = chunk; }
+          });
+        },
         cancelled: () => stop.isCompleted, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList()),
         stop.future.then<String>((_) => throw Exception('Đã dừng chờ. Yêu cầu đã gửi có thể vẫn được server xử lý và tính phí.'))]);
-      changed(() { messages.add({'role': 'assistant', 'content': answer, 'provider': provider}); attachments.clear(); });
+      changed(() {
+        if (streamingIndex == null) messages.add({'role': 'assistant', 'content': answer, 'provider': provider});
+        else messages[streamingIndex!]['content'] = answer;
+        attachments.clear(); });
       try {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
           'role': 'assistant', 'content': answer, 'client_id': uuid.v4()});
@@ -434,7 +448,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(16)), child: Column(
               mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (m['role'] == 'assistant') AssistantReply(
-                key: ValueKey('$conversation:$i:${m['content']}'),
+                key: ValueKey('$conversation:$i'),
                 text: m['content']!, provider: m['provider'],
                 reading: readingMessage == i && voice.speaking, onRead: () => readMessage(i))
               else SelectableText(m['content']!),

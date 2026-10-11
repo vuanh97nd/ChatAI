@@ -9,6 +9,23 @@ http.Response jsonResponse(String body, int status) => http.Response.bytes(
     utf8.encode(body), status, headers: {'content-type': 'application/json; charset=utf-8'});
 
 void main() {
+  test('SSE emits cumulative text before the completed answer', () async {
+    final chunks = <String>[];
+    final api = ChatApi(client: MockClient.streaming((request, body) async {
+      final payload = jsonDecode(await body.bytesToString());
+      expect(payload['stream'], isTrue);
+      final events = 'data: {"choices":[{"delta":{"content":"Xin "}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"chào"}}]}\n\n'
+        'data: [DONE]\n\n';
+      final bytes = utf8.encode(events);
+      return http.StreamedResponse(Stream.fromIterable([bytes.sublist(0, bytes.length - 15), bytes.sublist(bytes.length - 15)]),
+        200, headers: {'content-type': 'text/event-stream'});
+    }));
+    addTearDown(api.close); api.session = Session('owner', 'session:test', 'Owner');
+    final answer = await api.answer('nvidia', [{'role': 'user', 'content': 'Hi'}], [], onText: chunks.add);
+    expect(chunks, ['Xin ', 'Xin chào']); expect(answer, 'Xin chào');
+  });
+
   test('AI decides to search, receives snippets and answer includes verified source URLs', () async {
     final paths = <String>[];
     var modelCalls = 0;
