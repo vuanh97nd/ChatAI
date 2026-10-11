@@ -3469,6 +3469,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def account_menu(self):
         menu=QMenu(self)
         if self.server_session:menu.addAction('Kết nối điện thoại',self.remote_connect_dialog)
+        menu.addAction('AI dự phòng',self.backup_login_dialog)
         if self.server_session:
             menu.addAction(self.server_session.get('fullname') or self.server_session['username']).setEnabled(False)
             if admin_session(self.server_session):
