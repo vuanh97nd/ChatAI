@@ -50,7 +50,7 @@ def active(obj,phase,g=None):
     return result
 
 
-def bounds(obj):
+def bounds(obj,g=None):
     def read(target,attribute):
         try:return value(getattr(target,attribute))
         except Exception:return None
@@ -61,6 +61,7 @@ def bounds(obj):
             if number(n):return n
         return None
     geometry=read(obj,'Parent')
+    original_geometry=geometry
     seen=set();diagnostics=[]
     for _ in range(4):
         if geometry is None or str(geometry) in seen:break
@@ -90,8 +91,16 @@ def bounds(obj):
                 return {axis:[min(ns),max(ns)] for axis,ns in coordinates.items() if all(number(n) for n in ns)}
         diagnostics.append(str(geometry)[:80])
         geometry=read(geometry,'Parent')
+    evidence={}
+    if g is not None and original_geometry is not None:
+        # Read the actual linked CutObject's schema; never infer endpoints from
+        # point order or use a project's overall bounds for one excavation cell.
+        for command in ('info','commands'):
+            try:evidence[command]=str(getattr(g,command)(original_geometry))[:1800]
+            except Exception as error:evidence[command]='Không đọc được: '+str(error)[:180]
     raise StageGuardError('Chưa đọc được vùng hình học gốc: '+', '.join(diagnostics)+
-                          '. Cần info/commands của Parent, BoundingBox và các điểm liên kết; không đoán thứ tự tọa độ hoặc bỏ verify_stage.')
+                          '. Cần info/commands của Parent, BoundingBox và các điểm liên kết; không đoán thứ tự tọa độ hoặc bỏ verify_stage. '
+                          +'Dữ liệu Parent (có thể bị cắt): '+json.dumps(evidence,ensure_ascii=False))
 
 
 def check_spec(raw):
@@ -141,7 +150,7 @@ def snapshot(g,obj,phase,include_soils=True,kind='soil'):
     return {'kind':kind,'other_states':other_states,'target':name(obj),'identity':str(obj),'geometry_identity':str(obj.Parent),
             'phase':name(phase),'phase_identity':str(phase),'parent_phase':name(parent),
             'parent_identity':str(parent),'before':active(obj,phase,g),'parent_active':active(obj,parent,g),
-            'bounds':bounds(obj),'soil_states':soil_states}
+            'bounds':bounds(obj,g),'soil_states':soil_states}
 
 
 def verify(g,resolve,spec,session):
@@ -231,7 +240,7 @@ def inspect(g,phase,objects):
             state.pop('soil_states',None)
             rows.append(state)
         except Exception as exc:
-            rows.append({'target':str(obj)[:200],'error':str(exc)[:300]})
+            rows.append({'target':str(obj)[:200],'error':str(exc)[:4500]})
     return {'phase':name(phase),'objects':rows,'truncated':truncated,'note':'Chỉ là ứng viên, chưa cho phép đổi Active. So sánh vùng manual và phase cha; tên/thứ tự/bounding box không chứng minh vùng thuộc hầm cong.'}
 
 

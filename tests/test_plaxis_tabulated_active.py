@@ -18,6 +18,14 @@ class TabulatedActiveTests(unittest.TestCase):
         with self.assertRaises(StageGuardError):bounds(NS(Parent=NS(BoundingBox=[0,0,10,30])))
         vertices[1].z=2
         with self.assertRaises(StageGuardError):bounds(NS(Parent=geometry))
+    def test_missing_cut_geometry_reports_actual_parent_schema(self):
+        from assistant.plaxis_stage_guard import bounds
+        parent=NS(Name='Line_1_1')
+        g=NS(info=Mock(return_value='Attributes: EndpointA, EndpointB'),commands=Mock(return_value='info, commands'))
+        with self.assertRaisesRegex(StageGuardError,'EndpointA, EndpointB'):
+            bounds(NS(Parent=parent),g)
+        g.info.assert_called_once_with(parent)
+        g.commands.assert_called_once_with(parent)
     def test_phase_rows_select_requested_phase_and_reject_ambiguity(self):
         from assistant.plaxis_active import tabulated_active
         obj=NS();phase=NS()
