@@ -29,6 +29,25 @@ class ServerStreamingTest(unittest.TestCase):
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek')
         with patch('assistant.cloud.urlopen',return_value=response):self.assertEqual(list(client.stream_answer(client.model,[])),[('text','OK')])
 
+    def test_interrupted_stream_reports_failure_after_yielding_partial_text(self):
+        response=Response(b'data: {"choices":[{"delta":{"content":"Xin "}}]}\n\n')
+        client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'nvidia')
+        with patch('assistant.cloud.urlopen',return_value=response):
+            stream=client.stream_answer(client.model,[])
+            self.assertEqual(next(stream),('text','Xin '))
+            with self.assertRaisesRegex(CloudError,'ngắt trước khi trả lời xong'):next(stream)
+
+    def test_finish_reason_completes_stream_without_done_marker(self):
+        response=Response(b'data: {"choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n')
+        client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'nvidia')
+        with patch('assistant.cloud.urlopen',return_value=response):
+            self.assertEqual(list(client.stream_answer(client.model,[])),[('text','OK')])
+
+    def test_empty_completed_stream_is_not_a_successful_answer(self):
+        client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'nvidia')
+        with patch('assistant.cloud.urlopen',return_value=Response(b'data: [DONE]\n\n')):
+            with self.assertRaisesRegex(CloudError,'chưa trả nội dung'):list(client.stream_answer(client.model,[]))
+
     def test_forbidden_worker_response_explains_source_and_hides_session(self):
         client=ServerApiClient({'endpoint':'https://example.com','username':'admin','key':'test-session'},'deepseek')
         for data in [b'<html>Forbidden</html>',b'{"message":"denied test-session"}',b'[]']:

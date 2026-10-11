@@ -351,17 +351,21 @@ class ServerApiClient:
                     record('ai.wait_first_text_json',time.monotonic()-started)
                     if self.on_status:self.on_status('Server trả toàn bộ câu trả lời; chưa dùng luồng trả lời dần.')
                     yield 'text',value['answer'];return
+                completed=False
                 for raw in response:
                     if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
                     if len(raw)>100000:raise CloudError('Phản hồi server quá lớn.')
                     line=raw.decode('utf-8').strip()
                     if not line.startswith('data:'):continue
                     chunk=line[5:].strip()
-                    if chunk=='[DONE]':return
+                    if chunk=='[DONE]':
+                        completed=True
+                        break
                     try:value=json.loads(chunk)
                     except ValueError:raise CloudError('Luồng AI trả dữ liệu không hợp lệ.') from None
                     if value.get('error'):raise CloudError('Dịch vụ AI đã ngắt luồng trả lời.')
                     choices=value.get('choices',[])
+                    if choices and choices[0].get('finish_reason') is not None:completed=True
                     d=choices[0].get('delta',{}) if choices else {}
                     reasoning=d.get('reasoning_content','')
                     if isinstance(reasoning,str) and reasoning:yield 'reasoning',reasoning
@@ -370,6 +374,8 @@ class ServerApiClient:
                         if first_answer:
                             record('ai.wait_first_text_stream',time.monotonic()-started);first_answer=False
                         yield 'text',delta
+                if not completed:raise CloudError('Kết nối tới AI bị ngắt trước khi trả lời xong. Phần đã nhận được giữ lại.')
+                if first_answer:raise CloudError('AI chưa trả nội dung.')
         except HTTPError as error:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}

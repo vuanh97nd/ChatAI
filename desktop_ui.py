@@ -732,6 +732,14 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         worker, callback = self.worker, self.callback
         if worker.failure and self.sent_prompt and not self.input.toPlainText().strip():
             self.input.setPlainText(self.sent_prompt);self.input.setFocus();self.sent_prompt=None
+        if worker.failure and not worker.cancelled and worker.chat_cid and worker.partial:
+            state=self.store.load(worker.chat_cid)
+            # A saved final snapshot already contains the answer; only preserve
+            # tokens that have not yet been committed to the conversation.
+            visible=[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]
+            if len(visible)<=worker.snapshot_count:
+                state['messages'].append({'role':'assistant','content':worker.partial})
+                self.store.save(worker.chat_cid,state)
         if worker.cancelled:
             state=self.store.load(worker.chat_cid)
             visible=[m for m in state['messages'] if m['role'] in ('user','assistant') and m.get('content')]
@@ -795,7 +803,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if event['type'] == 'token':
             if not self.stream: self._flash_chat_view()
             self.stream += event['text']
-            if not self.paint_timer.isActive(): self.paint_timer.start(250)
+            if not self.paint_timer.isActive(): self.paint_timer.start(100)
         elif event['type'] == 'snapshot':
             if self.sent_prompt and any(m['role'] == 'user' and m['content'] == self.sent_prompt for m in event['messages'][-1:]):
                 if self.input.toPlainText().strip() == self.sent_prompt: self.input.clear()
@@ -803,7 +811,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 self.sent_prompt = None
             self.chat_messages = event['messages']; self.stream = ''
             if self.sent_prompt and self.chat_messages and self.chat_messages[-1]['role']=='user' and self.chat_messages[-1]['content']==self.sent_prompt:self.remove_attachment()
-            if not self.paint_timer.isActive(): self.paint_timer.start(250)
+            if not self.paint_timer.isActive(): self.paint_timer.start(100)
         elif event['type'] == 'status':
             if event['text'].startswith('Đang trả lời'): self.stream = ''
             self.status.setText(event['text'])
