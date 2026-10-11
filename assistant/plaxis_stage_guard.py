@@ -203,7 +203,12 @@ def request(row):
     if cmd in {'activate','deactivate'} or (cmd=='setproperties' and has_active(args)):
         raise StageGuardError('Đổi Active phải xác minh bằng verify_stage rồi set một thuộc tính Tên.Active, một phase, một boolean; không dùng lệnh hàng loạt.')
     alias_set=(cmd=='set' and args and isinstance(args[0],dict) and 'ref' in args[0] and '.' not in args[0]['ref'])
-    if cmd=='set' and (has_active(args) or alias_set or (len(args)==3 and type(args[-1]) is bool)):
+    named_property=(args and isinstance(args[0],dict) and set(args[0])=={'ref'}
+                    and '.' in args[0]['ref'])
+    # A phase-dependent boolean is not necessarily Active (e.g. AdjustPrestress).
+    # Keep alias/list protection but allow explicitly named non-Active properties.
+    if cmd=='set' and (has_active(args) or alias_set or
+                      (len(args)==3 and type(args[-1]) is bool and not named_property)):
         if len(args)!=3 or not isinstance(args[0],dict) or set(args[0])!={'ref'} or not args[0]['ref'].endswith('.Active') or not isinstance(args[1],dict) or set(args[1])!={'ref'} or type(args[2]) is not bool:
             raise StageGuardError('Active cần set [{"ref":"Tên.Active"},{"ref":"Phase_x"},true/false], không dùng alias thuộc tính hoặc danh sách.')
         return args[0]['ref'][:-7],args[1]['ref'],args[2]

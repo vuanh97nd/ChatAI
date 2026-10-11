@@ -29,6 +29,20 @@ class StageGuardTest(unittest.TestCase):
                    'parent_active':True,'after':False,'shape':'box','region':{'x':[10,20],'y':[-5,0]},
                    'source':'Fixture manual, excavation stage 1'}
     def tearDown(self):resume_automation()
+    def test_non_active_phase_properties_are_not_misclassified_as_activation(self):
+        anchor=Ref('NodeToNodeAnchor_1_1',AdjustPrestress={self.phase:False},
+                   PrestressForce={self.phase:0})
+        self.g.NodeToNodeAnchor_1_1=anchor
+        result=self.run_rows([
+            {'command':'set','args':[{'ref':'g.NodeToNodeAnchor_1_1.AdjustPrestress'},{'ref':'g.Phase_1'},True]},
+            {'command':'set','args':[{'ref':'g.NodeToNodeAnchor_1_1.PrestressForce'},{'ref':'g.Phase_1'},500]}])
+        self.assertTrue(result['ok'],result)
+        self.assertIs(anchor.AdjustPrestress[self.phase],True)
+        self.assertEqual(anchor.PrestressForce[self.phase],500)
+        self.assertEqual(len(self.calls),2)
+        blocked=self.change()
+        self.assertFalse(blocked['ok'])
+        self.assertEqual(len(self.calls),2)
     def run_rows(self,rows):return execute_commands(Obj(),self.g,commands_from_json(json.dumps(rows)),session=self.session)
     def verify(self,**changes):return self.run_rows([{'command':'verify_stage','args':[json.dumps(dict(self.spec,**changes))]}])
     def change(self,target='Soil_1',phase='Phase_1',after=False):
