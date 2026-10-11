@@ -655,11 +655,18 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             elif row['command']=='verify_model':
                 checks=model_checks(args[0]);verified=[]
                 switched=False
-                if any(re.match(r'(?:g\.)?(?:Borehole|Soillayer|SoilLayer|Boreholes|Soillayers|SoilContour)',str(c.get('ref',''))) for c in checks) and not _has(g,'Boreholes'):
-                    # Boreholes and soil layers exist only in soil mode; switch there for the check.
-                    try:g.gotosoil();switched=True
-                    except Exception:pass
                 for check in checks:
+                    ref=str(check.get('ref',''))
+                    soil_check=re.match(r'(?:g\.)?(?:Borehole|Soillayer|SoilLayer|Boreholes|Soillayers|SoilContour)',ref)
+                    stage_check=re.match(r'(?:g\.)?(?:InitialPhase|Phase(?:_|s)|'+ '|'.join(_STAGED)+r')',ref)
+                    if soil_check and not _has(g,'Boreholes'):
+                        # Switch for this check, not the whole batch: phase refs
+                        # disappear in soil mode even though they were readable before.
+                        g.gotosoil();switched=True
+                    elif stage_check:
+                        head=ref.removeprefix('g.').split('.')[0].split('[')[0]
+                        if switched or not _has(g,head):
+                            g.gotostages();switched=False
                     observed=resolve(_read_ref(check['ref']))
                     if check.get('kind')=='count':actual=len(observed)
                     else:

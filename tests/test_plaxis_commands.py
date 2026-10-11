@@ -13,6 +13,25 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_verify_model_switches_modes_per_check_before_reading_phase(self):
+        g=SimpleNamespace(Phase_6=SimpleNamespace(PorePresCalcType=2))
+        moves=[]
+        def soil():
+            moves.append('soil')
+            g.Boreholes=[];g.Borehole_1=SimpleNamespace(Head=23)
+            del g.Phase_6
+        def stages():
+            moves.append('stages')
+            g.Phase_6=SimpleNamespace(PorePresCalcType=2)
+            del g.Boreholes;del g.Borehole_1
+        g.gotosoil=soil;g.gotostages=stages
+        checks=[{'ref':'g.Borehole_1.Head','expected':23},
+                {'ref':'g.Phase_6.PorePresCalcType','expected':2}]
+        rows=commands_from_json(json.dumps([{'command':'verify_model','args':[checks]}]))
+        result=execute_commands(Mock(),g,rows)
+        self.assertTrue(result['ok'],result)
+        self.assertTrue(result['results'][0]['value']['verified'])
+        self.assertEqual(moves,['soil','stages'])
     def test_mode_switch_and_reads_are_not_duplicate_model_writes(self):
         from assistant.online_automation import stuck_command,_plaxis_read_stall
         rows=[{'command':'gotostages','args':[]},{'command':'read','args':[{'ref':'g.UserWaterLevels'}]}]
