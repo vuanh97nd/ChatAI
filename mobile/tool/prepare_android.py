@@ -78,6 +78,8 @@ def configure(android):
         else:
             text = text.replace('</manifest>', '<queries>\n' + intents + '</queries>\n</manifest>', 1)
     text = text.replace('<application\n', '<application android:allowBackup="false" android:usesCleartextTraffic="false"\n', 1)
+    if 'android.intent.action.ASSIST' not in text:
+        text = text.replace('</activity>', '<intent-filter><action android:name="android.intent.action.ASSIST"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n        </activity>', 1)
     manifest.write_text(text)
     build = android / 'app/build.gradle.kts'
     text = build.read_text().replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
@@ -113,8 +115,26 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
+  private var assistantChannel: MethodChannel? = null
+  private var pendingAssist = false
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    if (intent.action == Intent.ACTION_ASSIST) {
+      pendingAssist = true
+      assistantChannel?.invokeMethod("activate", null)
+    }
+  }
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
+    pendingAssist = pendingAssist || intent?.action == Intent.ACTION_ASSIST
+    assistantChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/assistant")
+    assistantChannel?.setMethodCallHandler { call, result ->
+      if (call.method == "consumeLaunch") {
+        result.success(pendingAssist)
+        pendingAssist = false
+      } else { result.notImplemented() }
+    }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/voice_settings").setMethodCallHandler { call, result ->
       if (call.method != "tts" && call.method != "speech") { result.notImplemented() }
       else {

@@ -132,11 +132,31 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     api = widget.api ?? ChatApi();
     voice = VoiceController(engine: widget.voiceEngine);
     WidgetsBinding.instance.addObserver(this);
-    voice.addListener(voiceChanged); restore();
+    voice.addListener(voiceChanged);
+    assistantChannel.setMethodCallHandler((call) async {
+      if (call.method == 'activate') await activateAssistant();
+    });
+    unawaited(restoreAssistant());
     unawaited(checkForUpdate());
+  }
+  static const assistantChannel = MethodChannel('vn.chatai/assistant');
+  bool assistantOpening = false;
+  Future<void> restoreAssistant() async {
+    await restore();
+    await activateAssistant();
+  }
+  Future<void> activateAssistant() async {
+    try {
+      final requested = await assistantChannel.invokeMethod<bool>('consumeLaunch') ?? false;
+      if (!requested || !mounted || assistantOpening) return;
+      assistantOpening = true;
+      try { await openVoiceChat(); } finally { assistantOpening = false; }
+    } on MissingPluginException { /* Non-Android and widget tests. */ }
+      on PlatformException { /* Assistant shortcut is optional. */ }
   }
   @override
   void dispose() {
+    assistantChannel.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this); poll?.cancel();
     voice.removeListener(voiceChanged); voice.dispose();
     api.close(); input.dispose(); amount.dispose(); super.dispose();

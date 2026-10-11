@@ -1,7 +1,7 @@
 name: chatai_mobile
 description: ChatAI Android client for the existing ChatAI server.
 publish_to: none
-version: 1.0.0+40
+version: 1.0.0+41
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:

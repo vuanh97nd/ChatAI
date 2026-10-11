@@ -14,7 +14,7 @@ class AndroidPrepareTests(unittest.TestCase):
             android = Path(folder)
             manifest = android / 'app/src/main/AndroidManifest.xml'
             manifest.parent.mkdir(parents=True)
-            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n<application\n android:label="chatai_mobile" android:icon="@mipmap/ic_launcher">\n</application></manifest>')
+            manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n<application\n android:label="chatai_mobile" android:icon="@mipmap/ic_launcher">\n<activity android:name=".MainActivity" android:exported="true"></activity></application></manifest>')
             build = android / 'app/build.gradle.kts'
             build.write_text('android {\n    compileOptions { sourceCompatibility = JavaVersion.VERSION_11 }\n minSdk = flutter.minSdkVersion\n    buildTypes {\n release { signingConfig = signingConfigs.getByName("debug") }\n }\n}')
             prepare.configure(android)
@@ -24,6 +24,11 @@ class AndroidPrepareTests(unittest.TestCase):
             self.assertEqual(before, (manifest.read_text(), build.read_text()))
             self.assertEqual(resources_before, {str(p.relative_to(android)): p.read_bytes() for p in android.rglob('*') if p.is_file()})
             self.assertIn('android:icon="@mipmap/chatai_launcher"', before[0])
+            root = ET.parse(manifest).getroot()
+            ns = {'android': 'http://schemas.android.com/apk/res/android'}
+            action = root.find("application/activity/intent-filter/action", ns)
+            self.assertEqual(action.get('{http://schemas.android.com/apk/res/android}name'), 'android.intent.action.ASSIST')
+            self.assertEqual(before[0].count('android.intent.action.ASSIST'), 1)
             res = android / 'app/src/main/res'
             self.assertEqual((res / 'drawable-nodpi/chatai_logo.png').read_bytes(), (prepare.ROOT / 'assets/chat_ai.png').read_bytes())
             for resource in res.rglob('*.xml'):
