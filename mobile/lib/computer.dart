@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'plaxis_agent_page.dart';
 import 'voice.dart';
 import 'cloud_voice.dart';
 
@@ -220,6 +221,8 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
       OutlinedButton.icon(onPressed: busy ? null : scan, icon: const Icon(Icons.qr_code_scanner), label: const Text('Quét QR')),
       TextButton(onPressed: busy ? null : paste, child: const Text('Dán mã')),
     ]),
+    OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlaxisAgentPage(storageKey: storageKey))),
+      icon: const Icon(Icons.psychology_outlined), label: const Text('Agent PLAXIS · bộ nhớ và RAG')),
     if (busy) const LinearProgressIndicator(),
     if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(error!)),
     if (desktop != null && pairId == null) ...[

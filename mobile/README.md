@@ -226,3 +226,22 @@ query; mô hình được hướng dẫn chỉ dùng từ khóa công khai.
 
 Giao diện có ba lựa chọn: **Theo thiết bị / Sáng / Tối**. Mặc định Theo thiết bị
 và tự đổi theo hệ thống; lựa chọn được lưu cho lần mở sau.
+
+### Agent PLAXIS từ Android
+
+Vào **Kết nối máy tính → Agent PLAXIS · bộ nhớ và RAG**. Nhập URL gốc HTTPS
+của dịch vụ FastAPI trên PC và mã `CHATAI_AGENT_API_TOKEN`; mã được lưu bằng
+secure storage riêng theo tài khoản/server. Không dùng mật khẩu ChatAI làm mã agent.
+PC chạy dịch vụ theo `docs/PLAXIS_AGENT_API.md`; dùng reverse proxy hoặc tunnel HTTPS
+để điện thoại truy cập. `localhost:8765` trên điện thoại không phải PC.
+Giữ FastAPI ở loopback phía PC và đặt Bearer token trước khi nối tunnel.
+
+Chọn 2D/3D, nhập mã dự án để dùng checkpoint, rồi giao việc. RAG dùng tài liệu đã
+index trên PC, không tự lấy tất cả tài liệu điện thoại. Có thể thêm tiêu chí số
+liệu (ví dụ `S_m <= 0.2 m`). Màn hình đọc tiến độ mỗi 2 giây khi mở, có nút dừng
+và phân biệt tiêu chí đạt với việc cả bài PLAXIS đã kiểm chứng.
+
+Không tự gửi lại khi mất mạng/timeout: yêu cầu có thể đã được PC nhận. Mã tác vụ
+được lưu để tiếp tục theo dõi khi mở lại. API hiện giữ job trong RAM; PC khởi động
+lại sẽ mất job ID, cần kiểm tra mô hình thật trước khi giao lại việc.
+Chức năng ghép nối QR/giao việc PC cũ vẫn sử dụng độc lập.
