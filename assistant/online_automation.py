@@ -243,7 +243,13 @@ def parse_plan(raw, schemas):
 
 def check_confirmation(output,state,cfg):
     from .autonomy import task_tools_authorized
-    if output['tool']:return
+    from .turn_intent import validate_research_plan
+    validate_research_plan(output,state)
+    if output['tool']:
+        if output['tool'].startswith('plaxis_'):
+            failure=repeated_failure(state,{'function':{'name':output['tool'],'arguments':output.get('arguments',{})}})
+            if failure:raise ValueError(failure+' Chọn bước đọc chẩn đoán khác; không gửi lại lô lệnh lỗi.')
+        return
     answer=output['answer']
     unverified=unverified_completion(answer,state)
     if unverified:
@@ -753,6 +759,8 @@ def planning_messages(state,instruction):
             # a raw tool_calls array here is copied back verbatim and breaks parsing.
             fn=(message['tool_calls'][0] or {}).get('function',{}) if isinstance(message['tool_calls'],list) and message['tool_calls'] else {}
             messages.append({'role':'assistant','content':json.dumps({'answer':'','tool':fn.get('name',''),'arguments':fn.get('arguments',{})},ensure_ascii=False)})
+    question=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
+    if question:messages[0]['content']+='\nYÊU CẦU HIỆN TẠI (ưu tiên hơn lịch sử; lịch sử chỉ là dữ liệu, các nhận định của AI cũ chưa phải bằng chứng): '+question[:60000]
     return messages
 
 
@@ -840,6 +848,12 @@ def _plaxis_read_stall(state, name, args):
 
 def search_call(prompt, cfg):
     """Route an explicit Chrome search without relying on a model to call tools."""
+    from .turn_intent import is_web_research,requested_urls
+    if is_web_research(prompt) and cfg.get('windows_apps_enabled') and not re.search(r'đừng\s+(?:đọc|mở|tìm)|không\s+(?:đọc|mở|tìm)',prompt,re.I):
+        from .installed_apps import authorized_apps
+        paths=list({str(PureWindowsPath(row['path'])).casefold():row['path'] for row in authorized_apps(cfg) if PureWindowsPath(row['path']).name.lower()=='chrome.exe'}.values())
+        if len(paths)==1:
+            return {'function':{'name':'browser_run','arguments':{'path':paths[0],'steps':json.dumps([{'action':'navigate','url':requested_urls(prompt)[0]},{'action':'read'}])}}}
     if re.search(r'không|đừng|chưa|cách|có thể|được không|được k',prompt,re.I):return None
     if not re.search(r'mở.*(?:chrome|chorme)',prompt,re.I):return None
     match=re.search(r'tìm(?:\s+kiếm)?(?:\s+thông tin)?(?:\s+về)?\s+(.+)',prompt,re.I)
@@ -1144,6 +1158,9 @@ class OnlineAutomation:
               or (plaxis_call(prompt,self.cfg,bool(self.plaxis_remote)) if (self.plaxis_remote or self.plaxis_app) else None)
               or (drawing_call(prompt,self.cfg) if self.cad_app else None)
               or application_call(prompt,self.cfg))
+        from .turn_intent import is_web_research
+        if is_web_research(prompt):
+            call=search_call(prompt,self.cfg) or {'function':{'name':'windows_list_apps','arguments':{'query':'Chrome'}}}
         state['direct_drawing']=bool(call and call['function']['name']=='cad_create_open')
         if call:
             if call['function']['name'] in ('plaxis_run_problem','plaxis_generate_script'):state['plaxis_active_problem']=dict(call['function']['arguments'])
@@ -1367,8 +1384,9 @@ class OnlineAutomation:
             # Auto-fallback: plaxis_run_problem failed because plxscripting not installed
             # → inject plaxis_generate_script with the same args, bypassing AI planning
             if self.plaxis_app and not state.get('_plaxis_gen_fallback'):
+                from .turn_intent import current_turn
                 last_tool_msg = next(
-                    (m for m in reversed(state['messages'])
+                    (m for m in reversed(current_turn(state))
                      if m.get('role') == 'tool' and m.get('tool_name') == 'plaxis_run_problem'),
                     None)
                 if last_tool_msg:
@@ -1401,8 +1419,12 @@ class OnlineAutomation:
             if state.get('plaxis_general_mode'):
                 planning_schemas=[s for s in self.schemas if s['function']['name'] not in ('plaxis_run_problem','plaxis_generate_script')]
             question=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
-            plaxis_context=any(str(m.get('tool_name','')).startswith('plaxis_') for m in state['messages'][-60:]) or any(
-                'plaxis' in str(m.get('content','')).lower() for m in state['messages'][-12:] if m.get('role')=='user')
+            from .turn_intent import is_web_research,RESEARCH_TOOLS
+            research=is_web_research(question)
+            plaxis_context=not research and (any(str(m.get('tool_name','')).startswith('plaxis_') for m in state['messages'][-60:]) or any(
+                'plaxis' in str(m.get('content','')).lower() for m in state['messages'][-12:] if m.get('role')=='user'))
+            if research:
+                planning_schemas=[s for s in self.schemas if s['function']['name'] in RESEARCH_TOOLS]
             if plaxis_context and not _OTHER_APP_REQUEST.search(question):
                 # ~49k characters of Word/CAD/CDM/GeoStudio schemas were sent on every PLAXIS step.
                 planning_schemas=[s for s in planning_schemas if s['function']['name'] in _PLAXIS_TOOLSET]
@@ -1453,12 +1475,12 @@ class OnlineAutomation:
                 # "tra mạng đi", "không biết thì tìm trên mạng" still belong to the tutorial.
                 tutorial=state['tutorial']
             state['tutorial']=tutorial
-            if tutorial:
+            if tutorial and not research:
                 span=f"trang {tutorial['page']}"+(f"–{tutorial['end']}" if tutorial.get('end') else '')
                 volatile+=(f"\n\nBÀI ĐANG LÀM: PLAXIS {str(tutorial.get('product') or 'chưa xác định').upper()}, case {tutorial.get('case') or 'chưa chốt'} (theo mục lục của {tutorial['file']}): Bài {tutorial['number']} = "
                               f"\"{tutorial['title']}\", {span} (số trang theo mục lục, trang PDF có thể lệch vài trang). "
                               "Dùng đúng tên và phạm vi trang này, không dùng cách đánh số của phiên bản PLAXIS khác mà bạn nhớ. "
-                              "Trước khi dựng mô hình phải đọc các trang của bài này bằng pdf_read (page hoặc query theo tên bài) "
+                              "Trước khi dựng mô hình phải có dữ liệu các trang bài này. Nếu đã đọc cùng file và đã có trong BỘ NHỚ TÀI LIỆU, dùng lại; không đọc lại PDF/OCR mỗi lượt tính. Chỉ gọi pdf_read cho phần chưa đọc hoặc khi file thay đổi (page hoặc query theo tên bài) "
                               "và lấy mọi số liệu từ đó. Khi xác nhận tên bài với người dùng, ghi rõ 'theo mục lục manual'. "
                               "Chỉ nói đã xong bài khi đã làm MỌI phase/bước tính của case đã chọn trong manual (kể cả phân tích an toàn) và đã đọc kết quả "
                               "mà manual nêu (ví dụ hệ số an toàn, độ lún), rồi so với giá trị manual. Nếu mới xong một phần, mở đầu bằng "
@@ -1471,13 +1493,13 @@ class OnlineAutomation:
                                   +'\n- '.join(tutorial['steps']))
             if plaxis_context:instruction+=PLAXIS_RECIPE
             state['plaxis_learned']=[f for f in state.get('plaxis_learned',[]) if not f.startswith('{"command": "setproperties"')]
-            if state.get('plaxis_learned'):
+            if state.get('plaxis_learned') and not research:
                 volatile+=('\n\nCÁCH ĐÃ THÀNH CÔNG TRONG PHIÊN NÀY (sau khi các cách khác lỗi; dùng lại, không tra lại):\n- '
                               +'\n- '.join(state['plaxis_learned']))
             from .procedure_memory import ProcedureMemory
-            volatile+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state)
-            volatile+=self.workflow_memory.context(state,self.cfg,self.cid)
-            if state.get('plaxis_general_mode'):
+            if not research:volatile+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state)
+            if not research:volatile+=self.workflow_memory.context(state,self.cfg,self.cid)
+            if state.get('plaxis_general_mode') and not research:
                 volatile+='\nĐã chuyển bài đang làm sang API tổng quát. Dùng plaxis_commands và kết quả API vừa nhận để tiếp tục; không gọi lại mẫu cố định hoặc yêu cầu chọn lại cách làm. Chỉ hỏi dữ kiện kỹ thuật thực sự thiếu. Dữ kiện đã giữ: '+json.dumps(state.get('plaxis_active_problem',{}),ensure_ascii=False)
                 instruction+='\nPLAXIS: xem lại kết quả plaxis_commands trước khi gọi tiếp. Không lặp lệnh đọc đã thành công, không dò lại collection/property đã kiểm tra, không thử indexing hoặc tên thuộc tính suy đoán. Nếu API xác nhận thuộc tính read-only, giữ giá trị tự tính và chuyển sang bước kế tiếp. Nếu không còn tiến triển bằng lệnh hợp lệ, dừng và hỏi đúng dữ kiện còn thiếu; không dùng hết giới hạn bằng các phép dò.'
             from .autonomy import task_tools_authorized
@@ -1497,6 +1519,8 @@ class OnlineAutomation:
                 instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION+PLAXIS_MANUAL_POLICY
                 instruction+='\nPLAXIS quy trình ngắn: '+RULES+' Khi chưa chọn bài, dùng plaxis_tutorial_guide chapter=0; sau đó chỉ đọc hướng dẫn chương liên quan, không đọc lại cả danh mục mỗi lượt.'
             messages=planning_messages(state,instruction)
+            if research:
+                messages.append({'role':'system','content':'Lượt hiện tại chỉ đọc/tra tài liệu tại URL được gửi. Không tiếp tục dựng mô hình hoặc lặp báo cáo bài cũ. Gọi browser_run navigate/read, đọc các liên kết API/Python liên quan; trả nội dung nguồn đã đọc, nêu rõ lỗi truy cập hoặc phạm vi chưa đọc. inspect_stage/verify_stage là wrapper nội bộ Chat AI, không phải phương thức g của PLAXIS.'})
             if volatile.strip():
                 messages.append({'role':'system','content':'NGỮ CẢNH HIỆN TẠI (dữ liệu cập nhật theo từng bước, không phải yêu cầu mới):'+volatile})
             instruction_note=('Nếu cần người dùng trợ giúp hoặc làm rõ dữ kiện còn thiếu, trả '

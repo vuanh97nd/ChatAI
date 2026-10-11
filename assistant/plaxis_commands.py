@@ -6,6 +6,7 @@ from .plaxis_stage_guard import StageGuardError
 
 _NAME=re.compile(r'[A-Za-z][A-Za-z0-9_]*\Z')
 _INDEXED=re.compile(r'([A-Za-z][A-Za-z0-9_.]*)\[(\d{1,5})\]\Z')
+_LOCAL_HELPERS={'inspect_stage','verify_stage','inspect_progress','plan_resume','verify_model'}
 _BLOCKED={'open','save','saveas','import','export','run','exec','execute','system','apply','evaluate','python','runscript','runpython'}
 
 
@@ -64,10 +65,14 @@ def commands_from_json(raw):
     if not isinstance(rows,list) or not rows:raise ValueError('commands cần ít nhất một lệnh PLAXIS.')  # no batch-size cap
     def value(v,depth=0):
         if depth>12:raise ValueError('Tham số lồng quá sâu.')
+        if isinstance(v,str) and re.fullmatch(r'g\.[A-Za-z_]+',v) and v.split('.')[-1] in _LOCAL_HELPERS:
+            raise ValueError('Đây là wrapper Chat AI, không phải phương thức g. Gọi bằng trường command của plaxis_commands.')
         if isinstance(v,dict):
             if set(v)-{'ref','index'} or not isinstance(v.get('ref'),str):raise ValueError(
                 'Đối tượng tham số chỉ hỗ trợ {"ref":"..."} hoặc {"ref":"...","index":n}. '
                 'Toạ độ và số dùng trực tiếp, không gói vào đối tượng: ví dụ [x1,y1,x2,y2] thay vì [{"x":x1,"y":y1},...].')
+            if any(p in _LOCAL_HELPERS for p in v['ref'].split('.')):
+                raise ValueError('Đây là wrapper Chat AI, không phải đối tượng/phương thức PLAXIS. Gọi tên wrapper trong trường command của plaxis_commands, không dùng ref g.'+v['ref'].split('.')[-1])
             if not all(_NAME.fullmatch(p) for p in v['ref'].split('.')):raise ValueError('ref phải là tên đối tượng/property PLAXIS, không phải biểu thức Python.')
             if 'index' in v and (type(v['index']) is not int or not 0<=v['index']<100000):raise ValueError('index không hợp lệ.')
         elif isinstance(v,list):

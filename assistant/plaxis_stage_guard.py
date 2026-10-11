@@ -198,6 +198,7 @@ def inspect(g,phase,objects):
 
 
 STAGE_INSTRUCTION = (
+    '\ninspect_stage, verify_stage, inspect_progress, plan_resume là wrapper của Chat AI trong plaxis_commands, không phải phương thức của g. Gọi bằng trường command; không dùng info/signature/read g.inspect_stage hay g.verify_stage để dò sự tồn tại. '
     '\nNếu tiếp tục bài đang dở: inspect_progress/plan_resume args [chuỗi JSON với source và checks (ref,expected,stage; thêm phase cho Active)] đọc trạng thái thật; expected lấy từ manual, không tự đặt. Với Active thêm phase và expected boolean. Giữ verified, sửa missing_or_wrong, chẩn đoán unreadable trước khi ghi; không dựng lại chỉ vì lỗi đọc. '
     'Trước khi đổi Active: inspect_stage args [ref phase, ref collection như g.Soils] đọc ứng viên; '
     'verify_stage args [chuỗi JSON với target, phase, parent_phase, before, parent_active, after, '
