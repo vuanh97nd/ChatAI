@@ -66,7 +66,7 @@ export async function requestWebSearch(env,query,send=fetch){
   throw error;
  }finally{clearTimeout(timer);}
 }
-const VERSION='2.6.6';
+const VERSION='3.0.0';
 // Data extraction has its own contract, independent of conversational styling.
 export function extractionContract(kind){
  if(kind==='document'){
@@ -343,7 +343,7 @@ const referenceWorker = {async fetch(request,env){
   await ensureSchema(db);
   
   if(path==='/api/update'&&method==='GET'){
-   return reply({version:VERSION,download_url:String(env.CHAT_AI_DOWNLOAD_URL||'https://github.com/vuanh97nd/ChatAI/releases/latest'),release_notes:String(env.CHAT_AI_RELEASE_NOTES||'Chat AI Desktop 2.6.6')});
+   return reply({version:VERSION,download_url:String(env.CHAT_AI_DOWNLOAD_URL||'https://github.com/vuanh97nd/ChatAI/releases/latest'),release_notes:String(env.CHAT_AI_RELEASE_NOTES||'Chat AI Desktop 3.0.0')});
   }
 
   let body={};

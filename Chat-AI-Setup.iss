@@ -1,6 +1,6 @@
 ; Full runtime installer. Build on Windows using Build-Setup.bat.
 #define AppName "Chat AI"
-#define AppVersion "2.6.6"
+#define AppVersion "3.0.0"
 #define SourceRoot SourcePath
 #if !FileExists(SourceRoot + "\runtime\python\chat-ai-runtime.json")
   #error Run Build-Setup.bat first to build the bundled Python runtime.
@@ -20,7 +20,7 @@ AppPublisher=Chat AI
 AppPublisherURL=https://github.com/vuanh97nd/ChatAI
 AppSupportURL=https://github.com/vuanh97nd/ChatAI/issues
 AppUpdatesURL=https://github.com/vuanh97nd/ChatAI/releases
-VersionInfoVersion=2.6.6.0
+VersionInfoVersion=3.0.0.0
 VersionInfoDescription=Chat AI desktop installer with bundled Python, image/video, and Windows automation libraries
 DefaultDirName={localappdata}\Programs\Chat-AI
 DefaultGroupName=Chat AI

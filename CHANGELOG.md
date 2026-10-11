@@ -1,5 +1,12 @@
 # Lịch sử cập nhật Chat AI
 
+## Desktop 3.0.0
+
+- Đồng bộ phiên bản PC: giao diện, updater, runtime và bộ cài Windows.
+- Bổ sung COM, cầu nối ứng dụng và quyền tự thực hiện công việc.
+- Bật sẵn tự cài thư viện hỗ trợ, gồm PLAXIS Remote Scripting.
+- Giữ nguyên phiên bản Android.
+
 ## 2.6.6
 
 - Đồng bộ phiên bản giao diện, khởi động, updater, runtime, bộ cài và API server thành 2.6.6.
