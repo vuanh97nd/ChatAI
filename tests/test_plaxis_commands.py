@@ -13,6 +13,15 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_mode_switch_and_reads_are_not_duplicate_model_writes(self):
+        from assistant.online_automation import stuck_command,_plaxis_read_stall
+        rows=[{'command':'gotostages','args':[]},{'command':'read','args':[{'ref':'g.UserWaterLevels'}]}]
+        call={'role':'assistant','tool_calls':[{'function':{'name':'plaxis_commands','arguments':{'commands':json.dumps(rows)}}}]}
+        reply={'role':'tool','content':json.dumps({'ok':True})}
+        state={'messages':[{'role':'user','content':'tiếp tục'},call,reply,call,reply]}
+        self.assertIsNone(stuck_command(state,{'commands':json.dumps(rows)}))
+        self.assertIsNone(_plaxis_read_stall(state,'plaxis_commands',{'commands':rows}))
+        self.assertEqual(state['plaxis_read_streak'],1)
     def test_duplicate_success_message_does_not_require_rereading_everything(self):
         from assistant.online_automation import verification_block_message
         text=verification_block_message({'ok':False,'error':'Nhóm lệnh ghi này đã chạy thành công 2 lần trong lượt'})

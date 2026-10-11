@@ -422,6 +422,9 @@ def verification_block_message(observed):
     return 'Chưa xác minh hoàn tất thao tác. '+reason+' Cần đọc lại trạng thái/file trước khi tiếp tục.'
 
 
+_PLAXIS_MODE_SWITCHES={'gotosoil','gotostructures','gotomesh','gotostages','gotoflow'}
+
+
 def stuck_command(state,args):
     """Stop the 4th try of a command that keeps failing with the same error this turn."""
     try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
@@ -434,7 +437,7 @@ def stuck_command(state,args):
     planned={r.get('command') for r in rows if isinstance(r,dict)}
     # Identical write batches that already succeeded: repeating them changes nothing
     # (seen: the same deactivation sent ten times because the state looked unchanged).
-    writes={r.get('command') for r in rows if isinstance(r,dict)}-{'read','info','tabulate','signature','commands','summarize','verify_model','inspect_progress','plan_resume','inspect_stage','verify_stage'}
+    writes={r.get('command') for r in rows if isinstance(r,dict)}-({'read','info','tabulate','signature','commands','summarize','verify_model','inspect_progress','plan_resume','inspect_stage','verify_stage'}|_PLAXIS_MODE_SWITCHES)
     if writes:
         key=json.dumps(rows,sort_keys=True,ensure_ascii=False)
         repeats=0
@@ -841,7 +844,7 @@ def _plaxis_read_stall(state, name, args):
         commands={row.get('command') for row in rows}
     except Exception:
         return None
-    if not commands or not commands<=_PLAXIS_READS:
+    if not commands or not commands<=(_PLAXIS_READS|_PLAXIS_MODE_SWITCHES):
         state['plaxis_read_streak']=0
         state.pop('plaxis_read_fingerprint',None)
         return None
