@@ -80,6 +80,13 @@ def commands_from_json(raw):
         cmd=row.get('command','')
         if not isinstance(cmd,str) or not _NAME.fullmatch(cmd) or cmd.casefold() in _BLOCKED:
             raise ValueError('Cần tên lệnh API PLAXIS; không nhận shell/Python hoặc lệnh truy cập tệp.')
+        if cmd=='verify_stage':
+            spec=row.get('args',[])
+            if isinstance(spec,str):spec=[spec]
+            elif isinstance(spec,dict):spec=[json.dumps(spec,allow_nan=False)]
+            elif isinstance(spec,list) and len(spec)==1 and isinstance(spec[0],dict):
+                spec=[json.dumps(spec[0],allow_nan=False)]
+            row['args']=spec
         if cmd=='verify_model':
             # Accept the checks however the model writes them (it failed four times on the
             # "one JSON string" form): a string, a bare list of checks, a list or a single check.

@@ -33,6 +33,16 @@ class StageGuardTest(unittest.TestCase):
     def verify(self,**changes):return self.run_rows([{'command':'verify_stage','args':[json.dumps(dict(self.spec,**changes))]}])
     def change(self,target='Soil_1',phase='Phase_1',after=False):
         return self.run_rows([{'command':'set','args':[{'ref':target+'.Active'},{'ref':phase},after]}])
+    def test_stage_spec_accepts_object_or_json_without_weakening_validation(self):
+        for args in (self.spec,[self.spec],json.dumps(self.spec),[json.dumps(self.spec)]):
+            result=self.run_rows([{'command':'verify_stage','args':args}])
+            self.assertTrue(result['ok'],result)
+        self.assertEqual(self.calls,[])
+        for args in ({'target':'Soil_1'},[dict(self.spec,before='true')]):
+            with self.assertRaises(RuntimeError):
+                commands_from_json(json.dumps([{'command':'verify_stage','args':args}]))
+        self.assertEqual(self.calls,[])
+
     def test_unverified_change_is_blocked_before_api(self):
         result=self.change()
         self.assertFalse(result['ok']);self.assertFalse(result['command_started'])
