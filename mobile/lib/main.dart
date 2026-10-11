@@ -327,8 +327,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         cancelled: () => stop.isCompleted, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList()),
         stop.future.then<String>((_) => throw Exception('Đã dừng chờ. Yêu cầu đã gửi có thể vẫn được server xử lý và tính phí.'))]);
       changed(() {
-        if (streamingIndex == null) messages.add({'role': 'assistant', 'content': answer, 'provider': provider});
-        else messages[streamingIndex!]['content'] = answer;
+        if (streamingIndex == null) {
+          messages.add({'role': 'assistant', 'content': answer, 'provider': provider});
+        } else {
+          messages[streamingIndex!]['content'] = answer;
+        }
         attachments.clear(); });
       try {
         await api.post('/api/conversations/append', {'conversation_id': conversation,

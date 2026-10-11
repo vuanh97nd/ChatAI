@@ -50,7 +50,7 @@ class AndroidVoiceEngine extends VoiceEngine {
   Future<List<String>> locales() async => ['vi-VN'];
   @override
   Future<void> listen(String locale, void Function(String) words) async {
-    await speech.listen(localeId: locale, listenFor: const Duration(seconds: 60),
+    await speech.listen(listenFor: const Duration(seconds: 60),
       pauseFor: const Duration(seconds: 4),
       listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),

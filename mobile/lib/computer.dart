@@ -66,7 +66,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
         pairId = link!['pending_pair_id'] as String?;
         requestId = link!['pending_task_id'] as String?;
         requestText = link!['pending_task_text'] as String?;
-        if (requestText != null) prompt.text = requestText!;
+        if (requestText != null) { prompt.text = requestText!; }
       });
       if (link != null) await refresh();
     } catch (e) { changed(() => error = '$e'); }

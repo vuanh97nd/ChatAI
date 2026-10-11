@@ -37,8 +37,10 @@ void main() {
           'sources': [{'title': 'Manual', 'url': 'https://example.org/manual'}]}), 200);
       }
       modelCalls++;
-      if (modelCalls == 1) return jsonResponse(jsonEncode({'success': true,
-        'answer': '{"action":"web_search","query":"PLAXIS API documentation"}'}), 200);
+      if (modelCalls == 1) {
+        return jsonResponse(jsonEncode({'success': true,
+          'answer': '{"action":"web_search","query":"PLAXIS API documentation"}'}), 200);
+      }
       expect(jsonDecode(request.body)['messages'].first['content'], contains('Official API snippet'));
       return jsonResponse('{"success":true,"answer":"According to the manual [1]"}', 200);
     }));
