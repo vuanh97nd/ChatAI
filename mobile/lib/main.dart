@@ -612,20 +612,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(1, drawerContext)),
         ListTile(leading: const Icon(Icons.memory_outlined), title: const Text('Bộ nhớ'),
           onTap: sending ? null : () => navigateTo(2, drawerContext)),
-        ListTile(leading: const Icon(Icons.notifications_none), title: const Text('Thông báo'),
-          onTap: sending ? null : () => navigateTo(5, drawerContext)),
         ListTile(leading: const Icon(Icons.computer_outlined), title: const Text('Kết nối máy tính'),
           onTap: sending ? null : () => navigateTo(4, drawerContext)),
+        ListTile(leading: const Icon(Icons.notifications_none), title: const Text('Thông báo'),
+          onTap: sending ? null : () => navigateTo(5, drawerContext)),
         ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Số dư và nạp tiền'),
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
-        if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
-          title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
-        ListTile(leading: const Icon(Icons.system_update_outlined),
-          title: const Text('Cập nhật ứng dụng'),
-          onTap: () {
-            Navigator.pop(drawerContext);
-            Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
-          }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),
           title: const Text('Giao diện', maxLines: 1),
           onTap: () async {
@@ -648,6 +640,14 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
           }),
+        ListTile(leading: const Icon(Icons.system_update_outlined),
+          title: const Text('Cập nhật ứng dụng'),
+          onTap: () {
+            Navigator.pop(drawerContext);
+            Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const UpdatePage()));
+          }),
+        if (api.session?.admin == true) ListTile(leading: const Icon(Icons.admin_panel_settings_outlined),
+          title: const Text('Quản trị'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openAdmin()); }),
         const Divider(height: 32),
         const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: Text('Gần đây', style: TextStyle(color: Colors.grey))),
         if (api.session != null) TextField(onChanged: (v) => changed(() => historyQuery = v),
