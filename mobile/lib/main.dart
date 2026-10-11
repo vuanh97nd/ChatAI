@@ -13,6 +13,7 @@ import 'voice.dart';
 import 'voice_chat.dart';
 import 'reply_indicator.dart';
 import 'assistant_reply.dart';
+import 'provider_icon.dart';
 import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
@@ -462,11 +463,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               isExpanded: true, value: provider, hint: const Text('Chọn AI'),
               icon: const Icon(Icons.keyboard_arrow_down, size: 18),
               items: const [
-                DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA', overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'deepseek_flash', child: Text('DeepSeek', overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'cloudflare', child: Text('Cloudflare AI', overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'gemini', child: Text('Gemini', overflow: TextOverflow.ellipsis)),
-                DropdownMenuItem(value: 'groq', child: Text('Groq', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'nvidia', child: ProviderOption(provider: 'nvidia', label: 'NVIDIA')),
+                DropdownMenuItem(value: 'deepseek_flash', child: ProviderOption(provider: 'deepseek_flash', label: 'DeepSeek')),
+                DropdownMenuItem(value: 'cloudflare', child: ProviderOption(provider: 'cloudflare', label: 'Cloudflare AI')),
+                DropdownMenuItem(value: 'gemini', child: ProviderOption(provider: 'gemini', label: 'Gemini')),
+                DropdownMenuItem(value: 'groq', child: ProviderOption(provider: 'groq', label: 'Groq')),
               ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))))),
           IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
             onPressed: sending || working ? null : dictate,

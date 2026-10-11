@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'provider_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,7 +38,7 @@ class _AssistantReplyState extends State<AssistantReply> {
   Widget build(BuildContext context) {
     final name = providerLabel(widget.provider);
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [Image.asset('assets/chat_ai.png', width: 28, height: 28),
+      Row(children: [ProviderIcon(provider: widget.provider, size: 28),
         const SizedBox(width: 8), Expanded(child: Text(name.isEmpty ? 'Chat AI' : 'Chat AI · $name',
           style: Theme.of(context).textTheme.labelLarge))]),
       const SizedBox(height: 12),

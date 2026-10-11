@@ -1,0 +1,1 @@
+Provider marks from LobeHub lobe-icons, https://github.com/lobehub/lobe-icons (MIT; see LICENSE). Marks remain the property of their respective providers. SVGs bundled locally; no network requests required for icons.
