@@ -2,6 +2,8 @@
 
 ## Desktop 3.0.0
 
+- Thêm lập kế hoạch vùng đào 2D theo cao độ borehole hiện tại, kiểm tra biên và đọc lại tọa độ sau vẽ; chặn vẽ lặp khi kết quả chưa rõ.
+
 - Bổ sung cache đọc tài liệu, tính toán, ứng dụng và bộ nhớ tiến độ/lỗi công cụ theo tài khoản; có nút xóa cache riêng.
 - Sửa nhóm tọa độ polygon bị lồng thừa khi gửi sang PLAXIS.
 

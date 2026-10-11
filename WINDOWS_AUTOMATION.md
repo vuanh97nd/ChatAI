@@ -271,3 +271,9 @@ Cache cục bộ trên Windows nằm ở `%LOCALAPPDATA%\ChatAI\cache\memory.sql
 Mỗi lần đọc vẫn kiểm tra quyền và dấu vân tay file; nội dung hoặc phiên bản bộ đọc thay đổi thì đọc lại. Lệnh ghi, trạng thái PLAXIS/COM đang chạy, truy vấn mạng và thời gian hiện tại không được phát lại từ cache. Ghi nhớ công việc chỉ cung cấp ngữ cảnh, không chứng minh thao tác đã hoàn tất ở thời điểm hiện tại.
 
 Cache có thời hạn, tối đa 512 mục và ngân sách dữ liệu 32 MiB; mỗi mục tối đa 2 MiB. Trong cài đặt, chọn **Xóa cache tăng tốc (giữ lịch sử)** để xóa cache mà giữ hội thoại. Cache này không phải bản sao lưu đám mây.
+
+### Lập kế hoạch tọa độ đào PLAXIS 2D
+
+`plan_excavation` nhận `args: [{"x_left":…, "width":…, "depth":…, "source":"đề bài/manual mục/trang"}]`. Công cụ đọc cao độ mặt đất từ borehole và biên SoilContour hiện tại, tính đáy bằng cao độ mặt đất trừ chiều sâu. `draw_excavation` nhận cùng đặc tả, tính lại từ trạng thái đang mở trước khi gửi polygon, rồi kiểm tra các tọa độ trong g.Points. Không tự lưu hoặc kích hoạt/tắt đất.
+
+Chỉ hỗ trợ 2D Input, mặt đất phẳng, vùng chữ nhật; kích thước dùng đơn vị dự án. Nếu không đọc được mốc hoặc biên thì dừng, không tự lấy y=0. Điểm được tìm thấy chưa chứng minh kết nối polygon hoặc vùng đất đúng; tiếp tục inspect_stage/verify_stage trước khi đổi Active. Không gửi lại vùng đã vẽ trong cùng phiên nếu đọc lại lỗi. Lệnh polygon tổng quát vẫn có cho các hình khác; hướng dẫn AI yêu cầu dùng bước lập kế hoạch riêng cho đào chữ nhật.

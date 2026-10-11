@@ -80,7 +80,7 @@ def commands_from_json(raw):
         cmd=row.get('command','')
         if not isinstance(cmd,str) or not _NAME.fullmatch(cmd) or cmd.casefold() in _BLOCKED:
             raise ValueError('Cần tên lệnh API PLAXIS; không nhận shell/Python hoặc lệnh truy cập tệp.')
-        if cmd=='verify_stage':
+        if cmd in {'verify_stage','plan_excavation','draw_excavation'}:
             spec=row.get('args',[])
             if isinstance(spec,str):spec=[spec]
             elif isinstance(spec,dict):spec=[json.dumps(spec,allow_nan=False)]
@@ -573,7 +573,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             from .plaxis_stage_guard import before_change, after_change, verify, check_spec, inspect
             if row['command']=='verify_stage':session.pop('stage_permit',None)
             stage_checked=before_change(g,resolve,row,session)
-            if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','commands','tabulate','echo'}:
+            if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','plan_excavation','commands','tabulate','echo'}:
                 session.pop('stage_permit',None)
             args=[resolve(v) for v in row.get('args',[])]
             # polygon expects separate points, not one parenthesized collection.
@@ -594,6 +594,20 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 except Exception:raw=result
                 explained=_explain_log(ref,raw)
                 if explained is not raw:result=explained
+            elif row['command'] in {'plan_excavation','draw_excavation'}:
+                from .plaxis_geometry import excavation_plan,read_points
+                if len(args)!=1:raise StageGuardError('Cần một đặc tả JSON vùng đào.')
+                result=excavation_plan(g,args[0])
+                if row['command']=='draw_excavation':
+                    wait_automation()
+                    if _STOP.is_set():raise StageGuardError('Đã dừng trước khi vẽ.')
+                    geometry_key=json.dumps(result['points'])
+                    if geometry_key in session.get('excavation_draws',set()):
+                        raise StageGuardError('Vùng này đã được gửi vẽ trong phiên; đọc lại hình học, không tạo trùng dù xác minh trước đó lỗi.')
+                    session.setdefault('excavation_draws',set()).add(geometry_key)
+                    started=True
+                    geometry=g.polygon(*result['points'])
+                    result={'plan':result,'api_result':plain(geometry),**read_points(g,result['points'])}
             elif row['command']=='inspect_stage':
                 result=inspect(g,args[0],args[1])
             elif row['command']=='verify_stage':
@@ -692,7 +706,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 if stage_checked:
                     result={'api_result':plain(result),'stage_readback':after_change(g,stage_checked)}
             if row['command']=='new_project':
-                session['aliases'].clear();session['created'].clear()
+                session['aliases'].clear();session['created'].clear();session.pop('excavation_draws',None)
                 aliases={'g':g}
             if row.get('result'):
                 aliases[row['result']]=result
@@ -701,7 +715,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             entry={'step':index+1,'command':row['command'],
-                   'value':result if row['command'] in {'inspect_stage','verify_stage'} else plain(result),'truncated':truncated}
+                   'value':result if row['command'] in {'inspect_stage','verify_stage','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
             raw_args=row.get('args',[])
             if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
                     and isinstance(raw_args[0],dict) and str(raw_args[0].get('ref','')).endswith('.Active')):
@@ -815,7 +829,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
 _SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
            'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
 _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
-_CHANGES_READONLY={'read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
+_CHANGES_READONLY={'plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
 
 
 def model_snapshot(g,limit=2400,session=None):

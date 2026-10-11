@@ -572,3 +572,8 @@ from .plaxis_stage_guard import STAGE_INSTRUCTION
 for _module, _spec in EXTRA_TOOLS:
     if _spec['function']['name']=='plaxis_commands':
         _spec['function']['description']+=STAGE_INSTRUCTION
+
+from .plaxis_geometry import GEOMETRY_INSTRUCTION
+for _module,_spec in EXTRA_TOOLS:
+    if _spec['function']['name']=='plaxis_commands':
+        _spec['function']['description']+=GEOMETRY_INSTRUCTION

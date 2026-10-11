@@ -428,7 +428,10 @@ class PlaxisRemoteApp:
             from .plaxis_commands import commands_from_json
             target=args.get('target','input')
             if target not in ('input','output'):raise ValueError('target phải là input hoặc output.')
-            return {'action':name,'version':version,'target':target,'commands':commands_from_json(args.get('commands',''))}
+            rows=commands_from_json(args.get('commands',''))
+            if any(r['command'] in {'plan_excavation','draw_excavation'} for r in rows) and (version!='2d' or target!='input'):
+                raise ValueError('Lập kế hoạch đào chữ nhật chỉ hỗ trợ PLAXIS 2D Input; 3D cần kế hoạch hình học riêng.')
+            return {'action':name,'version':version,'target':target,'commands':rows}
 
         # Reuse PlaxisApp validation — but we don't need a file path
         # We still call _validate_problem from plaxis_app
