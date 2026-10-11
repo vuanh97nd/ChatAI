@@ -1737,6 +1737,21 @@ async function providerAPI(env,path,body){
   try{if(updates.length)await env.DB.batch(updates);}catch{throw providerFailure('storage');}
   return reply({success:true,configured,message:'Đã lưu cấu hình API trên server. Key cũ được giữ nếu ô nhập để trống.'});
  }
+ if(path==='/api/provider/model'&&body.provider==='cloudflare'){
+  if(typeof env.AI?.run!=='function')return fail('Cloudflare AI chưa được kích hoạt. Thêm binding Workers AI tên AI.',503);
+  const messages=body.messages;
+  if(!Array.isArray(messages)||!messages.length||messages.length>130||messages.some(m=>!m||!['system','user','assistant'].includes(m.role)||typeof m.content!=='string')||JSON.stringify(messages).length>350000)return fail('Cloudflare AI nhận nội dung chữ; ảnh cần chọn AI hỗ trợ ảnh.',400);
+  const model=String(env.CLOUDFLARE_AI_MODEL||'@cf/qwen/qwen3-30b-a3b-fp8');
+  const limit=await reserveCloud(env,body.username);if(limit)return limit;
+  let timer;
+  try{
+   const result=await Promise.race([env.AI.run(model,{messages,max_tokens:Math.max(128,Math.min(4096,Number(body.max_tokens)||1600)),temperature:0.2,stream:false}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Cloudflare AI quá thời gian chờ.')),60000);})]);
+   const answer=String(result?.response||result?.choices?.[0]?.message?.content||'').trim();
+   if(!answer){await releaseCloud(env,body.username);return fail('Cloudflare AI chưa trả nội dung.',503);}
+   return reply({success:true,answer,source:'cloudflare'});
+  }catch{await releaseCloud(env,body.username);return fail('Cloudflare AI chưa xử lý được yêu cầu. Kiểm tra mô hình và hạn mức Workers AI.',503);}
+  finally{clearTimeout(timer);}
+ }
 const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash'};
  const requestedProvider=body.provider;let provider=variants[requestedProvider]?'deepseek':requestedProvider;
  if(!allowed.includes(provider)&&!/^ai_[a-f0-9]{32}$/.test(String(provider)))return fail('Dịch vụ AI không hợp lệ.');
