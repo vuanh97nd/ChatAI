@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'cloud_voice.dart';
 
 class ComputerPage extends StatefulWidget {
   final ChatApi api;
@@ -19,7 +20,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
   static const vault = FlutterSecureStorage();
   static const uuid = Uuid();
   final prompt = TextEditingController();
-  final voice = VoiceController();
+  late final VoiceController voice;
   Map<String, dynamic>? link, desktop;
   List<dynamic> tasks = [];
   bool busy = false, active = true;
@@ -33,7 +34,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
   late final String storageKey;
   @override
   void initState() {
-    super.initState(); owner = widget.api.session!.username;
+    super.initState(); voice = VoiceController(engine: CloudVoiceEngine(widget.api)); owner = widget.api.session!.username;
     storageKey = 'computer:${widget.api.server.origin}:$owner';
     WidgetsBinding.instance.addObserver(this);
     voice.addListener(voiceChanged); restore();
@@ -195,7 +196,8 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     await refresh();
   }
   Future<void> dictate() async {
-    if (voice.listening || voice.starting) { await voice.stop(); return; }
+    if (voice.listening) { await voice.finishListening(); return; }
+    if (voice.starting || voice.transcribing) return;
     final original = prompt.text.trimRight();
     await voice.start((words) {
       final text = original.isEmpty ? words : '$original $words';

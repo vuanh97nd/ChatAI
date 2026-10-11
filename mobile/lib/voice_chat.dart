@@ -2,11 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'voice.dart';
+import 'cloud_voice.dart';
+import 'api.dart';
 
 /// Text-only conversation: never dispatches computer or payment operations.
 class VoiceChatPage extends StatefulWidget {
+  final ChatApi api;
   final Future<String> Function(String) answer;
-  const VoiceChatPage({super.key, required this.answer});
+  const VoiceChatPage({super.key, required this.answer, required this.api});
   @override
   State<VoiceChatPage> createState() => _VoiceChatPageState();
 }
@@ -21,7 +24,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    voice = VoiceController()..addListener(changed);
+    voice = VoiceController(engine: CloudVoiceEngine(widget.api))..addListener(changed);
     pulse = AnimationController(vsync: this, duration: const Duration(seconds: 2));
     WidgetsBinding.instance.addPostFrameCallback((_) => listen());
   }
@@ -40,9 +43,9 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     if (!mounted || closed) return;
     setState(() {
       if (voice.error != null) { failure = voice.error!; paused = true; phase = 'Chưa mở được giọng nói'; }
-      else if (!processing) { phase = voice.starting ? 'Đang mở micro…' : voice.listening ? 'Đang nghe…' : paused ? 'Đã tạm dừng' : 'Sẵn sàng'; }
+      else if (!processing) { phase = voice.transcribing ? 'Đang nhận dạng…' : voice.starting ? 'Đang mở micro…' : voice.listening ? 'Đang nghe…' : paused ? 'Đã tạm dừng' : 'Sẵn sàng'; }
     });
-    if (!voice.starting && !voice.listening && !voice.speaking && !processing && !paused && draft.trim().isNotEmpty) {
+    if (!voice.starting && !voice.transcribing && !voice.listening && !voice.speaking && !processing && !paused && draft.trim().isNotEmpty) {
       unawaited(reply());
     }
   }
@@ -128,7 +131,9 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         const SizedBox(height: 20),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
         if (showContent && draft.isNotEmpty) Text('Bạn: $draft', textAlign: TextAlign.center),
-        if (!processing && draft.trim().isNotEmpty)
+        if (voice.listening && !processing)
+          FilledButton.icon(onPressed: voice.finishListening, icon: const Icon(Icons.send), label: const Text('Gửi câu nói')),
+        if (!processing && !voice.listening && draft.trim().isNotEmpty)
           FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Gửi câu nói')),
         if (voice.listening && draft.isEmpty && !processing)
           const Text('Hãy nói câu hỏi. Chữ nhận dạng sẽ hiện ở đây.', textAlign: TextAlign.center),

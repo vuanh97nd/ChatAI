@@ -6,6 +6,9 @@ import 'package:speech_to_text/speech_to_text.dart';
 
 /// Allows permission/lifecycle behavior to be tested without a microphone.
 abstract class VoiceEngine {
+  bool get recordsAudio => false;
+  Future<void> finish() => cancel();
+  Future<void> close() => cancel();
   Future<bool> initialize(void Function(String) status, void Function(String) error);
   Future<List<String>> locales();
   Future<void> listen(String locale, void Function(String) words);
@@ -106,7 +109,7 @@ class AndroidVoiceEngine implements VoiceEngine {
 
 class VoiceController extends ChangeNotifier {
   final VoiceEngine engine;
-  bool listening = false, speaking = false, starting = false;
+  bool listening = false, speaking = false, starting = false, transcribing = false;
   double soundLevel = 0;
   String? error;
   bool recognitionError = false;
@@ -136,9 +139,10 @@ class VoiceController extends ChangeNotifier {
       speaking = false;
       final available = await engine.initialize((status) {
         if (run != _generation || _disposed) return;
+        if (status == 'transcribing') { transcribing = true; listening = false; _recognitionWatchdog?.cancel(); _changed(); }
         if (status == 'listening') { listening = true; _changed(); }
         if (status == 'done' || status == 'notListening') {
-          ended = true;
+          ended = true; transcribing = false;
           _recognitionWatchdog?.cancel();
           listening = false;
           if (!starting && !receivedWords && error == null) {
@@ -148,7 +152,7 @@ class VoiceController extends ChangeNotifier {
         }
       }, (message) {
         if (run != _generation || _disposed) return;
-        ended = true;
+        ended = true; transcribing = false;
         _recognitionWatchdog?.cancel();
         listening = false;
         error = ['error_language_unavailable', 'error_language_not_supported'].contains(message)
@@ -178,7 +182,7 @@ class VoiceController extends ChangeNotifier {
           error = 'Chưa nghe được lời nói. Bấm mic và nói lại; kiểm tra dịch vụ nhận dạng trong cài đặt Android.';
         } else if (!ended) {
           listening = true;
-          if (!receivedWords) {
+          if (!receivedWords && !engine.recordsAudio) {
             _recognitionWatchdog = Timer(noWordsTimeout, () {
               if (_disposed || run != _generation || receivedWords || !listening) return;
               _generation++;
@@ -202,6 +206,11 @@ class VoiceController extends ChangeNotifier {
     }
   }
 
+  Future<void> finishListening() async {
+    if (engine.recordsAudio && listening) { await engine.finish(); }
+    else { await stop(); }
+  }
+
   Future<void> read(String text) async {
     if (_disposed || text.trim().isEmpty) return;
     _recognitionWatchdog?.cancel();
@@ -220,7 +229,7 @@ class VoiceController extends ChangeNotifier {
 
   Future<void> stop() async {
     _recognitionWatchdog?.cancel();
-    _generation++; listening = false; speaking = false; starting = false; _changed();
+    _generation++; transcribing = false; listening = false; speaking = false; starting = false; _changed();
     try { await engine.cancel(); } catch (_) {}
     try { await engine.stopSpeaking(); } catch (_) {}
   }
@@ -229,7 +238,7 @@ class VoiceController extends ChangeNotifier {
     _recognitionWatchdog?.cancel();
     _disposed = true; _generation++;
     // Plugin cleanup is asynchronous; late callbacks must never update the UI.
-    engine.cancel().catchError((Object _) {});
+    engine.close().catchError((Object _) {});
     engine.stopSpeaking().catchError((Object _) {});
     super.dispose();
   }

@@ -36,7 +36,30 @@ class FakeVoice implements VoiceEngine {
   Future<void> stopSpeaking() async { stops++; }
 }
 
+class FakeAudioVoice extends FakeVoice {
+  @override
+  bool get recordsAudio => true;
+  @override
+  Future<void> finish() async {
+    status!('transcribing'); recognition!('Nội dung từ Cloudflare'); status!('done');
+  }
+}
+
 void main() {
+  testWidgets('cloud capture is independent of native recognition and finishes with text', (tester) async {
+    final engine = FakeAudioVoice();
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    var text = ''; var sawTranscribing = false;
+    voice.addListener(() { if (voice.transcribing) sawTranscribing = true; });
+    await voice.start((words) => text = words);
+    await tester.pump(VoiceController.noWordsTimeout);
+    expect(voice.listening, isTrue);
+    await voice.finishListening();
+    expect(sawTranscribing, isTrue); expect(text, 'Nội dung từ Cloudflare');
+    expect(voice.listening, isFalse); expect(voice.transcribing, isFalse);
+    expect(voice.error, isNull);
+  });
+
   test('Vietnamese voice selection accepts Android locale formats', () {
     expect(vietnameseVoice([{'name': 'English', 'locale': 'en-US'},
       {'name': 'Vietnamese', 'locale': 'vi_VN'}]), {'name': 'Vietnamese', 'locale': 'vi_VN'});

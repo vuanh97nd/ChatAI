@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'cloud_voice.dart';
 import 'voice_chat.dart';
 import 'reply_indicator.dart';
 import 'assistant_reply.dart';
@@ -130,7 +131,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     api = widget.api ?? ChatApi();
-    voice = VoiceController(engine: widget.voiceEngine);
+    voice = VoiceController(engine: widget.voiceEngine ?? CloudVoiceEngine(api));
     WidgetsBinding.instance.addObserver(this);
     voice.addListener(voiceChanged);
     assistantChannel.setMethodCallHandler((call) async {
@@ -181,7 +182,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (input.text.trim().isNotEmpty || attachments.isNotEmpty) return;
     await voice.stop();
     if (!mounted) return;
-    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => VoiceChatPage(
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => VoiceChatPage(api: api,
       answer: (words) async {
         input.text = words;
         final count = messages.length;
@@ -193,7 +194,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       })));
   }
   Future<void> dictate() async {
-    if (voice.listening || voice.starting) { await voice.stop(); return; }
+    if (voice.listening) { await voice.finishListening(); return; }
+    if (voice.starting || voice.transcribing) return;
+    if (api.session == null) { await openLogin(); return; }
     changed(() => error = null);
     FocusManager.instance.primaryFocus?.unfocus();
     final prefix = input.text.trimRight();
@@ -475,8 +478,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             ])));
       })),
 
-    if (voice.listening || voice.starting) Padding(padding: const EdgeInsets.all(8),
-      child: Text(voice.starting ? 'Đang mở micro…' : 'Đang nghe tiếng Việt… Bấm micro để dừng.')),
+    if (voice.listening || voice.starting || voice.transcribing) Padding(padding: const EdgeInsets.all(8),
+      child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
     Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
       decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow,
@@ -747,7 +750,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             builder: (c) => AlertDialog(title: const Text('Chi tiết'),
               content: SingleChildScrollView(child: SelectableText(error!)),
               actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])), child: const Text('Chi tiết')),
-          if (voice.error != null) TextButton(onPressed: () async {
+          if (voice.error != null && (!voice.recognitionError || !voice.engine.recordsAudio)) TextButton(onPressed: () async {
             try { await openVoiceSettings(!voice.recognitionError); }
             catch (e) { changed(() => error = '$e'); }
           }, child: Text(voice.recognitionError ? 'Cài đặt nhận dạng' : 'Cài đặt giọng đọc')),

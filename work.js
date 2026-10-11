@@ -1366,6 +1366,13 @@ export default {
    }
    await ensureSchema(env.DB);
    await ensureAdminSchema(env.DB);
+   if(path==='/api/voice/transcribe'){
+    if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
+    const actor=await auth(env,body.username,body.key);
+    if(!actor)return respond(fail('Đăng nhập để nhận dạng giọng nói trên server.',401));
+    if(!await throttle(env.DB,actor.username,'voice',10))return respond(fail('Đợi một phút trước khi thu lại.',429));
+    return respond(await transcribeAudio(env,actor,body));
+   }
    if(path.startsWith('/api/remote/')){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -2704,4 +2711,23 @@ export async function mobileGuestAPI(env,path,body,execute=providerAPI){
  }catch{
   return fail('Lượt dùng thử đã gửi nhưng chưa xác minh kết quả. Không tự chạy lại; đăng nhập để tiếp tục.',502);
  }
+}
+
+export async function transcribeAudio(env,actor,body){
+ if(typeof env.AI?.run!=='function')return fail('Chưa có Workers AI binding tên AI.',503);
+ const encoded=body.audio;
+ if(typeof encoded!=='string'||encoded.length<100||encoded.length>1280100||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))return fail('Âm thanh không hợp lệ hoặc quá 30 giây.',400);
+ let audio;try{audio=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));}catch{return fail('Âm thanh không hợp lệ.',400);}
+ const view=new DataView(audio.buffer);
+ const tag=(offset)=>String.fromCharCode(...audio.slice(offset,offset+4));
+ if(audio.length<44||audio.length>960044||tag(0)!=='RIFF'||tag(8)!=='WAVE'||tag(12)!=='fmt '||view.getUint32(16,true)!==16||view.getUint16(20,true)!==1||view.getUint16(22,true)!==1||view.getUint32(24,true)!==16000||view.getUint16(34,true)!==16||tag(36)!=='data'||view.getUint32(40,true)!==audio.length-44||view.getUint32(4,true)!==audio.length-8||(audio.length-44)%2)return fail('Cần WAV PCM 16 kHz, mono, 16 bit, tối đa 30 giây.',400);
+ const limit=await reserveCloud(env,actor.username);if(limit)return limit;
+ let timer;
+ try{
+  const result=await Promise.race([env.AI.run('@cf/openai/whisper-large-v3-turbo',{audio:encoded,language:'vi',task:'transcribe'}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),40000);})]);
+  const text=typeof result?.text==='string'?result.text.trim():'';
+  if(!text)return fail('Chưa nhận được lời nói. Thu lại trong nơi yên tĩnh.',422);
+  return reply({success:true,text:text.slice(0,12000)});
+ }catch{return fail('Chưa nhận dạng được âm thanh. Kiểm tra mô hình Whisper và hạn mức Workers AI rồi thử lại.',503);}
+ finally{clearTimeout(timer);}
 }
