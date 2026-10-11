@@ -1,4 +1,4 @@
-WRITES = {"excel_edit_cell", "excel_create_from_template", "template_fill", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
+WRITES = {"excel_edit_batch", "excel_edit_cell", "excel_create_from_template", "template_fill", "file_write", "file_edit", "file_move", "file_delete", "image_resize", "video_from_images",
           "python_run", "python_search", "run_command", "rag_index", "image_generate", "video_generate", "office_create", "word_replace", "windows_open", "windows_inspect", "windows_action", "browser_search", "browser_run"}
 WRITES.update({'pdf_source_open','pdf_local_open','pdf_read'})
 WRITES.add('windows_list_apps')
@@ -12,6 +12,8 @@ def schema(name, description, properties, required):
 
 TEXT = {"type": "string"}
 TOOLS = [
+    schema("excel_edit_batch", "Ghi 1–1000 ô Excel theo lô: một lần duyệt, một lần mở/lưu file. Ưu tiên cho bảng nhiều ô thay excel_edit_cell hoặc UIA từng ô. Text là literal. fills là JSON [{cell: A1, value: nội dung}, ...] với tên khóa và chuỗi đặt trong dấu ngoặc kép.",
+           {"path": TEXT, "sheet": TEXT, "fills": TEXT}, ["path", "sheet", "fills"]),
     schema("excel_list_files", "Liệt kê file XLSX trong whitelist.", {}, []),
     schema("excel_list_sheets", "Liệt kê sheet của XLSX.", {"path": TEXT}, ["path"]),
     schema("excel_read", "Đọc ô Excel, công thức trả biểu thức; tối đa 5000 ô.",

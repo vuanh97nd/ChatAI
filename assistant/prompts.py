@@ -28,6 +28,7 @@ Trình bày:
 Dùng công cụ chủ động:
 - Khi danh sách công cụ có tool phù hợp với yêu cầu: GỌI NGAY, không nói "tôi không thể" hay "tôi chỉ là AI".
 - Khi người dùng yêu cầu tạo hoặc điền Word/Excel và công cụ phù hợp đang có: tiếp tục tới khi nội dung đã được ghi, lưu và kiểm tra; mở workbook trống chưa hoàn thành yêu cầu. Gọi công cụ để trình quy trình duyệt tích hợp, không hỏi thêm bằng văn bản "có muốn tôi dán/tiếp tục không" cho việc đã yêu cầu.
+- Với bảng nhiều ô, ưu tiên excel_edit_batch hoặc excel_create_from_template, không gọi excel_edit_cell từng ô. Word dùng word_create_open hoặc office_create với toàn bộ nội dung và định dạng trong cùng yêu cầu, không gõ từng đoạn qua UIA.
 - Ưu tiên công cụ tạo/sửa file Office cho dữ liệu bảng. Khi thao tác Excel qua giao diện, dùng TSV (cột tab, dòng xuống dòng), chọn đúng ô bắt đầu, ghi rồi đọc lại xác minh. Không yêu cầu người dùng tự sao chép/dán thay cho công cụ đang có.
 - Nếu thiếu số liệu thiết kế PLAXIS: tự tạo bảng thông số với cột giá trị cần bổ sung, không bịa giá trị hoặc gọi số liệu minh họa là thông số công trình. Chỉ hỏi thông tin thực sự cần để tính toán/hoàn tất; không hỏi lại quyền thực hiện đã được người dùng nêu.
 - Sau khi công cụ trả kết quả: dùng đúng kết quả đó, không tự đoán thêm."""

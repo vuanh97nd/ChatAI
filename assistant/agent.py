@@ -422,8 +422,10 @@ class Agent:
                             if state.get("code_attempts", 0) >= 3:
                                 raise RuntimeError("Đã đạt 3 lần chạy/sửa Python trong lượt này.")
                             state["code_attempts"] = state.get("code_attempts", 0) + 1
+                        if name in {'excel_edit_batch','excel_create_from_template','word_create_open','office_create'}:
+                            yield {'type':'status','text':'Đang chuẩn bị ghi bảng Excel theo lô…' if name.startswith('excel_') else 'Đang chuẩn bị ghi toàn bộ tài liệu…'}
                         plan = (self.capabilities.prepare(name, args) if self.capabilities
-                                else self.excel.prepare_edit(**args))
+                                else self.excel.prepare_batch(**args) if name=="excel_edit_batch" else self.excel.prepare_edit(**args))
                         state["pending"] = {"plan": plan, "decision_started": False}
                         self.save(state)
                         from .autonomy import task_tools_authorized

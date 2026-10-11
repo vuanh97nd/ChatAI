@@ -108,6 +108,8 @@ class Capabilities:
         if name.startswith("windows_"):return self.windows.prepare(name,args)
         if name=="python_search" and not self.allow_web:raise PermissionError("Bật nút Tìm kiếm mạng trước.")
         if name=="python_search":return self.python_search.prepare(args["code"])
+        if name == "excel_edit_batch":
+            return self.excel.prepare_batch(**args)
         if name == "excel_edit_cell":
             return {"action": name, **self.excel.prepare_edit(**args)}
         if name == "excel_create_from_template":
@@ -168,7 +170,7 @@ class Capabilities:
             return self.python_search.commit(plan)
         if action in {"image_resize","video_from_images"}:
             return self.media_basic.commit(plan)
-        if action == "excel_edit_cell":
+        if action in {"excel_edit_cell","excel_edit_batch"}:
             return self.excel.commit_edit(plan)
         if action == "excel_create_from_template":
             return self.excel.commit_from_template(plan)

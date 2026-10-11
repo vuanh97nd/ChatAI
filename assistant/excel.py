@@ -283,6 +283,34 @@ class ExcelTools:
         return {"path": str(p), "sheet": sheet, "cell": cell, "old_value": old,
                 "value": value, "sha256": before, "approval_id": uuid.uuid4().hex}
 
+    def prepare_batch(self, path, sheet, fills):
+        import json
+        p=self.path(path)
+        items=json.loads(fills) if isinstance(fills,str) else fills
+        if not isinstance(items,list) or not 1<=len(items)<=1000:
+            raise ValueError('Cần 1–1000 ô trong một lô.')
+        normalized=[];seen=set()
+        for item in items:
+            if not isinstance(item,dict) or set(item)!={'cell','value'}:
+                raise ValueError('Mỗi ô cần cell và value.')
+            cell=item['cell'];value=item['value']
+            if not isinstance(cell,str) or not re.fullmatch(r'[A-Za-z]{1,3}[1-9][0-9]*',cell):raise ValueError('Ô không hợp lệ.')
+            cell=cell.upper();row,col=coordinate_to_tuple(cell)
+            if row>100000 or col>16384 or cell in seen:raise ValueError('Ô trùng hoặc ngoài giới hạn.')
+            if type(value) not in (str,int,float,bool,type(None)):raise ValueError('Giá trị ô không hợp lệ.')
+            if isinstance(value,float) and not math.isfinite(value):raise ValueError('Số không hữu hạn.')
+            if isinstance(value,str) and (len(value)>32767 or re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]',value)):raise ValueError('Text ô không hợp lệ.')
+            seen.add(cell);normalized.append({'cell':cell,'value':value})
+        before=digest(p)
+        wb=load_workbook(p,read_only=True,data_only=False,keep_links=False)
+        try:
+            ws=wb[sheet]
+            if (ws.max_row or 0)*(ws.max_column or 0)>MAX_CELLS:raise ValueError('Sheet quá lớn.')
+        finally:wb.close()
+        if digest(p)!=before:raise RuntimeError('File đã thay đổi; thử lại.')
+        return {'action':'excel_edit_batch','path':str(p),'sheet':sheet,'fills':normalized,
+                'sha256':before,'approval_id':uuid.uuid4().hex,'note':f'Ghi {len(normalized)} ô trong một lần; có backup, text là literal.'}
+
     def commit_edit(self, plan):
         """Chỉ UI sau xác nhận mới được gọi; không đăng ký hàm này làm model tool."""
         p = self.path(plan["path"])
@@ -300,12 +328,12 @@ class ExcelTools:
             try:
                 if sum((s.max_row or 0) * (s.max_column or 0) for s in wb) > MAX_CELLS:
                     raise ValueError("Tổng workbook vượt 200000 ô; không sửa.")
-                target = wb[plan["sheet"]][plan["cell"]]
                 from .math_format import excel_math
-                target.value = excel_math(plan["value"])
-                # Text luôn là literal, tránh biến text của model thành công thức.
-                if isinstance(plan["value"], str):
-                    target.data_type = "s"
+                ws=wb[plan['sheet']]
+                for item in plan.get('fills',[{'cell':plan.get('cell'),'value':plan.get('value')}]):
+                    target=ws[item['cell']]
+                    target.value=excel_math(item['value'])
+                    if isinstance(item['value'],str):target.data_type='s'
                 wb.calculation.fullCalcOnLoad = True
                 fd, temp = tempfile.mkstemp(prefix=".assistant_", suffix=".xlsx", dir=p.parent)
                 os.close(fd)
@@ -318,7 +346,8 @@ class ExcelTools:
                 raise RuntimeError("File thay đổi trước khi ghi; thao tác đã hủy.")
             os.replace(temp_path, p)
             result = {"ok": True, "path": str(p), "sheet": plan["sheet"],
-                      "cell": plan["cell"], "value": plan["value"], "backup": str(backup)}
+                      "cells_written": len(plan["fills"]) if "fills" in plan else 1, "backup": str(backup)}
+            if "fills" not in plan:result.update(cell=plan["cell"],value=plan["value"])
             self.audit("edit_success", result)
             return result
         except Exception as exc:
