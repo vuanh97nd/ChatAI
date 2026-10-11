@@ -27,11 +27,18 @@ def name(obj):
 
 def active(obj,phase):
     result=value(obj.Active[phase])
+    attempts=1
+    if result is None:
+        # A second read is safe; a missing/inherited value is never activation=false.
+        from .windows_apps import wait_automation,_STOP
+        wait_automation()
+        if _STOP.is_set():raise StageGuardError('Đã dừng đọc Active.')
+        result=value(obj.Active[phase]);attempts=2
     if type(result) is not bool:
         raw=repr(result)[:100] if type(result) in (str,int,float,type(None)) else '<proxy>'
         raise StageGuardError(f'Active của {name(obj)} tại {name(phase)} chưa là boolean: '
-                              f'kiểu={type(result).__name__}, giá trị={raw}. Không ép chuỗi/số; '
-                              'đọc đúng đối tượng trong Staged construction và kiểm tra phản hồi Remote Scripting.')
+                              f'kiểu={type(result).__name__}, giá trị={raw}, đã đọc {attempts} lần. Không ép chuỗi/số; '
+                              'đọc lại g.Soils/g.Phases bằng inspect_progress; xác định đúng đối tượng Staged construction. Không tạo lại/xóa hoặc đổi Active khi chưa đọc chắc chắn.')
     return result
 
 
@@ -191,7 +198,8 @@ def inspect(g,phase,objects):
 
 
 STAGE_INSTRUCTION = (
-    '\nTrước khi đổi Active: inspect_stage args [ref phase, ref collection như g.Soils] đọc ứng viên; '
+    '\nNếu tiếp tục bài đang dở: inspect_progress/plan_resume args [chuỗi JSON với source và checks (ref,expected,stage; thêm phase cho Active)] đọc trạng thái thật; expected lấy từ manual, không tự đặt. Với Active thêm phase và expected boolean. Giữ verified, sửa missing_or_wrong, chẩn đoán unreadable trước khi ghi; không dựng lại chỉ vì lỗi đọc. '
+    'Trước khi đổi Active: inspect_stage args [ref phase, ref collection như g.Soils] đọc ứng viên; '
     'verify_stage args [chuỗi JSON với target, phase, parent_phase, before, parent_active, after, '
     'kind=soil/displacement/point_displacement/plate/line_load/point_load/anchor (mặc định soil), shape="box", region={"x":[min,max],"y":[min,max],"z":[min,max] cho 3D}, source="manual mục/trang"]. '
     'Tọa độ, chiều sâu đợt đào, phase cha và trạng thái dự kiến phải lấy từ manual, không sao chép số mô hình '

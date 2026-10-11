@@ -80,7 +80,7 @@ def commands_from_json(raw):
         cmd=row.get('command','')
         if not isinstance(cmd,str) or not _NAME.fullmatch(cmd) or cmd.casefold() in _BLOCKED:
             raise ValueError('Cần tên lệnh API PLAXIS; không nhận shell/Python hoặc lệnh truy cập tệp.')
-        if cmd in {'verify_stage','plan_excavation','draw_excavation'}:
+        if cmd in {'verify_stage','plan_excavation','draw_excavation','inspect_progress','plan_resume'}:
             spec=row.get('args',[])
             if isinstance(spec,str):spec=[spec]
             elif isinstance(spec,dict):spec=[json.dumps(spec,allow_nan=False)]
@@ -110,11 +110,17 @@ def commands_from_json(raw):
             from .plaxis_stage_guard import check_spec
             if len(args)!=1:raise ValueError('verify_stage cần một chuỗi JSON.')
             check_spec(args[0])
+        if cmd in {'inspect_progress','plan_resume'}:
+            from .plaxis_progress import specification
+            if len(args)!=1:raise ValueError('Tiến độ cần một đặc tả JSON source/checks.')
+            specification(args[0])
         if cmd=='inspect_stage' and len(args)!=2:raise ValueError('inspect_stage cần phase và collection đối tượng.')
         if cmd=='new_project' and args:raise ValueError('new_project không nhận tham số.')
         if cmd=='read':
             ref=_read_ref(args[0]) if len(args) in (1,2) else None
             phase=_read_ref(args[1]) if len(args)==2 else None
+            if len(args)==2 and isinstance(args[1],str) and not re.fullmatch(r'(?:g\.)?(?:InitialPhase|Phase_[A-Za-z0-9_]+)',args[1]):
+                phase=None
             if ref is None or (len(args)==2 and phase is None):
                 raise ValueError('read cần một ref, hoặc ref thuộc tính kèm phase: '
                                  '{"command":"read","args":[{"ref":"Soil_1_3.Active"},{"ref":"Phase_5"}]}.')
@@ -365,7 +371,9 @@ def phase_changes(g,session=None):
     def state(phase):
         current={}
         for name,obj,soil in objects:
-            try:active=bool(_value(obj.Active[phase]))
+            try:
+                active=_value(obj.Active[phase])
+                if type(active) is not bool:continue
             except Exception:continue
             material=None
             if soil:
@@ -380,8 +388,8 @@ def phase_changes(g,session=None):
         try:previous=str(_value(_value(phase.PreviousPhase).Name))
         except Exception:continue
         before,after=states.get(previous,{}),states.get(name,{})
-        on=[k for k,(a,_) in after.items() if a and not before.get(k,(False,None))[0]]
-        off=[k for k,(a,_) in after.items() if not a and before.get(k,(False,None))[0]]
+        on=[k for k,(a,_) in after.items() if k in before and a and not before[k][0]]
+        off=[k for k,(a,_) in after.items() if k in before and not a and before[k][0]]
         mats=[k for k,(_,m) in after.items() if m and before.get(k,(None,None))[1] not in (None,m)]
         try:kind=_value(phase.DeformCalcType)
         except Exception:kind=None
@@ -394,7 +402,8 @@ def phase_changes(g,session=None):
             off=sorted(k for k,v in entries.items() if v==('active',False))
             mats=sorted(k for k,v in entries.items() if v[0]=='material')
             after=entries
-        rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'on':on,'off':off,'materials':mats,
+        unreadable=sorted(set(n for n,_,_ in objects)-set(states.get(name,{})))
+        rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'unreadable':unreadable,'on':on,'off':off,'materials':mats,
                      'explicit':explicit,'state':tuple(sorted(after.items()))})
     return rows
 
@@ -405,7 +414,8 @@ def _empty_phases(g,session=None):
     phases all started from InitialPhase and switching on the same wall and load)."""
     rows=[r for r in phase_changes(g,session) if r['kind']==4]
     pending=[r for r in rows if r['pending']]
-    problems=[f"{r['phase']} không thay đổi gì so với {r['previous']}" for r in pending if not (r['on'] or r['off'] or r['materials'])]
+    problems=[f"{r['phase']} không thay đổi gì so với {r['previous']}" for r in pending if not r.get('unreadable') and not (r['on'] or r['off'] or r['materials'])]
+    problems+=[f"{r['phase']}: chưa đọc chắc chắn Active của "+', '.join(r['unreadable'][:10])+'. Dùng inspect_progress/inspect_stage; không coi phase là trống.' for r in pending if r.get('unreadable')]
     groups={}
     for r in pending:
         if r['state']:groups.setdefault(r['state'],[]).append(r['phase'])
@@ -573,7 +583,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             from .plaxis_stage_guard import before_change, after_change, verify, check_spec, inspect
             if row['command']=='verify_stage':session.pop('stage_permit',None)
             stage_checked=before_change(g,resolve,row,session)
-            if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','plan_excavation','commands','tabulate','echo'}:
+            if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','inspect_progress','plan_resume','plan_excavation','commands','tabulate','echo'}:
                 session.pop('stage_permit',None)
             args=[resolve(v) for v in row.get('args',[])]
             # polygon expects separate points, not one parenthesized collection.
@@ -608,6 +618,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     started=True
                     geometry=g.polygon(*result['points'])
                     result={'plan':result,'api_result':plain(geometry),**read_points(g,result['points'])}
+            elif row['command'] in {'inspect_progress','plan_resume'}:
+                from .plaxis_progress import inspect_progress,plan_resume
+                result=(inspect_progress if row['command']=='inspect_progress' else plan_resume)(g,args[0],resolve)
             elif row['command']=='inspect_stage':
                 result=inspect(g,args[0],args[1])
             elif row['command']=='verify_stage':
@@ -729,12 +742,12 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 aliases={'g':g}
             if row.get('result'):
                 aliases[row['result']]=result
-                if row['command'] not in ('read','info','signature','summarize','verify_model'):
+                if row['command'] not in ('read','info','signature','summarize','verify_model','inspect_progress','plan_resume'):
                     session['aliases'][row['result']]=result
                     session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             entry={'step':index+1,'command':row['command'],
-                   'value':result if row['command'] in {'inspect_stage','verify_stage','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
+                   'value':result if row['command'] in {'inspect_stage','verify_stage','inspect_progress','plan_resume','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
             if normalized_properties:entry['normalized_properties']=normalized_properties
             raw_args=row.get('args',[])
             if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
@@ -851,7 +864,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
 _SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
            'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
 _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
-_CHANGES_READONLY={'ensure_new_material','plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
+_CHANGES_READONLY={'ensure_new_material','plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage','inspect_progress','plan_resume'}
 
 
 def model_snapshot(g,limit=2400,session=None,version=None):

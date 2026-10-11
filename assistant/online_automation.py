@@ -414,7 +414,7 @@ def stuck_command(state,args):
     planned={r.get('command') for r in rows if isinstance(r,dict)}
     # Identical write batches that already succeeded: repeating them changes nothing
     # (seen: the same deactivation sent ten times because the state looked unchanged).
-    writes={r.get('command') for r in rows if isinstance(r,dict)}-{'read','info','tabulate','signature','commands','summarize','verify_model'}
+    writes={r.get('command') for r in rows if isinstance(r,dict)}-{'read','info','tabulate','signature','commands','summarize','verify_model','inspect_progress','plan_resume','inspect_stage','verify_stage'}
     if writes:
         key=json.dumps(rows,sort_keys=True,ensure_ascii=False)
         repeats=0
@@ -608,7 +608,7 @@ def unverified_completion(answer,state):
     """A PLAXIS answer that claims the model matches the manual, or that the task is done,
     needs a verify_model pass after the last model change. 'Calculation OK' only means the
     solver converged, not that the model is the tutorial's."""
-    if not re.search(r'(?:đúng|khớp|theo đúng|y hệt)\s+(?:với\s+)?(?:manual|tài liệu|hướng dẫn|bài)|đã\s+hoàn\s+(?:tất|thành)|hoàn\s+tất\s+mô\s+hình|đã\s+xác\s+minh'
+    if not re.search(r'(?:đúng|khớp|theo đúng|y hệt)\s+(?:với\s+)?(?:manual|tài liệu|hướng dẫn|bài)|đã\s+hoàn\s+(?:tất|thành)|hoàn\s+tất\s+mô\s+hình|đã\s+xác\s+minh\s+(?:toàn\s+bộ\s+)?(?:mô\s+hình|bài\s+toán)'
                      r'|(?:đã\s+)?(?:chạy|tính|làm|dựng)\s+(?:toán\s+)?xong|xong\s+bài|hoàn\s+thành\s+bài',answer,re.I):
         return None
     messages=state.get('messages',[])
@@ -805,7 +805,7 @@ def _automation_round_limit(state, has_plaxis_remote=False):
 
 
 _PLAXIS_READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
-               'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults','verify_model'}
+               'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults','verify_model','inspect_progress','plan_resume','inspect_stage','verify_stage'}
 PLAXIS_READ_STALL_LIMIT=20
 
 

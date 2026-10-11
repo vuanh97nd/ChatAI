@@ -1,6 +1,10 @@
 """AI-only failover; each server owns its authentication and data."""
 import json
-from .accounts import _dpapi, credentials_path, request_account, AccountAPIError
+from .accounts import _dpapi, credentials_path, AccountAPIError
+
+def request_account(*args,**kwargs):
+    from . import accounts
+    return accounts.request_account(*args,**kwargs)
 
 DEFAULT_BACKUP = 'https://chatai-backup.vuanh97nd1.workers.dev'
 
