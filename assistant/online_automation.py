@@ -356,6 +356,8 @@ Mỗi lần đổi thứ gì, đọc model_state và tránh tạo trùng đối 
 _PLAXIS_TOOLSET={'plaxis_tutorial_guide','plaxis_commands','plaxis_run_problem','plaxis_generate_script','pdf_read','pdf_local_open','pdf_source_open',
                  'document_read','browser_search','browser_run','windows_list_apps','windows_open','windows_inspect','windows_action'} | VISUAL_TOOLS
 _READING_TOOLS={'plaxis_tutorial_guide','pdf_read','pdf_local_open','pdf_source_open','document_read','browser_search','browser_run'}
+_PLAXIS_TOOLSET.update({'plaxis_safe_inspect','plaxis_safe_material','plaxis_safe_layer','plaxis_safe_calculate'})
+_READING_TOOLS.add('plaxis_safe_inspect')
 _OTHER_APP_REQUEST=re.compile(r'\b(?:word|excel|autocad|cad|cdm|geo[ -]?slope|geostudio|slope/w|foxit|chrome)\b|vẽ|trắc dọc',re.I)
 
 
@@ -614,11 +616,12 @@ def unverified_completion(answer,state):
     for i,m in enumerate(messages):
         if m.get('role')=='assistant' and m.get('tool_calls'):
             fn=m['tool_calls'][0].get('function',{})
+            if fn.get('name') in {'plaxis_safe_material','plaxis_safe_layer'}:last_build=i
             if fn.get('name')=='plaxis_commands':
                 try:rows=json.loads(fn.get('arguments',{}).get('commands','[]'))
                 except (ValueError,TypeError,AttributeError):rows=[]
                 if any(isinstance(r,dict) and r.get('command') in _MODEL_BUILDING|{'new_project','phase','set','activate','deactivate','mesh'} for r in rows):last_build=i
-        elif m.get('role')=='tool' and m.get('tool_name')=='plaxis_commands' and '"model_verified": true' in str(m.get('content','')):
+        elif m.get('role')=='tool' and m.get('tool_name') in {'plaxis_commands','plaxis_safe_calculate'} and '"model_verified": true' in str(m.get('content','')):
             verified_at=i
     if last_build<0 or verified_at>last_build:return None
     tutorial=state.get('tutorial') or {}
@@ -1182,7 +1185,7 @@ class OnlineAutomation:
         if name=='cad_create_open':return self.cad_app
         if name=='word_create_open':return self.word_app
         if name in {'pdf_source_open','pdf_local_open','pdf_read'}:return self.pdf_source
-        if name in ('plaxis_run_problem','plaxis_commands','plaxis_tutorial_guide'):return self.plaxis_remote
+        if name.startswith('plaxis_safe_') or name in ('plaxis_run_problem','plaxis_commands','plaxis_tutorial_guide'):return self.plaxis_remote
         if name=='plaxis_generate_script':return self.plaxis_app
         return self.browser if name.startswith('browser_') else self.windows
 
@@ -1320,6 +1323,10 @@ class OnlineAutomation:
                         if gaps:raise RuntimeError(gaps)
                         unchecked=calculate_unverified(state,args)
                         if unchecked:raise RuntimeError(unchecked)
+                    if name in {'plaxis_safe_material','plaxis_safe_layer'}:
+                        unread=tutorial_unread(state,{'version':args.get('version'),'commands':[
+                            {'command':'soilmat' if name=='plaxis_safe_material' else 'soillayer'}]},self.store)
+                        if unread:raise RuntimeError(unread)
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
@@ -1482,6 +1489,7 @@ class OnlineAutomation:
                 instruction+='\nƯu tiên tính toán bằng calculate, đọc/ghi file bằng công cụ trực tiếp. Excel mới dùng excel_create (open=true nếu cần mở); workbook đang mở/công thức/format/filter/chart dùng excel_com theo lô; excel_edit_batch ghi literal khi file đóng. Word nội dung/bảng/ảnh/toán/header/footer/format dùng word_inspect rồi word_edit. PowerPoint dùng office_create. CAD dùng cad_com đúng path/handle; VBA dùng vba_project và kiểm tra verify sau macro. Gom thao tác vào một lô, không gọi lại read đã có dữ liệu hiện hành. Dùng readback/verified để đối chiếu yêu cầu trước khi báo xong; không lấy kết quả cũ thay dữ liệu mới. Python Docker dùng python_run, Python/PowerShell host dùng task_script với code duyệt và danh sách file backup. Chỉ thao tác nhiệm vụ hiện tại, không suy đoán tài liệu đang mở.'
             if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script cũng tự thực hiện khi quyền tự động đã bật; giữ kiểm tra phạm vi, phương thức kết nối và nút dừng.'
             if plaxis_context:
+                instruction+='\nƯu tiên plaxis_safe_inspect/material/layer/calculate khi phù hợp; schema Pydantic kiểm tra số liệu và đơn vị, không cần tự viết chuỗi lệnh API. Wrapper hiện chỉ hỗ trợ MC và lớp 2D, không giả vờ hỗ trợ đầy đủ HS/3D/hình học/phase. Công cụ API tổng quát cũ vẫn dành cho các thao tác chưa có wrapper và phải qua kiểm chứng hiện có.'
                 instruction+='\nNhận diện PLAXIS 2D/3D bằng tiêu đề ứng dụng và cổng Remote Scripting tương ứng. ModelType 0/1 = Plane strain/Axisymmetric chỉ thuộc 2D; không áp enum này cho 3D. Không chuyển ứng dụng 2D thành 3D bằng setproperties ModelType full. Khi chưa rõ kết nối, đọc tiêu đề/cổng trước, giữ nguyên dự án; không yêu cầu dựng lại chỉ vì ModelType 3D trả số 0.'
                 from .plaxis_stage_guard import STAGE_INSTRUCTION
                 from .plaxis_tutorials import RULES

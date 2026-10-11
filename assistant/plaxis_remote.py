@@ -17,6 +17,7 @@ import re
 import logging
 import textwrap
 import os
+from .plaxis_agent.utils import serialized_native
 
 logger = logging.getLogger(__name__)
 
@@ -437,6 +438,9 @@ class PlaxisRemoteApp:
         self.on_status=on_status
 
     def prepare(self, name, args):
+        if name.startswith('plaxis_safe_'):
+            from .plaxis_agent.tools import prepare
+            return prepare(name,args)
         if name=='plaxis_tutorial_guide':
             from .plaxis_tutorials import tutorial_guide
             return {'action':name,'guide':tutorial_guide(args.get('version',''),args.get('chapter',0))}
@@ -474,7 +478,11 @@ class PlaxisRemoteApp:
             'script': script,
         }
 
+    @serialized_native
     def commit(self, plan):
+        if plan.get('action','').startswith('plaxis_safe_'):
+            from .plaxis_agent.tools import execute
+            return execute(self,plan['action'],plan['input'])
         if plan.get('action')=='plaxis_tutorial_guide':return plan['guide']
         if plan.get('action')=='plaxis_commands':
             from .plaxis_commands import run_batch,commands_from_json

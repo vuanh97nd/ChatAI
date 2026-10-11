@@ -93,6 +93,7 @@ class Capabilities:
 
     def prepare(self, name, args):
         self.check_method(name)
+        if name.startswith('plaxis_safe_'):return self.plaxis_remote.prepare(name,args)
         from .application_transport import TOOL_NAMES as TRANSPORT_TOOLS
         from .application_macros import TOOL_NAMES as MACRO_TOOLS
         if name in TRANSPORT_TOOLS:return self.application_transport.prepare(name,args)
@@ -153,6 +154,7 @@ class Capabilities:
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action.startswith('plaxis_safe_'):return self.plaxis_remote.commit(plan)
         if action in TRANSPORT_TOOLS:return self.application_transport.commit(plan)
         if action in MACRO_TOOLS:return self.application_macros.commit(plan)
         if action in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com.commit(plan)

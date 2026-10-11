@@ -1,0 +1,6 @@
+# Optional local API service; does not replace the existing Qt desktop runtime.
+pydantic>=2.9,<3
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+langgraph>=0.2,<2
+langchain-ollama>=0.2,<2

@@ -128,6 +128,10 @@ def validate_call(name, args, schemas=None):
         raise ValueError(f"Tool không có trong registry: {name}")
     if not isinstance(args, dict):
         raise ValueError("Arguments phải là JSON object.")
+    if name.startswith('plaxis_safe_'):
+        from .plaxis_agent.tools import prepare
+        prepare(name,args)
+        return
     params = spec["parameters"]
     if set(args) - set(params["properties"]) or set(params["required"]) - set(args):
         raise ValueError("Thiếu tham số hoặc có tham số không được phép.")
@@ -584,3 +588,7 @@ EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_tutorial_guide',
     'chapter=0 xem danh mục; chọn đúng chương/case rồi đọc PDF trang được chỉ ra. '
     'Hướng dẫn không thay bộ số liệu, không chứng minh mô hình đã tính đúng.',
     {'version':TEXT,'chapter':{'type':'integer','minimum':0}},['version'])))
+
+from .plaxis_agent.tools import schemas as _plaxis_safe_schemas
+EXTRA_TOOLS.extend(('plaxis_remote',spec) for spec in _plaxis_safe_schemas())
+WRITES.update({'plaxis_safe_material','plaxis_safe_layer','plaxis_safe_calculate'})

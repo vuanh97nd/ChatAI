@@ -612,6 +612,16 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 result=inspect(g,args[0],args[1])
             elif row['command']=='verify_stage':
                 result=verify(g,resolve,check_spec(args[0]),session)
+            elif row['command']=='ensure_new_material':
+                if len(args)!=1 or not isinstance(args[0],str) or not args[0].strip():
+                    raise ValueError('ensure_new_material cần một tên vật liệu.')
+                for material in g.Materials:
+                    identification=_value(material.Identification)
+                    if not isinstance(identification,str):
+                        raise RuntimeError('Chưa đọc chắc chắn tên vật liệu; không tạo mới.')
+                    if identification.casefold()==args[0].casefold():
+                        raise RuntimeError('Vật liệu đã tồn tại: '+args[0]+'. Đọc lại; không tạo trùng hoặc ghi đè.')
+                result={'name_available':True}
             elif row['command']=='verify_model':
                 checks=model_checks(args[0]);verified=[]
                 switched=False
@@ -841,7 +851,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
 _SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
            'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
 _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
-_CHANGES_READONLY={'plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
+_CHANGES_READONLY={'ensure_new_material','plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
 
 
 def model_snapshot(g,limit=2400,session=None,version=None):

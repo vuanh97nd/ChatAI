@@ -2,6 +2,7 @@
 # and Windows automation (AutoCAD UIA, PLAXIS scripting).
 PySide6-Essentials>=6.8,<7
 ollama>=0.6,<1
+pydantic>=2.9,<3
 pypdf>=5,<7
 pypdfium2>=4.30,<5
 Pillow>=10,<13
