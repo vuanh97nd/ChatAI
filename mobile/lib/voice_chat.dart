@@ -84,20 +84,46 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Trò chuyện giọng nói')),
     body: SafeArea(child: Column(children: [
-      Expanded(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: Column(children: [
-        const SizedBox(height: 32),
+      Expanded(child: LayoutBuilder(builder: (context, constraints) =>
+        SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: math.max(0.0, constraints.maxHeight - 48)),
+          child: SizedBox(width: double.infinity, child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
         AnimatedBuilder(animation: pulse, builder: (_, child) {
-          final active = voice.listening || voice.speaking || processing;
-          final wave = MediaQuery.disableAnimationsOf(context) || !active ? 0.0 : (math.sin(pulse.value * math.pi * 2) + 1) / 2;
-          final level = MediaQuery.disableAnimationsOf(context) ? 0.0 : voice.listening ? voice.soundLevel : voice.speaking ? wave : processing ? .35 : 0.0;
-          return Transform.scale(scale: 1 + level * .08, child: Transform.rotate(
-            angle: processing && !MediaQuery.disableAnimationsOf(context) ? pulse.value * math.pi * 2 : 0,
-            child: Container(width: 180, height: 180, decoration: BoxDecoration(shape: BoxShape.circle,
-              gradient: const RadialGradient(center: Alignment(-.35, -.4), colors: [Color(0xffa7f3ff), Color(0xff1bbfff), Color(0xff6547ff), Color(0xff382481)]),
-              boxShadow: [BoxShadow(color: const Color(0xff635bff).withValues(alpha: .18 + level * .25), blurRadius: 24 + level * 32, spreadRadius: level * 8)],
-              border: Border.all(color: Colors.white.withValues(alpha: .25), width: 2)))));
+          final reduced = MediaQuery.disableAnimationsOf(context);
+          final wave = (math.sin(pulse.value * math.pi * 2) + 1) / 2;
+          final level = reduced || paused || failure.isNotEmpty ? 0.0
+            : voice.listening ? voice.soundLevel.clamp(0.0, 1.0)
+            : voice.speaking ? wave : 0.0;
+          final thinking = processing && !voice.speaking && !paused && failure.isEmpty;
+          return SizedBox(width: 180, height: 180, child: Stack(alignment: Alignment.center, children: [
+            if (thinking) Transform.rotate(
+              angle: reduced ? 0 : pulse.value * math.pi * 2,
+              child: Container(width: 164, height: 164, decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: SweepGradient(colors: [
+                  const Color(0xff20bfff).withValues(alpha: .05),
+                  const Color(0xff7654ff).withValues(alpha: .65),
+                  const Color(0xff20bfff).withValues(alpha: .05),
+                ]),
+              )),
+            ),
+            AnimatedScale(scale: 1 + level * .12,
+              duration: Duration(milliseconds: reduced ? 0 : 140),
+              curve: Curves.easeOut,
+              child: Container(width: 136, height: 136, decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [BoxShadow(color: const Color(0xff635bff).withValues(
+                  alpha: paused || failure.isNotEmpty ? .05 : .12 + level * .15),
+                  blurRadius: 20 + level * 20, spreadRadius: level * 3)],
+              ), child: ClipRRect(borderRadius: BorderRadius.circular(32),
+                child: Image.asset('assets/chat_ai.png', semanticLabel: 'Logo Chat AI'))),
+            ),
+          ]));
         }),
-        const SizedBox(height: 24), Text(phase, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 20),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
         if (showContent && draft.isNotEmpty) Text('Bạn: $draft'),
@@ -114,7 +140,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
             catch (e) { if (mounted) setState(() => failure = '$e'); }
           }, child: const Text('Cài đặt giọng đọc')),
         ]),
-      ]))),
+      ])))))),
       Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
         TextButton.icon(onPressed: processing && !voice.speaking ? null : paused ? listen : pause,
           icon: Icon(paused ? Icons.mic : Icons.mic_off), label: Text(paused ? 'Nói tiếp' : 'Tắt mic')),
