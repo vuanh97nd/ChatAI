@@ -5,6 +5,10 @@ import json
 import math
 import re
 
+COLLECTIONS={'soil':'Soils','displacement':'LineDisplacements','plate':'Plates',
+             'line_load':'LineLoads','point_load':'PointLoads','point_displacement':'PointDisplacements',
+             'anchor':'NodeToNodeAnchors'}
+
 class StageGuardError(RuntimeError):
     pass
 
@@ -24,7 +28,10 @@ def name(obj):
 def active(obj,phase):
     result=value(obj.Active[phase])
     if type(result) is not bool:
-        raise StageGuardError('Active chưa được đọc chắc chắn; không ép chuỗi/số thành boolean.')
+        raw=repr(result)[:100] if type(result) in (str,int,float,type(None)) else '<proxy>'
+        raise StageGuardError(f'Active của {name(obj)} tại {name(phase)} chưa là boolean: '
+                              f'kiểu={type(result).__name__}, giá trị={raw}. Không ép chuỗi/số; '
+                              'đọc đúng đối tượng trong Staged construction và kiểm tra phản hồi Remote Scripting.')
     return result
 
 
@@ -46,8 +53,10 @@ def check_spec(raw):
     try:spec=json.loads(raw)
     except (ValueError,TypeError):raise StageGuardError('verify_stage cần một chuỗi JSON.') from None
     required={'target','phase','parent_phase','before','parent_active','after','region','shape','source'}
-    if not isinstance(spec,dict) or set(spec)!=required:
+    if not isinstance(spec,dict) or set(spec) not in (required,required|{'kind'}):
         raise StageGuardError('verify_stage cần target, phase, parent_phase, before, parent_active, after, region, shape, source.')
+    if spec.get('kind','soil') not in COLLECTIONS:
+        raise StageGuardError('kind phải là soil, displacement, point_displacement, plate, line_load, point_load hoặc anchor.')
     for key in ('target','phase','parent_phase'):
         if not isinstance(spec[key],str) or not re.fullmatch(r'(?:g\.)?[A-Za-z][A-Za-z0-9_]*',spec[key]):
             raise StageGuardError('Dùng tên đối tượng và phase tường minh; không dùng chỉ số collection.')
@@ -66,7 +75,7 @@ def check_spec(raw):
     return spec
 
 
-def snapshot(g,obj,phase,include_soils=True):
+def snapshot(g,obj,phase,include_soils=True,kind='soil'):
     from .windows_apps import _STOP,wait_automation
     wait_automation()
     if _STOP.is_set():raise StageGuardError('Đã dừng xác minh vùng đào.')
@@ -76,7 +85,15 @@ def snapshot(g,obj,phase,include_soils=True):
         wait_automation()
         if _STOP.is_set():raise StageGuardError('Đã dừng xác minh vùng đào.')
         soil_states[name(soil)]=active(soil,phase)
-    return {'target':name(obj),'identity':str(obj),'geometry_identity':str(obj.Parent),
+    if include_soils and kind=='soil' and name(obj) not in soil_states:
+        raise StageGuardError('Đối tượng không thuộc g.Soils; khai đúng kind cho tải/kết cấu/chuyển vị.')
+    other_states={}
+    if kind!='soil':
+        members=list(getattr(g,COLLECTIONS[kind]))
+        if not any(str(member)==str(obj) and name(member)==name(obj) for member in members):
+            raise StageGuardError('Đối tượng không thuộc collection '+COLLECTIONS[kind]+'. Không dùng quy trình đất đào để bật tải/chuyển vị.')
+        other_states={name(member):active(member,phase) for member in members}
+    return {'kind':kind,'other_states':other_states,'target':name(obj),'identity':str(obj),'geometry_identity':str(obj.Parent),
             'phase':name(phase),'phase_identity':str(phase),'parent_phase':name(parent),
             'parent_identity':str(parent),'before':active(obj,phase),'parent_active':active(obj,parent),
             'bounds':bounds(obj),'soil_states':soil_states}
@@ -86,7 +103,7 @@ def verify(g,resolve,spec,session):
     session.pop('stage_permit',None)
     obj=resolve({'ref':spec['target']});phase=resolve({'ref':spec['phase']})
     parent=resolve({'ref':spec['parent_phase']})
-    observed=snapshot(g,obj,phase)
+    observed=snapshot(g,obj,phase,kind=spec.get('kind','soil'))
     if name(phase)==name(g.InitialPhase):
         raise StageGuardError('Không sửa InitialPhase qua quy trình đào; cần quy trình riêng cho trạng thái ban đầu.')
     if observed['parent_phase']!=name(parent) or observed['parent_identity']!=str(parent):
@@ -130,7 +147,7 @@ def before_change(g,resolve,row,session):
         raise StageGuardError('Chưa xác minh vùng và phase: inspect_stage để đọc ứng viên, verify_stage đối chiếu manual, rồi mới set Active. Không dùng UI để vượt chốt kiểm tra.')
     target,phase_ref,after=wanted
     obj=resolve({'ref':target});phase=resolve({'ref':phase_ref})
-    current=snapshot(g,obj,phase)
+    current=snapshot(g,obj,phase,kind=permit['spec'].get('kind','soil'))
     if current!=permit['snapshot'] or after!=permit['spec']['after']:
         raise StageGuardError('Đối tượng, hình học, phase hoặc Active đã khác lần xác minh. Chưa gửi lệnh; verify_stage lại.')
     return obj,phase,after,current
@@ -138,17 +155,21 @@ def before_change(g,resolve,row,session):
 
 def after_change(g,checked):
     obj,phase,expected,before=checked
-    after=snapshot(g,obj,phase)
+    after=snapshot(g,obj,phase,kind=before['kind'])
     if after['before']!=expected:
         raise StageGuardError('Lệnh đã gửi nhưng Active đọc lại không khớp. Dừng, không tự gửi lại hoặc hoàn tác hàng loạt.')
     expected_states=dict(before['soil_states'])
     if before['target'] in expected_states:expected_states[before['target']]=expected
     if after['soil_states']!=expected_states:
         raise StageGuardError('Lệnh đã gửi nhưng vùng đất khác cũng đổi Active. Dừng để kiểm tra, không tự hoàn tác.')
+    expected_other=dict(before['other_states'])
+    if before['target'] in expected_other:expected_other[before['target']]=expected
+    if after['other_states']!=expected_other:
+        raise StageGuardError('Đối tượng tải/kết cấu/chuyển vị khác cũng đổi Active; dừng xác minh.')
     for key in ('geometry_identity','bounds','phase_identity','parent_identity','parent_active'):
         if after[key]!=before[key]:raise StageGuardError('Trạng thái/hình học đổi trong khi thao tác; dừng xác minh.')
     return {'verified':True,'target':after['target'],'phase':after['phase'],'active':after['before'],
-            'other_soils_unchanged':True}
+            'other_soils_unchanged':True,'other_objects_unchanged':True,'kind':before['kind']}
 
 
 def inspect(g,phase,objects):
@@ -172,10 +193,10 @@ def inspect(g,phase,objects):
 STAGE_INSTRUCTION = (
     '\nTrước khi đổi Active: inspect_stage args [ref phase, ref collection như g.Soils] đọc ứng viên; '
     'verify_stage args [chuỗi JSON với target, phase, parent_phase, before, parent_active, after, '
-    'shape="box", region={"x":[min,max],"y":[min,max],"z":[min,max] cho 3D}, source="manual mục/trang"]. '
+    'kind=soil/displacement/point_displacement/plate/line_load/point_load/anchor (mặc định soil), shape="box", region={"x":[min,max],"y":[min,max],"z":[min,max] cho 3D}, source="manual mục/trang"]. '
     'Tọa độ, chiều sâu đợt đào, phase cha và trạng thái dự kiến phải lấy từ manual, không sao chép số mô hình '
     'để hợp thức hóa lựa chọn. Box chỉ dùng phạm vi đào hình hộp/chữ nhật; không khai shape=box cho tunnel cong. '
-    'verify_stage thành công mới set Tên.Active theo đúng phase và after. Tắt đất đào khác với bật kết cấu chống. '
+    'Với móng cứng: xác minh đối tượng chuyển vị bằng kind=displacement hoặc point_displacement, không coi là đất đào. Vùng region lấy từ vị trí đối tượng trong manual; box kiểm tra vị trí, không chứng minh mô hình vật lý. verify_stage thành công mới set Tên.Active theo đúng phase và after. Tắt đất đào khác với bật kết cấu chống. '
     'Không tự đoán vùng, không dùng UI hoặc activate/deactivate hàng loạt để vượt kiểm tra. '
     'Sau thay đổi kiểm tra readback; sai thì dừng, không tự sửa hàng loạt. Nếu có nhiều khối trong vùng đào, '
     'đối chiếu đủ các khối theo manual; kiểm tra một khối không chứng minh toàn vùng đã đào.'

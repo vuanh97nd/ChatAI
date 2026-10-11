@@ -277,3 +277,11 @@ Cache có thời hạn, tối đa 512 mục và ngân sách dữ liệu 32 MiB; 
 `plan_excavation` nhận `args: [{"x_left":…, "width":…, "depth":…, "source":"đề bài/manual mục/trang"}]`. Công cụ đọc cao độ mặt đất từ borehole và biên SoilContour hiện tại, tính đáy bằng cao độ mặt đất trừ chiều sâu. `draw_excavation` nhận cùng đặc tả, tính lại từ trạng thái đang mở trước khi gửi polygon, rồi kiểm tra các tọa độ trong g.Points. Không tự lưu hoặc kích hoạt/tắt đất.
 
 Chỉ hỗ trợ 2D Input, mặt đất phẳng, vùng chữ nhật; kích thước dùng đơn vị dự án. Nếu không đọc được mốc hoặc biên thì dừng, không tự lấy y=0. Điểm được tìm thấy chưa chứng minh kết nối polygon hoặc vùng đất đúng; tiếp tục inspect_stage/verify_stage trước khi đổi Active. Không gửi lại vùng đã vẽ trong cùng phiên nếu đọc lại lỗi. Lệnh polygon tổng quát vẫn có cho các hình khác; hướng dẫn AI yêu cầu dùng bước lập kế hoạch riêng cho đào chữ nhật.
+
+### Xác minh kích hoạt tải, kết cấu và chuyển vị theo phase
+
+Đặc tả `verify_stage` hỗ trợ `kind`: `soil` (mặc định), `displacement` (LineDisplacements), `point_displacement`, `plate`, `line_load`, `point_load`, `anchor` (NodeToNodeAnchors). Dùng tên đối tượng thực trong collection của mô hình đang mở. Giữ các trường target, phase, parent_phase, before, parent_active, after, region, shape và source. Với tải/chuyển vị, region là phạm vi vị trí theo manual, không phải vùng đào. Phải đọc được bounding box của hình học cha; nếu API không cung cấp, công cụ dừng thay vì đoán.
+
+Sau xác minh, đổi một Active theo phase rồi kiểm tra giá trị và các đối tượng cùng loại/đất khác không đổi. Giá trị proxy boolean được đọc qua `.value`; chuỗi/số vẫn bị từ chối, lỗi nêu đối tượng, phase, kiểu và giá trị gốc. Không tự coi chuỗi "False" là True. Xác minh Active không chứng minh tải hoặc chuyển vị có độ lớn đúng: đọc lại các thuộc tính theo phase bằng verify_model.
+
+Hướng dẫn AI yêu cầu xác định tên bài/case, ModelType, đơn vị, mốc tọa độ, kích thước, đất, vật liệu, tải/chuyển vị và phase từ manual. Không tái sử dụng bộ số liệu bài trước hoặc suy ra kích thước từ ảnh thiếu số. Việc đối chiếu manual vẫn phụ thuộc tài liệu AI đã đọc; các kiểm tra kỹ thuật không chứng minh nguồn manual đúng.

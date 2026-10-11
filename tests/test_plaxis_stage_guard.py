@@ -43,6 +43,44 @@ class StageGuardTest(unittest.TestCase):
                 commands_from_json(json.dumps([{'command':'verify_stage','args':args}]))
         self.assertEqual(self.calls,[])
 
+    def test_displacement_kind_is_checked_and_read_back(self):
+        displacement=Ref('LineDisplacement_1',Parent=self.soil.Parent,
+                         Active={self.initial:False,self.phase:False})
+        self.g.LineDisplacements=[displacement];self.g.LineDisplacement_1=displacement
+        spec=dict(self.spec,target='LineDisplacement_1',kind='displacement',
+                  before=False,parent_active=False,after=True)
+        result=self.run_rows([{'command':'verify_stage','args':[spec]}])
+        self.assertTrue(result['ok'],result)
+        changed=self.change(target='LineDisplacement_1',after=True)
+        self.assertTrue(changed['ok'],changed)
+        self.assertTrue(changed['results'][0]['value']['stage_readback']['other_objects_unchanged'])
+        self.assertTrue(displacement.Active[self.phase])
+    def test_displacement_cannot_use_soil_kind(self):
+        displacement=Ref('LineDisplacement_1',Parent=self.soil.Parent,
+                         Active={self.initial:True,self.phase:True})
+        self.g.LineDisplacement_1=displacement;self.g.LineDisplacements=[displacement]
+        self.assertFalse(self.verify(target='LineDisplacement_1')['ok'])
+        self.assertEqual(self.calls,[])
+    def test_displacement_collection_changes_invalidate_permit(self):
+        displacement=Ref('LineDisplacement_1',Parent=self.soil.Parent,
+                         Active={self.initial:False,self.phase:False})
+        other=Ref('LineDisplacement_2',Parent=self.soil.Parent,
+                  Active={self.initial:False,self.phase:False})
+        self.g.LineDisplacement_1=displacement;self.g.LineDisplacements=[displacement,other]
+        self.assertTrue(self.verify(target='LineDisplacement_1',kind='displacement',
+                                   before=False,parent_active=False,after=True)['ok'])
+        other.Active[self.phase]=True
+        self.assertFalse(self.change(target='LineDisplacement_1',after=True)['ok'])
+        self.assertEqual(self.calls,[])
+    def test_active_error_contains_target_phase_and_raw_type(self):
+        self.soil.Active[self.phase]='False'
+        result=self.verify()
+        self.assertIn('Soil_1',result['error']);self.assertIn('Phase_1',result['error'])
+        self.assertIn('kiểu=str',result['error']);self.assertIn("'False'",result['error'])
+    def test_boolean_proxy_is_read_without_truthiness(self):
+        self.soil.Active[self.phase]=Obj(value=True)
+        self.assertTrue(self.verify()['ok'])
+
     def test_unverified_change_is_blocked_before_api(self):
         result=self.change()
         self.assertFalse(result['ok']);self.assertFalse(result['command_started'])

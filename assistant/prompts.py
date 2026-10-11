@@ -41,3 +41,19 @@ CONTINUITY = ' Dùng lịch sử hội thoại để ghi nhớ thông tin, lựa
 FAST_SYSTEM += CONTINUITY
 SYSTEM += CONTINUITY
 SYSTEM_PROMPT += CONTINUITY
+
+PLAXIS_MANUAL_POLICY = (
+    '\nPLAXIS: trước khi dựng mô hình, xác định đúng tên bài và case trong manual; lập kế hoạch '
+    'gồm ModelType, đơn vị, mốc tọa độ/mặt đất, lớp đất, vật liệu, vai trò từng hình học, '
+    'kích thước, tải/chuyển vị, điều kiện biên và phase theo trang đã đọc. Đối chiếu bằng '
+    'verify_model/read với mô hình đang mở trước khi vẽ. Không dùng tên/vật liệu/đơn vị/kích thước '
+    'từ bài trước. Settlement of a circular footing on sand không phải excavation hay Building; '
+    'móng tròn đối xứng dùng Axisymmetric nếu manual quy định, không Plane strain. '
+    'Không suy ra kích thước từ tỷ lệ ảnh không có số; đọc trang thông số hoặc hỏi dữ kiện thiếu. '
+    'Móng cứng cần đúng đối tượng chuyển vị cưỡng bức và phase; dùng verify_stage kind=displacement '
+    'hoặc point_displacement. Kích hoạt chưa chứng minh giá trị chuyển vị đúng: đọc lại giá trị '
+    'chuyển vị theo phase bằng verify_model. Chưa đối chiếu đủ thì không tuyên bố mô hình đúng.'
+)
+FAST_SYSTEM += PLAXIS_MANUAL_POLICY
+SYSTEM += PLAXIS_MANUAL_POLICY
+SYSTEM_PROMPT += PLAXIS_MANUAL_POLICY
