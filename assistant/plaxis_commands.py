@@ -677,11 +677,10 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     empty=_empty_phases(g,session)
                     # Warn once per identical set; a deliberate repeat (e.g. a water-level-only
                     # phase this check cannot see) is then allowed.
-                    if empty and session.get('empty_warned')!=empty:
-                        session['empty_warned']=empty
+                    if empty:
                         raise RuntimeError('Chưa tính, các phase có vấn đề: '+'; '.join(empty)+
                             '. Theo manual, mỗi phase phải kích hoạt tải/tường/neo hoặc tắt khối đất đào, và nối tiếp phase trước. Dùng set [{"ref":"Tên.Active"},{"ref":"Phase_x"},true/false] '
-                            'rồi đọc lại model_state. Nếu phase chỉ đổi mực nước (kiểm tra này không thấy), gọi calculate lần nữa.')
+                            'rồi đọc lại model_state. Phase chỉ đổi tải/mực nước cần bộ kiểm chứng riêng; gọi lại calculate không bỏ qua kiểm tra.')
                 if row['command'] in ('mesh','gotomesh'):
                     missing=_soils_without_material(g)
                     if missing:
@@ -830,7 +829,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
     answer={'ok':True,'results':results,
             'note':'Các lệnh đã trả kết quả. Hãy chạy tiếp bước kế tiếp của bài; chỉ kết luận mô hình đúng tài liệu '
                    'hoặc tính toán hội tụ sau khi đọc trạng thái pha và kết quả Output. Kết quả lệnh chưa phải bằng chứng hội tụ.'}
-    answer['model_verified']=any(r['command']=='verify_model' and r['value'].get('verified') for r in results)
+    verified_at=max((i for i,r in enumerate(results) if r['command']=='verify_model' and r['value'].get('verified')),default=-1)
+    mutation_at=max((i for i,r in enumerate(results) if r['command'] not in _CHANGES_READONLY|{'commands','calculate','view','gotosoil','gotostructures','gotomesh','gotostages'}),default=-1)
+    answer['model_verified']=verified_at>=0 and verified_at>mutation_at
     if any(row['command'] in _GEOMETRY for row in rows):
         detached=_outside_soil(g)
         if detached:answer['warning']=detached

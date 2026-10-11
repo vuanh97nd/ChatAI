@@ -16,6 +16,7 @@ import json
 import re
 import logging
 import textwrap
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,13 @@ def resolve_port(version, target):
     ports = detect_ports(version)
     if ports.get(target):
         return ports[target], True
+    other = '3d' if version=='2d' else '2d'
+    if detect_ports(other).get(target):
+        raise RuntimeError('Chưa tìm thấy PLAXIS '+version.upper()+' '+target+
+                           '; phiên đang mở thuộc '+other.upper()+'. Không dùng cổng mặc định của phiên khác.')
+    if os.name=='nt' and (target=='input' or not ports.get('input')):
+        raise RuntimeError('Chưa xác minh được cổng PLAXIS '+version.upper()+
+                           ' '+target+' từ tiêu đề cửa sổ. Bật Remote Scripting Server; giữ nguyên dự án.')
     default = (_INPUT_PORT if target == 'input' else _OUTPUT_PORT)[version]
     if target == 'output' and ports.get('input') == default:
         # Input already serves the default Output port; connecting would talk to Input.
@@ -357,20 +365,26 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
     """
     version = version.lower()
     label = _VERSION_LABEL.get(version, 'PLAXIS')
-    in_port = resolve_port(version, 'input')[0]
     out_port = _OUTPUT_PORT[version]
 
     try:
+        in_port = resolve_port(version, 'input')[0]
         s_in, g_in = _connect(in_port, f'{label} Input')
     except RuntimeError as exc:
         return {'executed': False, 'output': '', 'results': {}, 'error': str(exc)}
 
     try:
-        s_in.new()
+        # Fixed templates build a complete model, never resume or replace one.
+        for collection in ('Boreholes','Soillayers','Materials','Points','Soils'):
+            if list(getattr(g_in,collection)):
+                raise RuntimeError('Dự án đang có dữ liệu. Dùng plaxis_commands để tiếp tục; '
+                                   'script mẫu chỉ chạy trên dự án trống, không tự tạo lại dự án.')
+        if len(list(g_in.Phases))>1:
+            raise RuntimeError('Dự án đã có phase thi công; không chạy lại script mẫu.')
     except Exception as exc:
         return {
             'executed': False, 'output': '', 'results': {},
-            'error': f'Không thể tạo dự án mới trên {label}: {exc}'
+            'error': f'Chưa chạy script; giữ nguyên dự án {label}: {exc}'
         }
 
     try:
@@ -383,10 +397,12 @@ def run_plaxis_problem(script_text, version='2d', problem_type='excavation_pit')
         }
 
     diagnostics=phase_diagnostics(g_in)
-    failed=[row for row in diagnostics if row['status'] in (2,3)]
-    if failed:
+    failed=[row for row in diagnostics if row['status']!=1]
+    try:expected_phases=len(list(g_in.Phases))
+    except Exception:expected_phases=None
+    if failed or not diagnostics or expected_phases!=len(diagnostics):
         return {'executed':False,'output':stdout,'results':{},'phase_diagnostics':diagnostics,
-                'error':'Phase tính toán chưa thành công: '+ '; '.join(row['name']+': '+(row['log'] or 'CalculationResult='+str(row['status'])) for row in failed)}
+                'error':'Phase tính toán chưa xác minh thành công: '+ ('; '.join(row['name']+': '+(row['log'] or 'CalculationResult='+str(row['status'])) for row in failed) or 'Không đọc được trạng thái phase.')}
 
     # Extract results from Output server
     structured = {}
@@ -463,7 +479,9 @@ class PlaxisRemoteApp:
         if plan.get('action')=='plaxis_commands':
             from .plaxis_commands import run_batch,commands_from_json
             rows=commands_from_json(json.dumps(plan['commands']))
-            port,detected=resolve_port(plan['version'],plan['target'])
+            try:port,detected=resolve_port(plan['version'],plan['target'])
+            except RuntimeError as exc:
+                return {'ok':False,'not_executed':True,'error':str(exc)}
             if plan['target']=='output' and not detected and detect_ports(plan['version']).get('input'):
                 # Output picks its own free port each time it opens (10002, 10003 …);
                 # open it from Input and read the port from its title bar.

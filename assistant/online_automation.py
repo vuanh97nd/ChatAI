@@ -359,7 +359,7 @@ _READING_TOOLS={'plaxis_tutorial_guide','pdf_read','pdf_local_open','pdf_source_
 _OTHER_APP_REQUEST=re.compile(r'\b(?:word|excel|autocad|cad|cdm|geo[ -]?slope|geostudio|slope/w|foxit|chrome)\b|vẽ|trắc dọc',re.I)
 
 
-_MODEL_BUILDING={'soilmat','platemat','anchormat','embeddedbeammat','geogridmat','interfacemat','borehole','soillayer',
+_MODEL_BUILDING={'point','surface','extrude','polycurve','soilmat','platemat','anchormat','embeddedbeammat','geogridmat','interfacemat','borehole','soillayer',
                  'setsoillayerlevel','soilcontour','initializerectangular','plate','line','lineload','pointload','linedispl',
                  'pointdispl','polygon','n2nanchor','fixedendanchor','embeddedbeam','embeddedbeamrow','geogrid','setmaterial','setproperties'}
 
@@ -476,12 +476,34 @@ def calculate_unverified(state,args):
     try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
     except ValueError:return None
     if not any(isinstance(r,dict) and r.get('command')=='calculate' for r in rows):return None
-    if any(isinstance(r,dict) and r.get('command')=='verify_model' for r in rows):return None
+    mutations=_MODEL_BUILDING|{'new_project','phase','set','activate','deactivate','mesh','setmaterial'}
+    verified=False
+    all_calculations_verified=True
+    for row in rows:
+        if not isinstance(row,dict):continue
+        command=row.get('command')
+        if command in mutations:verified=False
+        elif command=='verify_model':verified=True
+        elif command=='calculate':
+            if not verified:all_calculations_verified=False
+    if all_calculations_verified:return None
     messages=state.get('messages',[])
     last_user=max((i for i,m in enumerate(messages) if m.get('role')=='user'),default=-1)
-    if state.get('calc_verify_demanded')==last_user:return None
-    if any(m.get('role')=='tool' and '"model_verified": true' in str(m.get('content','')) for m in messages[last_user+1:]):return None
-    state['calc_verify_demanded']=last_user
+    verified=False
+    for message in messages[last_user+1:]:
+        if message.get('role')=='assistant':
+            for call in message.get('tool_calls',[]):
+                fn=call.get('function',{})
+                if fn.get('name')!='plaxis_commands':continue
+                args=fn.get('arguments',{})
+                try:past=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
+                except (ValueError,TypeError,AttributeError):past=[]
+                if any(isinstance(row,dict) and row.get('command') in mutations for row in past):verified=False
+        elif message.get('role')=='tool' and message.get('tool_name')=='plaxis_commands':
+            try:result=json.loads(message.get('content','{}'))
+            except (ValueError,TypeError):continue
+            if result.get('ok') and result.get('model_verified') is True:verified=True
+    if verified and not any(isinstance(row,dict) and row.get('command') in mutations for row in rows):return None
     return ('Chưa tính: trước khi calculate bài "'+tutorial.get('title','')+'", chạy một lần verify_model đối chiếu với manual: '
             'mực nước (bh.Head), cao độ đỉnh/đáy từng lớp và vật liệu gán cho lớp, các thông số chính trong bảng vật liệu '
             '(gamma, E50Ref/EoedRef/EURRef, cRef, phi, Rinter), tọa độ tường/neo/tải. Lấy giá trị từ manual, không từ trí nhớ. '

@@ -436,7 +436,7 @@ class ModelWarningTests(unittest.TestCase):
         for attr in ('Boreholes', 'Soillayers', 'Materials', 'Points', 'Lines', 'Polygons', 'Plates', 'Interfaces', 'LineLoads', 'PointLoads',
                      'LineDisplacements', 'PointDisplacements', 'NodeToNodeAnchors', 'EmbeddedBeams', 'Phases'):
             setattr(g, attr, [])
-        self.assertIn('ModelType=Axisymmetric', model_snapshot(g))
+        self.assertIn('ModelType=Axisymmetric', model_snapshot(g,version='2d'))
 
 
 class RoutingTests(unittest.TestCase):
@@ -570,7 +570,7 @@ class Bai3Tests(unittest.TestCase):
             setattr(g, attr, [])
         return g
 
-    def test_calculate_blocked_once_for_empty_phase(self):
+    def test_calculate_remains_blocked_for_empty_phase(self):
         from unittest.mock import Mock
         from assistant.plaxis_commands import execute_commands
         from assistant import windows_apps
@@ -579,7 +579,7 @@ class Bai3Tests(unittest.TestCase):
         first = execute_commands(Mock(), g, [{'command': 'calculate', 'args': []}], session=session)
         self.assertFalse(first['ok']); self.assertIn('Phase_1', first['error']); g.calculate.assert_not_called()
         second = execute_commands(Mock(), g, [{'command': 'calculate', 'args': []}], session=session)
-        self.assertTrue(second['ok'])
+        self.assertFalse(second['ok']);g.calculate.assert_not_called()
 
     def test_phase_with_activation_is_not_empty(self):
         from assistant.plaxis_commands import _empty_phases
@@ -896,7 +896,7 @@ class UncalculatedPhaseTests(unittest.TestCase):
         state = {'tutorial': {'title': 'Submerged construction of an excavation'}, 'messages': [{'role': 'user', 'content': 'tính bài 3'}]}
         calc = {'commands': json.dumps([{'command': 'calculate', 'args': []}])}
         self.assertIn('verify_model', calculate_unverified(state, calc))
-        self.assertIsNone(calculate_unverified(state, calc))  # once per turn
+        self.assertIn('verify_model',calculate_unverified(state, calc))
         state2 = {'tutorial': {'title': 'x'}, 'messages': [{'role': 'user', 'content': 'tính'}, {'role': 'tool', 'tool_name': 'plaxis_commands', 'content': json.dumps({'ok': True, 'model_verified': True})}]}
         self.assertIsNone(calculate_unverified(state2, calc))
 
