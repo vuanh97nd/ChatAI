@@ -30,7 +30,7 @@ void main() {
     expect(paths, ['/api/provider/model', '/api/chat/search', '/api/provider/model']);
     expect(answer, contains('https://example.org/manual'));
   });
-  test('search failure is surfaced without another chargeable model call', () async {
+  test('search failure returns honest guidance without another chargeable model call', () async {
     var calls = 0;
     final api = ChatApi(client: MockClient((request) async {
       calls++;
@@ -38,7 +38,9 @@ void main() {
       return jsonResponse(jsonEncode({'success': true, 'answer': '{"action":"web_search","query":"latest API"}'}), 200);
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
-    await expectLater(api.answer('nvidia', [{'role': 'user', 'content': 'Latest API?'}], []), throwsA(isA<ApiException>()));
+    final answer = await api.answer('nvidia', [{'role': 'user', 'content': 'Latest API?'}], []);
+    expect(answer, contains('chưa lấy được nguồn từ Bing'));
+    expect(answer, contains('chưa có dữ liệu thời gian thực'));
     expect(calls, 2);
   });
 

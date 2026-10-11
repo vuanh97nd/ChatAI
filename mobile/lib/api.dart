@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 const defaultServer = String.fromEnvironment('CHAT_AI_SERVER',
     defaultValue: 'https://chatai.anhvn53.workers.dev');
 
-const autoSearchInstruction = '\nBạn có thể tự tra web khi cần thông tin mới, giá/lịch hiện tại, tài liệu/API hoặc nguồn kiểm chứng. '
+const autoSearchInstruction = '\nNếu hỏi thời tiết mà chưa biết địa điểm, hãy hỏi tỉnh/thành phố trước; không tự đoán vị trí. '
+    'Bạn có thể tự tra web khi cần thông tin mới, giá/lịch hiện tại, tài liệu/API hoặc nguồn kiểm chứng. '
     'Nếu cần, chỉ trả JSON {"action":"web_search","query":"từ khóa công khai ngắn"}, không kèm văn bản. '
     'Không đưa dữ liệu riêng trong file/bộ nhớ vào từ khóa. Nếu không cần tra, trả lời bình thường. '
     'Nếu chưa có dữ liệu tra cứu, không được nói đã tìm kiếm mạng.';
@@ -137,7 +138,15 @@ class ChatApi {
     final query = autoSearch ? searchQuery(text) : null;
     if (query != null) {
       onStage?.call('Đang tra cứu Bing…');
-      final search = await post('/api/chat/search', {'text': query});
+      Map<String, dynamic> search;
+      try {
+        search = await post('/api/chat/search', {'text': query});
+      } on ApiException {
+        if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
+        return 'Hiện tôi chưa lấy được nguồn từ Bing nên chưa thể xác minh thông tin mới. '
+          'Bạn có thể cho biết rõ địa điểm, chủ đề hoặc gửi liên kết để tôi hỗ trợ tiếp. '
+          'Tôi chưa có dữ liệu thời gian thực từ lần tra cứu này.';
+      }
       if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
       onStage?.call('Đang soạn câu trả lời…');
       final sources = (search['sources'] as List<dynamic>? ?? []).where((s) {
@@ -145,7 +154,7 @@ class ChatApi {
         return url != null && ['https', 'http'].contains(url.scheme) && url.host.isNotEmpty;
       }).toList();
       if (sources.isEmpty || (search['answer'] as String? ?? '').trim().isEmpty) {
-        throw ApiException('Tra cứu chưa có nguồn phù hợp; chưa thể xác minh thông tin mới.');
+        return 'Bing chưa trả nguồn phù hợp nên tôi chưa thể xác minh thông tin mới. Bạn hãy bổ sung địa điểm, từ khóa cụ thể hoặc liên kết cần xem.';
       }
       final original = payload['messages'] as List<dynamic>;
       payload['messages'] = [
