@@ -28,6 +28,16 @@ class PlaxisCommandTests(unittest.TestCase):
         self.assertTrue(result['ok']);self.assertEqual(result['results'][3]['value'],'Plate_1')
         self.assertEqual(result['results'][5]['value'],'Sand')
         g.setproperties.assert_called_once_with(material,'Identification','Sand','E50ref',43000)
+    def test_polygon_point_collection_is_sent_as_separate_points(self):
+        points=[[0,0],[0,18],[18,18],[18,0]]
+        g=SimpleNamespace(polygon=Mock(return_value='Polygon_1'))
+        result=execute_commands(Mock(),g,[{'command':'polygon','args':[points]}])
+        self.assertTrue(result['ok'])
+        g.polygon.assert_called_once_with(*points)
+        from plxscripting.server import InputProcessor
+        self.assertEqual(InputProcessor().params_to_string(g.polygon.call_args.args),
+                         '(0 0) (0 18) (18 18) (18 0)')
+
     def test_python_expressions_and_file_commands_are_rejected(self):
         for rows in ([{'command':'exec','args':['bad']}],[{'command':'open','args':['C:/private']}],
                      [{'command':'read','args':[{'ref':'g.__class__'}]}],

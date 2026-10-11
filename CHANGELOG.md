@@ -2,6 +2,9 @@
 
 ## Desktop 3.0.0
 
+- Bổ sung cache đọc tài liệu, tính toán, ứng dụng và bộ nhớ tiến độ/lỗi công cụ theo tài khoản; có nút xóa cache riêng.
+- Sửa nhóm tọa độ polygon bị lồng thừa khi gửi sang PLAXIS.
+
 - Sửa PLAXIS Remote Scripting không nạp được trên Python 3.12: đóng gói setuptools hỗ trợ distutils và báo nguyên nhân import thực.
 - Mở ứng dụng bằng hội thoại mới; đồng bộ lịch sử không tự chọn lại hội thoại cũ.
 

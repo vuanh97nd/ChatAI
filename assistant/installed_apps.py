@@ -3,7 +3,24 @@ import os
 from pathlib import Path, PureWindowsPath
 
 
-def installed_apps():
+def installed_apps(refresh=False):
+    if os.name!='nt':return []
+    # Registry inventory is expensive. Validate every executable before reuse.
+    from .runtime_cache import optional_cache,safe_get,safe_put,file_stamp
+    cache=optional_cache() if os.environ.get('LOCALAPPDATA') else None
+    entry=safe_get(cache,'machine','environment','installed-apps-v1') if not refresh else None
+    if entry:
+        try:
+            if all(file_stamp(row['path'])==stamp for row,stamp in zip(entry['apps'],entry['stamps'])):
+                return entry['apps']
+        except (OSError,ValueError,KeyError):pass
+    rows=_discover_installed_apps()
+    try:safe_put(cache,'machine','environment','installed-apps-v1',{'apps':rows,'stamps':[file_stamp(row['path']) for row in rows]},ttl=180)
+    except OSError:pass
+    return rows
+
+
+def _discover_installed_apps():
     if os.name!='nt':return []
     import winreg
     found={}
@@ -36,11 +53,11 @@ def installed_apps():
                                         label=winreg.QueryValueEx(item,'DisplayName')[0]
                                         try:add(label,winreg.QueryValueEx(item,'DisplayIcon')[0])
                                         except OSError:pass
-                                        if isinstance(label,str) and 'autocad' in label.casefold():
+                                        if isinstance(label,str) and any(name in label.casefold() for name in ('autocad','plaxis')):
                                             try:
                                                 location=winreg.QueryValueEx(item,'InstallLocation')[0]
                                                 if isinstance(location,str):
-                                                    for exe in ('acad.exe','acadlt.exe'):add(label,str(Path(os.path.expandvars(location))/exe))
+                                                    for exe in ('acad.exe','acadlt.exe','Plaxis2DXInput.exe','Plaxis2DInput.exe','Plaxis3DInput.exe','Plaxis2DXOutput.exe','Plaxis3DOutput.exe'):add(label,str(Path(os.path.expandvars(location))/exe))
                                             except OSError:pass
                             except OSError:continue
                 except OSError:continue

@@ -569,6 +569,16 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','commands','tabulate','echo'}:
                 session.pop('stage_permit',None)
             args=[resolve(v) for v in row.get('args',[])]
+            # polygon expects separate points, not one parenthesized collection.
+            # Unwrap only an unambiguous numeric point collection; preserve
+            # polycurve references and all other command argument layouts.
+            if row['command'].lower() in {'polygon','pol'} and len(args)==1:
+                points=args[0]
+                if (isinstance(points,list) and len(points)>=3
+                        and all(isinstance(p,list) and len(p) in (2,3)
+                                and all(type(n) in (int,float) for n in p) for p in points)
+                        and len({len(p) for p in points})==1):
+                    args=points
             if row['command']=='read':
                 # A second argument reads a per-phase value (Active, Material) in that phase.
                 result=args[0][args[1]] if len(args)==2 else args[0]

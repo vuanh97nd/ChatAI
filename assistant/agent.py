@@ -94,6 +94,8 @@ class Agent:
         self.client, self.excel, self.cfg = client, excel, cfg
         self.store, self.cid = store, cid
         self.capabilities = capabilities
+        from .workflow_memory import WorkflowMemory
+        self.workflow_memory=WorkflowMemory()
         self.personal_memories = []
         self.memory = None
         self.web_enabled = True
@@ -174,6 +176,7 @@ class Agent:
         if recorded.get('images'):
             for previous in state['messages']:
                 if previous.get('role') == 'tool':previous.pop('images', None)
+        self.workflow_memory.observe(state,self.cfg,self.cid,call,result)
         state['messages'].append(recorded)
         state["queue"].pop(0)
         from .communication import connection_failure_answer
@@ -456,7 +459,8 @@ class Agent:
                                 "excel_list_sheets": self.excel.excel_list_sheets,
                                 "excel_read": self.excel.excel_read,
                                 "excel_summary": self.excel.excel_summary} if self.excel else {}
-                    result = (calculate(**args) if name == "calculate" else
+                    from .runtime_cache import cached_calculate
+                    result = (cached_calculate(args,self.workflow_memory.cache,self.workflow_memory.scope(state,self.cfg)) if name == "calculate" else
                               self.capabilities.read(name, args) if self.capabilities else registry[name](**args))
                 except Exception as exc:
                     result = {"ok": False, "error": str(exc)}
@@ -567,6 +571,7 @@ class Agent:
                 from .procedure_memory import ProcedureMemory
                 procedure_query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
                 instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query,state=state)
+                instruction+=self.workflow_memory.context(state,self.cfg,self.cid)
                 state["task_progress"]=workflow
                 experience_query='\n'.join(
                     m.get('content','') for m in state['messages'][-12:]

@@ -263,3 +263,11 @@ Chỉ cài các gói trong danh sách của ứng dụng, không nhận tên gó
 Không cài PLAXIS, Office hoặc AutoCAD thay cho thư viện Python kết nối.
 Bản EXE thiếu Python runtime cần sửa/cập nhật bộ cài; không chạy pip bằng
 file EXE Chat AI. Không tự cài vào Python hệ thống và không nâng quyền admin.
+
+## Cache tăng tốc và bộ nhớ công việc
+
+Cache cục bộ trên Windows nằm ở `%LOCALAPPDATA%\ChatAI\cache\memory.sqlite3`, độc lập với tên thư mục cài ứng dụng. Dữ liệu được tách theo tài khoản và máy chủ. Cache giữ kết quả đọc tài liệu, cấu trúc Office, phép tính xác định, danh sách ứng dụng và thông tin tiến độ/lỗi công cụ. Bộ nhớ tài liệu, quy trình và ngữ cảnh hiện có tiếp tục được sử dụng.
+
+Mỗi lần đọc vẫn kiểm tra quyền và dấu vân tay file; nội dung hoặc phiên bản bộ đọc thay đổi thì đọc lại. Lệnh ghi, trạng thái PLAXIS/COM đang chạy, truy vấn mạng và thời gian hiện tại không được phát lại từ cache. Ghi nhớ công việc chỉ cung cấp ngữ cảnh, không chứng minh thao tác đã hoàn tất ở thời điểm hiện tại.
+
+Cache có thời hạn, tối đa 512 mục và ngân sách dữ liệu 32 MiB; mỗi mục tối đa 2 MiB. Trong cài đặt, chọn **Xóa cache tăng tốc (giữ lịch sử)** để xóa cache mà giữ hội thoại. Cache này không phải bản sao lưu đám mây.

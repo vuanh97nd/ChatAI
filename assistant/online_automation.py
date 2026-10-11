@@ -1027,6 +1027,8 @@ def app_permissions(cfg):
 class OnlineAutomation:
     def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None, plaxis_app=None, plaxis_remote=None, cad_trac_doc=None, geoslope_app=None, geoslope_inspector=None, geoslope_solver=None,office_tools=None,windows_com=None,application_transport=None,application_macros=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
+        from .workflow_memory import WorkflowMemory
+        self.workflow_memory=WorkflowMemory()
         self.windows,self.browser=windows,browser
         self.cad3d_app=cad3d_app
         self.cad_app=cad_app
@@ -1231,6 +1233,7 @@ class OnlineAutomation:
         if result.get('_screenshot'):
             for previous in state['messages']:
                 if previous.get('role')=='tool':previous.pop('images',None)
+        self.workflow_memory.observe(state,self.cfg,self.cid,call,result)
         state['messages'].append(tool_message(name,result))
         state['queue']=[];state['pending']=None
         from .communication import connection_failure_answer
@@ -1434,6 +1437,7 @@ class OnlineAutomation:
                               +'\n- '.join(state['plaxis_learned']))
             from .procedure_memory import ProcedureMemory
             volatile+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state)
+            volatile+=self.workflow_memory.context(state,self.cfg,self.cid)
             if state.get('plaxis_general_mode'):
                 volatile+='\nĐã chuyển bài đang làm sang API tổng quát. Dùng plaxis_commands và kết quả API vừa nhận để tiếp tục; không gọi lại mẫu cố định hoặc yêu cầu chọn lại cách làm. Chỉ hỏi dữ kiện kỹ thuật thực sự thiếu. Dữ kiện đã giữ: '+json.dumps(state.get('plaxis_active_problem',{}),ensure_ascii=False)
                 instruction+='\nPLAXIS: xem lại kết quả plaxis_commands trước khi gọi tiếp. Không lặp lệnh đọc đã thành công, không dò lại collection/property đã kiểm tra, không thử indexing hoặc tên thuộc tính suy đoán. Nếu API xác nhận thuộc tính read-only, giữ giá trị tự tính và chuyển sang bước kế tiếp. Nếu không còn tiến triển bằng lệnh hợp lệ, dừng và hỏi đúng dữ kiện còn thiếu; không dùng hết giới hạn bằng các phép dò.'

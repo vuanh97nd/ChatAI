@@ -3,12 +3,17 @@ from .excel import digest
 
 
 class OnlineOffice:
-    def __init__(self, excel, office, files,on_status=None):
+    def __init__(self, excel, office, files,on_status=None,cache=None,cache_scope=None):
         self.excel,self.office,self.files=excel,office,files
+        from .runtime_cache import optional_cache,account_scope,implementation_key
+        self.cache=optional_cache() if cache is None else cache
+        self.cache_scope=cache_scope or account_scope('guest')
+        self.on_status=on_status
+        self.cache_version=implementation_key(('online_office.py','task_tools.py','calculator.py','document_reader.py','excel.py','office.py'))
         from .task_tools import TaskTools,SCHEMAS as task_schemas
         from .office_batch import OfficeBatch,SCHEMAS as office_schemas
         from .com_tasks import ComTools,SCHEMAS as com_schemas
-        self.task=TaskTools(files);self.batch=OfficeBatch(files);self.com=ComTools(files)
+        self.task=TaskTools(files,cache=self.cache,cache_scope=self.cache_scope);self.batch=OfficeBatch(files);self.com=ComTools(files)
         self.task.on_status=self.batch.on_status=self.com.on_status=on_status
         self.schemas=task_schemas+office_schemas+com_schemas
         self.task_names={s['function']['name'] for s in task_schemas}
@@ -35,6 +40,22 @@ class OnlineOffice:
         raise ValueError('Công cụ Office không hợp lệ.')
 
     def commit(self,plan):
+        from .runtime_cache import safe_get,safe_put
+        from .windows_apps import _STOP,wait_automation
+        wait_automation()
+        if _STOP.is_set():raise PermissionError('Đã dừng nhiệm vụ; không đọc cache.')
+        key=self.cache_key(plan)
+        saved=safe_get(self.cache,self.cache_scope,'read_result',key) if key else None
+        if isinstance(saved,dict) and saved.get('ok') is True:
+            if self.on_status:self.on_status('Dùng lại kết quả đã kiểm tra: '+plan['action'])
+            return dict(saved,cached=True,cache_verified='same file hash/arguments and reader version')
+        result=self._commit(plan)
+        if key and result.get('ok') is True:
+            if self.cache_key(plan)!=key:raise RuntimeError('Dữ liệu đã thay đổi trong khi đọc; không lưu cache kết quả.')
+            safe_put(self.cache,self.cache_scope,'read_result',key,result)
+        return result
+
+    def _commit(self,plan):
         name=plan['action']
         if name in self.task_names:return self.task.commit(plan)
         if name in self.batch_names:return self.batch.commit(plan)
@@ -78,8 +99,12 @@ class OnlineOffice:
 
     def cache_key(self,plan):
         import hashlib,json
+        if plan['action']=='calculate':
+            args=plan.get('arguments',{})
+            if args.get('operation') not in ('expression','statistics','convert','date_difference'):return None
+            return hashlib.sha256(json.dumps({'action':'calculate','args':args,'implementation':self.cache_version},sort_keys=True).encode()).hexdigest()
         if plan['action'] not in ('excel_read','excel_list_sheets','excel_summary','office_read','word_inspect','file_read','document_read'):return None
         if not plan.get('sha256'):return None
         args=plan.get('arguments',{});p=self.files.path(plan.get('path') or args['path'])
         if digest(p)!=plan['sha256']:raise RuntimeError('Dữ liệu đã thay đổi; đọc lại.')
-        return hashlib.sha256(json.dumps({'action':plan['action'],'args':args,'sha256':plan['sha256']},sort_keys=True,default=str).encode()).hexdigest()
+        return hashlib.sha256(json.dumps({'action':plan['action'],'args':args,'path':str(p),'sha256':plan['sha256'],'implementation':self.cache_version},sort_keys=True,default=str).encode()).hexdigest()

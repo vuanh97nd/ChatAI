@@ -1981,7 +1981,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 from assistant.online_office import OnlineOffice
                 from assistant.excel import ExcelTools
                 from assistant.office import OfficeTools
-                office_tools=OnlineOffice(ExcelTools(cfg['roots'],ROOT/'data/backups',audit),OfficeTools(files),files,on_status=lambda text:emit({'type':'status','text':text}))
+                from assistant.runtime_cache import account_scope
+                office_tools=OnlineOffice(ExcelTools(cfg['roots'],ROOT/'data/backups',audit),OfficeTools(files),files,on_status=lambda text:emit({'type':'status','text':text}),cache_scope=account_scope(session['username'],session['endpoint']))
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
                     PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
@@ -2381,6 +2382,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.machine_auto.toggled.connect(self.refresh_machine_choices)
         self.refresh_machine_choices()
         self.button(form,'Cấu hình nhẹ: Qwen 3B / 2048 context',self.light_settings)
+        self.button(form,'Xóa cache tăng tốc (giữ lịch sử)',self.clear_runtime_cache)
         appearance=QGroupBox('Giao diện');appearance_form=QFormLayout(appearance)
         self.settings_theme=QComboBox();self.settings_theme.addItem('Sáng','light');self.settings_theme.addItem('Tối','dark');self.settings_theme.setCurrentIndex(self.settings_theme.findData(self.cfg.get('theme','dark')))
         appearance_form.addRow('Chế độ hiển thị',self.settings_theme)
@@ -2989,6 +2991,16 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self._theme_animation=animation;animation.start()
         fade_out.finished.connect(fade_in)
         self._theme_animation=fade_out;fade_out.start()
+
+    def clear_runtime_cache(self):
+        from assistant.runtime_cache import RuntimeCache,account_scope
+        cache=RuntimeCache()
+        session=self.server_session or {}
+        owner=session.get('username','guest')
+        for scope in {account_scope(owner,session.get('endpoint',self.cfg.get('server_url',''))),
+                      account_scope(owner,self.cfg.get('server_url','')),account_scope('guest'),'machine'}:
+            cache.clear(scope)
+        self.status.setText('Đã xóa cache tăng tốc của tài khoản và môi trường; lịch sử trò chuyện được giữ nguyên.')
 
     def light_settings(self):
         self.settings_fields['default_model'].setCurrentText('qwen2.5:3b')

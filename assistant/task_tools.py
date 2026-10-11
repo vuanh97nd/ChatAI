@@ -63,7 +63,11 @@ def run_child(command, payload=None, cwd=None, timeout=120,on_status=None):
 
 
 class TaskTools:
-    def __init__(self,files):self.files=files;self.runner=Runner(files,files.audit);self.on_status=None
+    def __init__(self,files,cache=None,cache_scope=None):
+        self.files=files;self.runner=Runner(files,files.audit);self.on_status=None
+        self.cache=cache;self.cache_scope=cache_scope
+        from .runtime_cache import implementation_key
+        self.reader_version=implementation_key(('document_reader.py',))
 
     def prepare(self,name,args):
         if name in ('file_write','file_edit','file_move','file_delete'):return self.files.prepare(name,args)
@@ -105,7 +109,15 @@ class TaskTools:
             if plan.get('sha256') and digest(p)!=plan['sha256']:raise RuntimeError('File đã thay đổi; đọc lại.')
             if name=='document_read':
                 from .document_reader import read_bytes
-                content=read_bytes(p.read_bytes(),p.name)
+                from .runtime_cache import key_for,safe_get,safe_put
+                cache_key=key_for([str(p),plan['sha256'],self.reader_version])
+                content=safe_get(self.cache,self.cache_scope,'parsed_document',cache_key)
+                if content is None:
+                    import hashlib
+                    data=p.read_bytes()
+                    if hashlib.sha256(data).hexdigest()!=plan['sha256']:raise RuntimeError('File thay đổi trong khi đọc; không lưu cache.')
+                    content=read_bytes(data,p.name)
+                    safe_put(self.cache,self.cache_scope,'parsed_document',cache_key,content)
                 text=content.get('text','');start=int(args.get('start',0));limit=int(args.get('limit',20000))
                 if start<0 or not 1<=limit<=40000:raise ValueError('Vị trí đọc không hợp lệ.')
                 return {'ok':True,'path':str(p),'content':text[start:start+limit],'next_start':start+limit if start+limit<len(text) else None,
