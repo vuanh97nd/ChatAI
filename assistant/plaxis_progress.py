@@ -15,10 +15,23 @@ def specification(raw):
     if not isinstance(spec.get('source',''),str) or len(spec.get('source',''))>1000:raise ValueError('source không hợp lệ.')
     checks=spec.get('checks',[])
     if not isinstance(checks,list) or len(checks)>200:raise ValueError('Tối đa 200 phép kiểm tra tiến độ.')
-    for check in checks:
+    stage_aliases={'material':'materials','phase':'phases','calculation':'calculate','results':'output',
+                   'staged construction':'activation','staged_construction':'activation'}
+    for index,check in enumerate(checks,1):
         if not isinstance(check,dict) or set(check)-{'ref','phase','expected','kind','tolerance','stage'}:raise ValueError('Phép kiểm tra tiến độ không hợp lệ.')
         if not isinstance(check.get('ref'),str) or not REF.fullmatch(check['ref']):raise ValueError('ref cần tên đối tượng/property thực tế.')
-        if check.get('stage','project') not in STAGES or check.get('kind','value') not in ('value','count'):raise ValueError('stage hoặc kind không hợp lệ.')
+        stage=check.get('stage','project')
+        kind=check.get('kind','value')
+        if isinstance(stage,str):stage=stage.strip().casefold();stage=stage_aliases.get(stage,stage)
+        if isinstance(kind,str):kind=kind.strip().casefold()
+        if stage not in STAGES:
+            raise ValueError(f'checks[{index}].stage={stage!r} không hợp lệ. stage chỉ nhận: '+', '.join(STAGES)+
+                             '. Tên Phase_1 đặt trong phase, không đặt trong stage.')
+        if kind not in ('value','count'):
+            raise ValueError(f'checks[{index}].kind={kind!r} không hợp lệ. inspect_progress/plan_resume chỉ nhận kind=value (đọc thuộc tính) hoặc count (đếm collection). '
+                             'kind=soil/plate/anchor chỉ dành cho verify_stage. Ví dụ kiểm tra Active: '
+                             '{"ref":"g.Soil_1_1.Active","phase":"g.Phase_1","expected":false,"stage":"activation","kind":"value"}; tên và trạng thái phải lấy từ mô hình/manual.')
+        check.update(stage=stage,kind=kind)
         if type(check.get('expected')) not in (str,int,float,bool) or isinstance(check['expected'],float) and not math.isfinite(check['expected']):raise ValueError('expected phải là số hữu hạn, chuỗi hoặc boolean.')
         tolerance=check.get('tolerance',1e-6)
         if type(tolerance) not in (int,float) or not math.isfinite(tolerance) or tolerance<0:raise ValueError('tolerance không hợp lệ.')

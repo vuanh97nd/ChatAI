@@ -14,6 +14,24 @@ class PhaseProperty:
 
 class ProgressTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_progress_enums_normalize_only_unambiguous_stage_aliases(self):
+        from assistant.plaxis_progress import specification
+        result=specification(json.dumps({'source':'Manual','checks':[
+            {'ref':'g.Materials','expected':2,'stage':' Material ','kind':' COUNT '},
+            {'ref':'g.Soil_1_1.Active','phase':'g.Phase_1','expected':False,'stage':'staged_construction'}]}))
+        self.assertEqual(result['checks'][0]['stage'],'materials')
+        self.assertEqual(result['checks'][0]['kind'],'count')
+        self.assertEqual(result['checks'][1]['stage'],'activation')
+        self.assertEqual(result['checks'][1]['kind'],'value')
+
+    def test_wrong_guard_kind_and_phase_in_stage_have_actionable_errors(self):
+        from assistant.plaxis_progress import specification
+        check={'ref':'g.Soil_1_1.Active','phase':'g.Phase_1','expected':False,'stage':'activation','kind':'soil'}
+        with self.assertRaisesRegex(ValueError,r'checks\[1\].kind=.*soil.*verify_stage'):
+            specification(json.dumps({'source':'Manual','checks':[check]}))
+        check.update(kind='value',stage='Phase_1')
+        with self.assertRaisesRegex(ValueError,r'checks\[1\].stage=.*phase_1.*Tên Phase_1'):
+            specification(json.dumps({'source':'Manual','checks':[check]}))
     def model(self,states=[True]):
         phase=NS(Name='Phase_1');soil=NS(Name='Soil_1_1',Active=PhaseProperty(states))
         return NS(Project=NS(ModelType=0),Soils=[soil],Phases=[phase],Materials=[],Plates=[],Soil_1_1=soil,Phase_1=phase)
