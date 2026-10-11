@@ -12,6 +12,7 @@ import 'api.dart';
 import 'voice.dart';
 import 'voice_chat.dart';
 import 'reply_indicator.dart';
+import 'assistant_reply.dart';
 import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
@@ -290,7 +291,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         onStage: (status) { if (!stop.isCompleted) changed(() => replyStatus = status); },
         cancelled: () => stop.isCompleted, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList()),
         stop.future.then<String>((_) => throw Exception('Đã dừng chờ. Yêu cầu đã gửi có thể vẫn được server xử lý và tính phí.'))]);
-      changed(() { messages.add({'role': 'assistant', 'content': answer}); attachments.clear(); });
+      changed(() { messages.add({'role': 'assistant', 'content': answer, 'provider': provider}); attachments.clear(); });
       try {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
           'role': 'assistant', 'content': answer, 'client_id': uuid.v4()});
@@ -326,7 +327,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final result = await api.guestAnswer(guestToken, guestPending!['id'] as String,
         (guestPending!['messages'] as List<dynamic>).map((m) => {'role': m['role'] as String, 'content': m['content'] as String}).toList());
       await storage.delete(key: 'guest_pending'); guestPending = null;
-      changed(() { messages.add({'role': 'assistant', 'content': result['answer'] as String});
+      changed(() { messages.add({'role': 'assistant', 'content': result['answer'] as String, 'provider': 'nvidia'});
         input.clear(); guestRemaining = (result['remaining'] as num).toInt(); });
     } catch (e) {
       changed(() {
@@ -431,11 +432,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(16)), child: Column(
               mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SelectableText(m['content']!),
-              if (m['role'] == 'assistant') TextButton.icon(
-                onPressed: () => readMessage(i),
-                icon: Icon(readingMessage == i && voice.speaking ? Icons.stop : Icons.volume_up_outlined),
-                label: Text(readingMessage == i && voice.speaking ? 'Dừng đọc' : 'Đọc câu trả lời')),
+              if (m['role'] == 'assistant') AssistantReply(
+                key: ValueKey('$conversation:$i:${m['content']}'),
+                text: m['content']!, provider: m['provider'],
+                reading: readingMessage == i && voice.speaking, onRead: () => readMessage(i))
+              else SelectableText(m['content']!),
             ])));
       })),
 
