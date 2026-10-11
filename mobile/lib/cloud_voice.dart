@@ -34,17 +34,17 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   bool recording = false, transcribing = false, heardSound = false;
   int generation = 0;
   @override
-  Future<bool> initialize(void Function(String) onStatus, void Function(String) onError) async {
-    status = onStatus; failure = onError;
+  Future<bool> initialize(void Function(String) status, void Function(String) error) async {
+    this.status = status; failure = error;
     if (api.session == null) throw Exception('Đăng nhập để dùng nhận dạng giọng nói Cloudflare.');
     return recorder.hasPermission();
   }
   @override
   Future<List<String>> locales() async => ['vi-VN'];
   @override
-  Future<void> listen(String locale, void Function(String) onWords) async {
+  Future<void> listen(String locale, void Function(String) words) async {
     final run = ++generation;
-    words = onWords; audio = BytesBuilder(copy: false); heardSound = false;
+    this.words = words; audio = BytesBuilder(copy: false); heardSound = false;
     final stream = await recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1));
     if (run != generation) { await recorder.stop(); return; }
@@ -66,6 +66,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     });
     limit = Timer(const Duration(seconds: 30), () => unawaited(finish()));
   }
+  @override
   Future<void> finish() async {
     if (!recording || transcribing) return;
     final run = generation;

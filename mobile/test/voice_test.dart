@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatai_mobile/voice.dart';
 
-class FakeVoice implements VoiceEngine {
+class FakeVoice extends VoiceEngine {
   bool available = true;
   List<String> supported = ['en_US', 'vi_VN'];
   String? selected, readText;

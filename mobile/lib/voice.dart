@@ -30,7 +30,7 @@ Map<String, String>? vietnameseVoice(dynamic values) {
 Future<void> openVoiceSettings(bool tts) => const MethodChannel('vn.chatai/voice_settings')
     .invokeMethod<void>(tts ? 'tts' : 'speech');
 
-class AndroidVoiceEngine implements VoiceEngine {
+class AndroidVoiceEngine extends VoiceEngine {
   void Function(double)? onLevel;
   // SpeechToText is a process-wide singleton and retains initialize callbacks.
   // Route those callbacks to the current dictation/voice-chat session.
