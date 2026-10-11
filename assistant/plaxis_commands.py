@@ -843,13 +843,16 @@ _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
 _CHANGES_READONLY={'plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage'}
 
 
-def model_snapshot(g,limit=2400,session=None):
+def model_snapshot(g,limit=2400,session=None,version=None):
     """Compact view of what the open PLAXIS model already holds, so the model can see
     duplicates and what a failed batch left behind without guessing."""
     lines=[]
     try:
         kind=g.Project.ModelType.value
-        lines.append(f"Project: ModelType={_MODEL_TYPES.get(kind,kind)} ({kind})")
+        if version=='2d':
+            lines.append(f"Project: ModelType={_MODEL_TYPES.get(kind,kind)} ({kind})")
+        else:
+            lines.append(f"Project: ModelType raw={kind}; không dùng enum 2D để xác định sản phẩm 3D")
     except Exception:pass
     for attr in _SNAPSHOT:
         try:items=list(getattr(g,attr))
@@ -881,7 +884,7 @@ def model_snapshot(g,limit=2400,session=None):
 _SESSIONS={}
 
 
-def run_batch(server,g,rows,on_status=None,port=None):
+def run_batch(server,g,rows,on_status=None,port=None,version=None):
     """Execute one tool call with per-project names, then attach the model state when the
     batch failed or changed the model."""
     try:project=str(g.Project)
@@ -906,7 +909,7 @@ def run_batch(server,g,rows,on_status=None,port=None):
     # First contact with this project: show what is already there before anything is built.
     if first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
         try:
-            result['model_state']=model_snapshot(g,session=session)
+            result['model_state']=model_snapshot(g,session=session,version=version)
             result['model_state_note']=('model_state là trạng thái thật của PLAXIS sau lệnh này. Trước khi tạo borehole, lớp đất, '
                                         'vật liệu hay hình học, kiểm tra ở đây và dùng lại đối tượng đã có; không tạo trùng.')
         except Exception as exc:result['model_state']='Chưa đọc được trạng thái mô hình: '+str(exc)[:200]

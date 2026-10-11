@@ -478,7 +478,7 @@ class PlaxisRemoteApp:
                     result['note']=('PLAXIS Output chỉ có sau khi đã tính toán và mở kết quả. Dựng mô hình, chia lưới, '
                                     'tạo phase và calculate bằng target input trước; không thử lại Output lúc này.')
                 return result
-            try:result=_until_stopped(run_batch,server,g,rows,self.on_status,port)
+            try:result=_until_stopped(run_batch,server,g,rows,self.on_status,port,plan['version'])
             except PlaxisStopped as exc:
                 return {'ok':False,'stopped':True,'uncertain':True,'error':str(exc),
                         'note':'Kết quả các lệnh đang gửi chưa rõ. Đọc lại trạng thái mô hình trước khi làm tiếp; không gửi lại nguyên nhóm lệnh.'}

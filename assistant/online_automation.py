@@ -571,7 +571,7 @@ def model_warnings(model_state,tutorial):
     """Cheap consistency checks on the live model that the model kept missing."""
     warnings=[]
     title=(tutorial or {}).get('title','').lower()
-    if re.search(r'circular|axisymmetric|round|pile\b',title) and 'ModelType=Plane strain' in model_state:
+    if (tutorial or {}).get('product')!='3d' and re.search(r'circular|axisymmetric|round',title) and 'ModelType=Plane strain' in model_state:
         warnings.append(f"Bài \"{tutorial['title']}\" là bài toán đối xứng trục nhưng mô hình đang là Plane strain; đặt lại ModelType trước khi tính.")
     for kind,label in (('LineDisplacements','chuyển vị cưỡng bức'),('LineLoads','tải phân bố')):
         found=re.search(kind+r': (\d+)',model_state)
@@ -1460,6 +1460,7 @@ class OnlineAutomation:
                 instruction+='\nƯu tiên tính toán bằng calculate, đọc/ghi file bằng công cụ trực tiếp. Excel mới dùng excel_create (open=true nếu cần mở); workbook đang mở/công thức/format/filter/chart dùng excel_com theo lô; excel_edit_batch ghi literal khi file đóng. Word nội dung/bảng/ảnh/toán/header/footer/format dùng word_inspect rồi word_edit. PowerPoint dùng office_create. CAD dùng cad_com đúng path/handle; VBA dùng vba_project và kiểm tra verify sau macro. Gom thao tác vào một lô, không gọi lại read đã có dữ liệu hiện hành. Dùng readback/verified để đối chiếu yêu cầu trước khi báo xong; không lấy kết quả cũ thay dữ liệu mới. Python Docker dùng python_run, Python/PowerShell host dùng task_script với code duyệt và danh sách file backup. Chỉ thao tác nhiệm vụ hiện tại, không suy đoán tài liệu đang mở.'
             if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script cũng tự thực hiện khi quyền tự động đã bật; giữ kiểm tra phạm vi, phương thức kết nối và nút dừng.'
             if plaxis_context:
+                instruction+='\nNhận diện PLAXIS 2D/3D bằng tiêu đề ứng dụng và cổng Remote Scripting tương ứng. ModelType 0/1 = Plane strain/Axisymmetric chỉ thuộc 2D; không áp enum này cho 3D. Không chuyển ứng dụng 2D thành 3D bằng setproperties ModelType full. Khi chưa rõ kết nối, đọc tiêu đề/cổng trước, giữ nguyên dự án; không yêu cầu dựng lại chỉ vì ModelType 3D trả số 0.'
                 from .plaxis_stage_guard import STAGE_INSTRUCTION
                 from .plaxis_tutorials import RULES
                 from .prompts import PLAXIS_MANUAL_POLICY
