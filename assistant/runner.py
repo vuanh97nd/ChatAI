@@ -128,15 +128,17 @@ class Runner:
                     "--mount", f"type=bind,source={output_mount.resolve()},target=/output"]
             out_path, err_path = temp / "stdout.log", temp / "stderr.log"
             flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-            timed_out, capped = False, False
+            timed_out, capped, stopped = False, False, False
             with out_path.open("wb") as out, err_path.open("wb") as err:
                 child = subprocess.Popen(args, stdout=out, stderr=err, shell=False, creationflags=flags)
                 start = time.monotonic()
                 try:
                     while child.poll() is None:
+                        from .windows_apps import _STOP,wait_automation
+                        wait_automation();stopped=_STOP.is_set()
                         timed_out = time.monotonic() - start > 30
                         capped = out_path.stat().st_size + err_path.stat().st_size > 1024**2
-                        if timed_out or capped:
+                        if timed_out or capped or stopped:
                             subprocess.run([docker, "rm", "-f", name], capture_output=True, timeout=10)
                             child.kill()
                             child.wait(timeout=10)
@@ -150,7 +152,7 @@ class Runner:
             def read_output(p):
                 with p.open("rb") as file:
                     return file.read(8000).decode("utf-8", errors="replace")
-            result = {"ok": child.returncode == 0 and not timed_out and not capped,
+            result = {"ok": child.returncode == 0 and not timed_out and not capped and not stopped,"stopped":stopped,
                       "exit_code": child.returncode, "stdout": read_output(out_path),
                       "stderr": read_output(err_path), "timed_out": timed_out,
                       "output_limit_exceeded": capped,

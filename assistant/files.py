@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .excel import digest
 
-TEXT_SUFFIXES = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".py", ".log", ".html", ".css", ".js"}
+TEXT_SUFFIXES = {".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".py", ".log", ".html", ".css", ".js", ".ps1", ".bas", ".cls", ".frm", ".lsp", ".scr"}
 
 
 class FileTools:

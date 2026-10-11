@@ -8,8 +8,8 @@ import sys
 import time
 from .windows_apps import _STOP
 
-PACKAGES={'PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
-          'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
+PACKAGES={'latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
+          'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','pptx':'python-pptx>=1,<2','openpyxl':'openpyxl>=3.1,<4','pandas':'pandas>=2,<3','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
 
 
 def missing_modules():
@@ -17,7 +17,7 @@ def missing_modules():
     for name in PACKAGES:
         try:
             # COM must be initialized later by WindowsBackend on the action thread.
-            if name in {'pywinauto','comtypes','psutil'}:
+            if name in {'pywinauto','comtypes','psutil','win32com'}:
                 if importlib.util.find_spec(name) is None:raise ImportError(name)
             else:importlib.import_module(name+'.sync_api' if name=='playwright' else name)
         except (ImportError,OSError):missing.append(name)

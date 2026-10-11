@@ -1,7 +1,8 @@
 """Cloudflare text chat through the application's Worker, never an API key in desktop."""
 import json
 import secrets
-from urllib.request import Request, urlopen
+from urllib.request import Request
+from .network import urlopen
 from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -320,7 +321,7 @@ class ServerApiClient:
     """Authenticated proxy: provider API credentials never reach ordinary users."""
     def __init__(self,session,provider,on_status=None,cancel_event=None,timeout=125,retry_limit=3):
         if not session:raise CloudError('Đăng nhập để dùng AI trực tuyến với key do Admin cấu hình.')
-        if provider not in API_ENDPOINTS and not __import__('re').fullmatch(r'ai_[a-f0-9]{32}',provider):raise ValueError('Dịch vụ API không hợp lệ.')
+        if provider not in API_ENDPOINTS and provider!='cloudflare' and not __import__('re').fullmatch(r'ai_[a-f0-9]{32}',provider):raise ValueError('Dịch vụ API không hợp lệ.')
         self.session=dict(session);self.provider=provider;self.model=provider;self.on_status=on_status;self.cancel_event=cancel_event
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}

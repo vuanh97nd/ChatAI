@@ -106,6 +106,7 @@ class Agent:
         self.store.save(self.cid, state)
 
     def start(self, state, prompt, model, images=None, expert_mode=False, expert_override=None):
+        state['share_procedure_instructions']=bool(self.cfg.get('procedure_training_enabled'))
         if state["running"] or state["pending"]:
             raise RuntimeError("Lượt trước chưa xong.")
         if model not in CHAT_MODELS:

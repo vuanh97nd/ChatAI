@@ -528,6 +528,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.document_label=QLabel();self.document_label.setWordWrap(True);doc_row.addWidget(self.document_label,1)
         self.button(doc_row,'Bỏ tài liệu',self.remove_documents);self.document_box.hide();cl.addWidget(self.document_box)
         cl.addWidget(self.input)
+        self.task_autonomy_check=QCheckBox('Tự thực hiện công việc')
+        self.task_autonomy_check.setToolTip('Cấp quyền cho yêu cầu này trong các thư mục đã cho phép. AI tiếp tục các bước liên quan; có nút dừng, nhật ký và backup. Mã macro/script được duyệt trước khi chạy.')
+        cl.addWidget(self.task_autonomy_check)
         actions = QHBoxLayout(); cl.addLayout(actions)
         hint = QLabel('Enter để gửi · Shift + Enter xuống dòng'); hint.setStyleSheet('color:#9aa0a6;font-size:11px;background:transparent;')
         self.image_btn = self.button(actions, 'Ảnh', lambda: self.toggle_temporary_mode(2))
@@ -1867,7 +1870,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI trên máy để dùng mục này.');self.choose_other_model();return
         if model in REMOTE_MODELS:
             from assistant.online_automation import use_automation
-            if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1):
+            if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1 or self.task_autonomy_check.isChecked()):
                 self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
@@ -1925,12 +1928,15 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         state=self.store.load(self.cid)
         model=self.model.currentText() if prompt is not None else state['model']
         provider=REMOTE_MODELS.get(model)
-        if provider=='cloudflare' or not provider:
-            QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare chưa hỗ trợ lập kế hoạch điều khiển app.');return
+        if not provider:
+            QMessageBox.information(self,'Điều khiển ứng dụng','Chọn một AI trực tuyến để lập kế hoạch thao tác.');return
         if prompt is not None and len(prompt)>500000:
             QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 500000 ký tự.');return
         if prompt is not None:self.begin_app_request()
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
+        if prompt is not None:
+            cfg['task_autonomy']=self.task_autonomy_check.isChecked()
+            self.task_autonomy_check.setChecked(False)
         attachment_paths=list(self.pending_documents) if prompt is not None else []
         attachment_image=self.pending_image if prompt is not None else None
         if state.get('account_username') not in (None,session['username']):
@@ -1969,12 +1975,16 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 from assistant.plaxis_remote import PlaxisRemoteApp
                 from assistant.geoslope_inspect import GeoslopeInspect
                 _plaxis_app=PlaxisApp(files,audit)
+                from assistant.online_office import OnlineOffice
+                from assistant.excel import ExcelTools
+                from assistant.office import OfficeTools
+                office_tools=OnlineOffice(ExcelTools(cfg['roots'],ROOT/'data/backups',audit),OfficeTools(files),files,on_status=lambda text:emit({'type':'status','text':text}))
                 agent=OnlineAutomation(client,cfg,self.store,cid,windows,
                     BrowserTools(cfg,audit,policy_path=ROOT/'config.json',on_status=lambda text:emit({'type':'status','text':text})),
                     PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
                     CdmLayoutApp(windows,files,audit),CadTracDocApp(windows,files,audit),
                     plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app,on_status=lambda text:emit({'type':'status','text':text})),
-                    geoslope_inspector=GeoslopeInspect(files))
+                    geoslope_inspector=GeoslopeInspect(files),office_tools=office_tools)
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:

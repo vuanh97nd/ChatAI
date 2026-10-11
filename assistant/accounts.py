@@ -6,7 +6,8 @@ import time
 from .performance import record
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import Request,urlopen
+from urllib.request import Request
+from .network import urlopen
 from urllib.error import HTTPError,URLError
 from http.client import HTTPException
 from .config import ROOT

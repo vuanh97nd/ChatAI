@@ -215,6 +215,12 @@ def parse_plan(raw, schemas):
     args=output.get('arguments',{})
     if isinstance(args,str):args=plan_json(args if args.strip() else '{}','Tham số arguments')
     if not isinstance(args,dict):raise ValueError('arguments phải là đối tượng JSON.')
+    if tool in ('excel_com','cad_com','word_edit') and isinstance(args.get('operations'),list):args=dict(args,operations=json.dumps(args['operations'],ensure_ascii=False))
+    if tool=='excel_create':
+        args=dict(args)
+        for key in ('rows','formulas','options'):
+            if isinstance(args.get(key),(list,dict)):args[key]=json.dumps(args[key],ensure_ascii=False)
+    if tool=='vba_project' and isinstance(args.get('verify'),dict):args=dict(args,verify=json.dumps(args['verify'],ensure_ascii=False))
     if tool=='browser_run' and isinstance(args.get('steps'),list):args=dict(args,steps=json.dumps(args['steps'],ensure_ascii=False))
     if tool=='cad3d_create_open' and isinstance(args.get('shape'),dict):args=dict(args,shape=json.dumps(args['shape'],ensure_ascii=False))
     if tool=='cad_create_open' and isinstance(args.get('entities'),list):args=dict(args,entities=json.dumps(args['entities'],ensure_ascii=False))
@@ -715,6 +721,9 @@ def planning_messages(state,instruction):
 
 
 def requested_automation(prompt):
+    if re.search(r'(?:chạy|soạn|xuất|nhập).*\b(?:python|powershell|vba|macro|autolisp)\b|(?:tính|calculate).*\d',prompt,re.I):return True
+    if (re.search(r'\b(?:excel|word|powerpoint|pptx|docx|xlsx)\b|\.xlsx\b|\.docx\b|\.pptx\b',prompt,re.I)
+            and re.search(r'ghi|sửa|lưu|tạo|điền|nhập|đọc|thay|mở',prompt,re.I)):return True
     general_open=re.search(r'^\s*(?:hãy\s+)?(?:mở|khởi động|điều khiển)\s+(?!rộng\b|lòng\b|bài\b|đầu\b).+',prompt,re.I)
     plaxis_kw=re.search(r'\bplaxis\b|mô\s*phỏng|tính\s*toán\s*plaxis|chạy\s*plaxis|phân\s*tích\s*plaxis|bờ\s*đắp|nền\s*đắp|đắp\s*nền|ổn\s*định\s*(?:bờ|đắp|mái|nền)',prompt,re.I)
     geoslope_kw=re.search(r'geo[ -]?(?:slope|studio)|slope/w',prompt,re.I) and re.search(r'chạy|tính|vẽ|dựng|đọc|mở|tạo|phân tích',prompt,re.I)
@@ -725,6 +734,7 @@ def requested_automation(prompt):
 def use_automation(prompt, cfg, state, tool_mode=False):
     """Keep clarification replies in the same online tool workflow."""
     if requested_automation(prompt):return True
+    if tool_mode:return True
     if not cfg.get('windows_apps_enabled'):return False
     if tool_mode or state.get('online_automation'):return True
     # A PLAXIS task in progress: "tìm trong manual pdf ấy", "tính đi", "kiểm tra lại" belong to it.
@@ -1008,7 +1018,7 @@ def app_permissions(cfg):
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None, plaxis_app=None, plaxis_remote=None, cad_trac_doc=None, geoslope_app=None, geoslope_inspector=None, geoslope_solver=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None, plaxis_app=None, plaxis_remote=None, cad_trac_doc=None, geoslope_app=None, geoslope_inspector=None, geoslope_solver=None, office_tools=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
         self.cad3d_app=cad3d_app
@@ -1023,6 +1033,7 @@ class OnlineAutomation:
         self.geoslope_app=geoslope_app
         self.geoslope_inspector=geoslope_inspector
         self.geoslope_solver=geoslope_solver
+        self.office_tools=office_tools
         modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set()) | ({'cdm_layout'} if cdm_layout else set()) | ({'tracdoc_app'} if tracdoc_app else set()) | ({'plaxis_app'} if plaxis_app else set()) | ({'plaxis_remote'} if plaxis_remote else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS if module=='geoslope_app' and
@@ -1030,10 +1041,22 @@ class OnlineAutomation:
                              (spec['function']['name']=='geoslope_create' and geoslope_app is not None)))
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS
                             if module=='geoslope_solver' and geoslope_solver is not None)
+        if office_tools:
+            from .tools import TOOLS
+            self.schemas.extend(TOOLS)
+            self.schemas.extend(spec for module,spec in EXTRA_TOOLS
+                                if module=='office' or spec['function']['name']=='file_list')
+            self.schemas.extend(office_tools.schemas)
+            self.schemas=list({s['function']['name']:s for s in self.schemas}.values())
 
     def save(self,state):self.store.save(self.cid,state)
 
-    def auto_execute_allowed(self):
+    def auto_execute_allowed(self,state=None):
+        plan=((state or {}).get('pending') or {}).get('plan',{})
+        if plan.get('requires_code_approval'):return False
+        if plan.get('action') in ('calculate','file_read','file_list','document_read','word_inspect','office_read','excel_read','excel_list_sheets','excel_list_files','excel_summary'):return True
+        if state is not None and 'task_autonomy' in state:
+            return state['task_autonomy'] is True
         from .autonomy import task_tools_authorized
         if not (self.cfg.get('windows_apps_auto_execute') or task_tools_authorized(self.cfg)):return False
         current=self.windows.check()
@@ -1041,6 +1064,8 @@ class OnlineAutomation:
 
     def start(self,state,prompt,model,owner,image=None):
         if state.get('running') or state.get('pending'):raise RuntimeError('Lượt trước chưa xong.')
+        if 'task_autonomy' in self.cfg:
+            state['task_autonomy']=bool(self.cfg['task_autonomy']) or bool(state.get('task_autonomy') and re.fullmatch(r'\s*(?:ok|tiếp tục|đồng ý|thử lại)[.! ]*',prompt,re.I))
         if image is not None:image_message_content(prompt,image)
         message={'role':'user','content':prompt}
         if image is not None:message['images']=[image]
@@ -1056,7 +1081,9 @@ class OnlineAutomation:
             not topic_changed and
             re.fullmatch(r'\s*(?:ok|có|đồng ý|tiếp tục(?:\s+nhé)?|làm(?:\s+nhé)?|a|1)\s*[.!]?\s*',prompt,re.I))
         state.update(running=True,pending=None,queue=[],model=model,account_username=owner,
+                     share_procedure_instructions=bool(self.cfg.get('procedure_training_enabled')),
                      online_automation=True,automation_rounds=0,procedure_guarded=[],procedure_advice=[],preparation_repairs=0,plaxis_repairs=0,plaxis_read_streak=0,plaxis_general_mode=continue_general)
+        if 'task_autonomy' in state:self.store.audit(self.cid,'task_permission',{'enabled':state['task_autonomy'],'roots':self.cfg.get('roots',[]),'owner':owner})
         state['greeting_reply']=(known_error_reply(prompt,state['messages'][:-1]) or greeting_reply(prompt)) if image is None else None
         if state['greeting_reply']:
             self.save(state)
@@ -1091,6 +1118,8 @@ class OnlineAutomation:
         except Exception:pass
 
     def component(self,name):
+        if self.office_tools and any(s['function']['name']==name for s in self.office_tools.schemas):return self.office_tools
+        if self.office_tools and (name.startswith('excel_') or name in ('office_read','office_create','word_replace','file_list')):return self.office_tools
         if name in ('geoslope_inspect','geoslope_profile'):return self.geoslope_inspector
         if name=='geoslope_create':return self.geoslope_app
         if name in ('geoslope_solve','geoslope_materials'):return self.geoslope_solver
@@ -1129,7 +1158,16 @@ class OnlineAutomation:
                         'Đã mở PLAXIS nhưng sau 90 giây chưa thấy remote scripting server. Cần bật Expert → Configure remote scripting server → Start; không mở PLAXIS thêm lần nữa.'))
                 except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
         elif allowed:
-            try:result=self.component(name).commit(pending['plan'])
+            try:
+                component=self.component(name);key=component.cache_key(pending['plan']) if component is self.office_tools else None
+                cache=state.setdefault('tool_read_cache',{})
+                if key and key in cache:result=dict(cache[key],cached=True)
+                else:
+                    result=component.commit(pending['plan'])
+                    if key and result.get('ok') and len(json.dumps(result,default=str))<60000:
+                        if len(cache)>=10:cache.pop(next(iter(cache)))
+                        cache[key]=dict(result)
+                    elif not key:cache.clear()
             except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
         else:result={'ok':False,'denied':True,'note':'Người dùng từ chối. Không gọi lại thao tác này.'}
         # Repair a known failed ChatAI-generated model only when the generator
@@ -1182,7 +1220,7 @@ class OnlineAutomation:
             return
         while state['running']:
             if state.get('pending'):
-                if not state['pending'].get('decision_started') and self.auto_execute_allowed():
+                if not state['pending'].get('decision_started') and self.auto_execute_allowed(state):
                     yield {'type':'app_activity','text':'Đang thực hiện: '+state['pending']['plan']['action']}
                     self.approve(state,True,state['pending'])
                     continue
@@ -1250,7 +1288,7 @@ class OnlineAutomation:
                     state.update(running=False,queue=[]);self.save(state)
                     yield {'type':'token','text':text};return
                 state['pending']={'plan':plan,'decision_started':False};self.save(state)
-                if self.auto_execute_allowed():
+                if self.auto_execute_allowed(state):
                     self.approve(state,True,state['pending'])
                     yield {'type':'status','text':'Đang thực hiện theo quyền điều khiển ứng dụng đã cấp…'}
                     continue
@@ -1369,6 +1407,9 @@ class OnlineAutomation:
                 instruction+='\nNgười dùng đã cấp quyền tự thực hiện thao tác cho công việc họ yêu cầu. Khi đủ dữ kiện, gọi công cụ để tiếp tục; không hỏi xác nhận bắt đầu từng bước hoặc chọn lại phương án đã đồng ý. Chỉ hỏi khi thiếu dữ kiện kỹ thuật, có mâu thuẫn hoặc cần đăng nhập. Quyền thực tế vẫn được ứng dụng kiểm tra khi thực thi.'
                 instruction+='\nTự tra cú pháp/API, mở liên kết kết quả tìm kiếm và bản raw, đọc trạng thái đối tượng để sửa lỗi trong công việc đã yêu cầu; không xin phép từng bước tra cứu. Không hỏi người dùng tên biến g/g_i, chữ ký lệnh hay path của browser_search: đối chiếu mô tả công cụ và tự tìm ứng dụng. browser_search.path là đường dẫn EXE Chrome thực, không phải từ khóa hoặc tên phiên. Trong plaxis_commands, g là gốc; tên result (như bh) dùng lại được ở lượt sau trong cùng dự án (xem mục names của kết quả). info nhận đối tượng, không truyền method như g.SoilModel.borehole. Khi lỗi, kiểm tra phần đã tạo rồi đổi bước lỗi, không chạy lại cả mô hình. Hỏi người dùng khi thiếu kích thước, thông số thiết kế, có mâu thuẫn chưa xác minh được hoặc cần đăng nhập; giữ nguyên bài đang làm.'
             instruction+=WINDOWS_VISUAL_INSTRUCTION
+            if self.office_tools:
+                instruction+='\nƯu tiên tính toán bằng calculate, đọc/ghi file bằng công cụ trực tiếp. Excel mới dùng excel_create (open=true nếu cần mở); workbook đang mở/công thức/format/filter/chart dùng excel_com theo lô; excel_edit_batch ghi literal khi file đóng. Word nội dung/bảng/ảnh/toán/header/footer/format dùng word_inspect rồi word_edit. PowerPoint dùng office_create. CAD dùng cad_com đúng path/handle; VBA dùng vba_project và kiểm tra verify sau macro. Gom thao tác vào một lô, không gọi lại read đã có dữ liệu hiện hành. Dùng readback/verified để đối chiếu yêu cầu trước khi báo xong; không lấy kết quả cũ thay dữ liệu mới. Python Docker dùng python_run, Python/PowerShell host dùng task_script với code duyệt và danh sách file backup. Chỉ thao tác nhiệm vụ hiện tại, không suy đoán tài liệu đang mở.'
+            if state.get('task_autonomy'):instruction+='\nNhiệm vụ hiện tại đã cấp quyền Tự thực hiện công việc: tiếp tục các bước liên quan không hỏi lại bắt đầu từng bước; mã macro/script vẫn phải được duyệt trước khi chạy.'
             if plaxis_context:
                 from .plaxis_stage_guard import STAGE_INSTRUCTION
                 instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION
@@ -1472,6 +1513,13 @@ class OnlineAutomation:
                     state['messages'].append({'role':'assistant','content':'','tool_calls':[call]});state['queue']=[call]
                 else:
                     text=output['answer'].strip() or 'AI chưa trả kết quả rõ ràng.'
+                    user_index=next((i for i in range(len(state['messages'])-1,-1,-1) if state['messages'][i].get('role')=='user'),-1)
+                    latest=next((m for m in reversed(state['messages'][user_index+1:]) if m.get('role')=='tool'),None)
+                    if latest and re.search(r'hoàn\s*(?:tất|thành)|đã.*(?:ghi|lưu|chạy|sửa|tạo|xong)',text,re.I):
+                        try:observed=json.loads(latest.get('content','{}'))
+                        except (ValueError,TypeError):observed={}
+                        if observed.get('uncertain') or observed.get('ok') is False:
+                            text='Chưa xác minh hoàn tất thao tác. '+str(observed.get('error') or observed.get('note') or '')+' Cần đọc lại trạng thái/file trước khi tiếp tục.'
                     state['messages'].append({'role':'assistant','content':text});state['running']=False
                     yield {'type':'token','text':text}
             except (ValueError,KeyError,TypeError):

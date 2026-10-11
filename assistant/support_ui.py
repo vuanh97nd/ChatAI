@@ -113,6 +113,7 @@ class SupportMixin:
             from .conversation_context import conversation_context
             history=conversation_context(state['messages'],online=provider!='cloudflare')
             state['account_username']=owner;state['model']=selected_model
+            state['share_procedure_instructions']=bool(cfg.get('procedure_training_enabled'))
             state['online_automation']=False
             from .message_attachments import attachment_records
             message={'role':'user','content':prompt}
