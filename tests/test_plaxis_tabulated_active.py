@@ -8,6 +8,16 @@ from assistant.windows_apps import resume_automation
 
 class TabulatedActiveTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_geometry_bounds_follow_parent_and_linked_points(self):
+        from assistant.plaxis_stage_guard import bounds
+        vertices=[NS(x=40,y=14),NS(x=40,y=30)]
+        geometry=NS(Points=vertices)
+        self.assertEqual(bounds(NS(Parent=NS(Parent=geometry))),{'x':[40,40],'y':[14,30]})
+        self.assertEqual(bounds(NS(Parent=NS(First=vertices[0],Second=vertices[1]))),{'x':[40,40],'y':[14,30]})
+        self.assertEqual(bounds(NS(Parent=NS(BoundingBox=NS(XMin=0,XMax=10,YMin=0,YMax=30)))),{'x':[0,10],'y':[0,30]})
+        with self.assertRaises(StageGuardError):bounds(NS(Parent=NS(BoundingBox=[0,0,10,30])))
+        vertices[1].z=2
+        with self.assertRaises(StageGuardError):bounds(NS(Parent=geometry))
     def test_phase_rows_select_requested_phase_and_reject_ambiguity(self):
         from assistant.plaxis_active import tabulated_active
         obj=NS();phase=NS()

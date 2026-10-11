@@ -51,17 +51,47 @@ def active(obj,phase,g=None):
 
 
 def bounds(obj):
-    box=obj.Parent.BoundingBox
-    result={}
-    for axis in ('x','y','z'):
-        try:low,high=value(getattr(box,axis+'Min')),value(getattr(box,axis+'Max'))
-        except AttributeError:
-            if axis=='z':continue
-            raise
-        if type(low) not in (int,float) or type(high) not in (int,float) or not all(math.isfinite(v) for v in (low,high)) or low>high:
-            raise StageGuardError('Bounding box không hợp lệ; chưa xác định được vị trí.')
-        result[axis]=[low,high]
-    return result
+    def read(target,attribute):
+        try:return value(getattr(target,attribute))
+        except Exception:return None
+    def number(n):return type(n) in (int,float) and math.isfinite(n)
+    def coordinate(point,axis):
+        for key in (axis,axis.upper()):
+            n=read(point,key)
+            if number(n):return n
+        return None
+    geometry=read(obj,'Parent')
+    seen=set();diagnostics=[]
+    for _ in range(4):
+        if geometry is None or str(geometry) in seen:break
+        seen.add(str(geometry))
+        box=read(geometry,'BoundingBox');result={}
+        for axis in ('x','y','z'):
+            interval=None
+            for prefix in (axis,axis.upper()):
+                low,high=read(box,prefix+'Min'),read(box,prefix+'Max')
+                if number(low) and number(high) and low<=high:
+                    interval=[low,high];break
+            if interval is not None:result[axis]=interval
+        if 'x' in result and 'y' in result:return result
+        # Only linked vertices/endpoints, never the project's global Points.
+        points=read(geometry,'Points')
+        if points is not None:
+            try:points=list(points)
+            except Exception:points=None
+        if points is None:
+            endpoints=[read(geometry,'First'),read(geometry,'Second')]
+            points=endpoints if all(p is not None for p in endpoints) else []
+        if points and len(points)<=10000:
+            coordinates={axis:[coordinate(point,axis) for point in points] for axis in ('x','y','z')}
+            if all(all(number(n) for n in coordinates[axis]) for axis in ('x','y')):
+                if any(n is not None for n in coordinates['z']) and not all(number(n) for n in coordinates['z']):
+                    raise StageGuardError('Tọa độ z của hình học chưa đọc đủ; không xác minh vùng 3D bằng vùng 2D.')
+                return {axis:[min(ns),max(ns)] for axis,ns in coordinates.items() if all(number(n) for n in ns)}
+        diagnostics.append(str(geometry)[:80])
+        geometry=read(geometry,'Parent')
+    raise StageGuardError('Chưa đọc được vùng hình học gốc: '+', '.join(diagnostics)+
+                          '. Cần info/commands của Parent, BoundingBox và các điểm liên kết; không đoán thứ tự tọa độ hoặc bỏ verify_stage.')
 
 
 def check_spec(raw):
