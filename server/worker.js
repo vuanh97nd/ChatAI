@@ -18,7 +18,7 @@ export async function requestWebSearch(env,query,send=fetch){
   if(!response.ok)throw new Error('Bing HTTP '+response.status+'. Không thể tra cứu lúc này.');
   const xml=await response.text();
   if(xml.length>2*1024*1024)throw new Error('Phản hồi Bing quá lớn.');
-  if(!/<rss[\s>]/i.test(xml)||!/<channel[\s>]/i.test(xml))throw new Error('Bing không trả kết quả RSS; có thể yêu cầu xác minh truy cập.');
+
   const decode=value=>String(value||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&(?:amp|lt|gt|quot|apos|#39);/g,m=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&apos;':"'",'&#39;':"'"}[m])).replace(/&#(x[0-9a-f]+|[0-9]+);/gi,(m,n)=>{const c=n[0].toLowerCase()==='x'?parseInt(n.slice(1),16):Number(n);return c>0&&c<=0x10ffff?String.fromCodePoint(c):'';});
   const clean=value=>decode(value).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
   const sources=[],parts=[],seen=new Set();
@@ -30,6 +30,33 @@ export async function requestWebSearch(env,query,send=fetch){
    const title=clean(field('title')||link.hostname).slice(0,150);seen.add(link.href);
    sources.push({title,url:link.href});parts.push('['+sources.length+'] '+title+'\n'+snippet+'\nNguồn: '+link.href);
    if(sources.length>=5)break;
+  }
+  if(!sources.length){
+   // RSS may be empty while the ordinary Bing results page has snippets.
+   url.searchParams.delete('format');
+   const fallback=await send(url.href,{headers:{Accept:'text/html','Accept-Language':'vi-VN,vi;q=0.9,en;q=0.8','User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36'},signal:controller.signal});
+   if(!fallback.ok)throw new Error('Bing HTTP '+fallback.status+'. Không thể đọc trang tìm kiếm dự phòng.');
+   const html=await fallback.text();
+   if(html.length>2*1024*1024)throw new Error('Phản hồi Bing quá lớn.');
+   for(const match of html.matchAll(/<li\b[^>]*class=["'][^"']*\bb_algo\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)){
+    const heading=match[1].match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/i);
+    const anchor=heading?.[1].match(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    const paragraph=match[1].match(/<p\b[^>]*>([\s\S]*?)<\/p>/i);
+    if(!anchor||!paragraph)continue;
+    let link;try{
+     link=new URL(decode(anchor[1]),'https://www.bing.com');
+     if(link.hostname.endsWith('.bing.com')&&link.pathname==='/ck/a'){
+      const target=link.searchParams.get('u')||'';
+      link=new URL(target.startsWith('a1')?atob(target.slice(2).replace(/-/g,'+').replace(/_/g,'/')):target);
+     }
+    }catch{continue;}
+    if(!['https:','http:'].includes(link.protocol)||link.username||link.password||seen.has(link.href)||link.hostname==='bing.com'||link.hostname.endsWith('.bing.com'))continue;
+    const snippet=clean(paragraph[1]).slice(0,400),title=clean(anchor[2]).slice(0,150);
+    if(!snippet||!title)continue;
+    seen.add(link.href);sources.push({title,url:link.href});
+    parts.push('['+sources.length+'] '+title+'\n'+snippet+'\nNguồn: '+link.href);
+    if(sources.length>=5)break;
+   }
   }
   if(!sources.length)throw new Error('Bing không trả trích đoạn và nguồn phù hợp. Hãy đổi từ khóa.');
   return {success:true,answer:'Trích đoạn Bing chưa phải toàn văn tài liệu.\n'+parts.join('\n\n'),sources,source:'bing_search',searched_at:new Date().toISOString()};
