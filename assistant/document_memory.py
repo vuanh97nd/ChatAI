@@ -82,6 +82,21 @@ def normalize_exponents(text):
 _CONTINUATION=re.compile(r'\s*(?:tiếp tục|tiếp|thử lại|chạy lại|làm lại|làm tiếp|ok|đồng ý|new project|tính đi|làm đi)\b',re.I)
 
 
+def requested_product(messages):
+    """Use the user's explicit product, never an assistant's chapter guess."""
+    for message in reversed((messages or [])[-30:]):
+        if message.get('role')!='user' or not isinstance(message.get('content'),str):continue
+        products=set(re.findall(r'\b([23])\s*d\b',message['content'],re.I))
+        if len(products)==1:return next(iter(products))+'d'
+        if len(products)>1:return None
+    return None
+
+
+def manual_product(record):
+    match=re.search(r'plaxis[ _-]*([23])d(?=[^A-Za-z0-9]|$)',record['file']+' '+record['text'][:300],re.I)
+    return match.group(1)+'d' if match else None
+
+
 def requested_tutorial(messages):
     """The tutorial number the user asked for ("bài 2", "tutorial 3"), following short
     continuation messages back to the message that named it."""
@@ -144,21 +159,31 @@ class DocumentMemory:
         model cannot substitute the numbering of another PLAXIS version it remembers."""
         number=requested_tutorial(messages)
         if number is None:return None
+        product=requested_product(messages)
+        records=self.records(owner)
+        if product:records=[d for d in records if manual_product(d)==product]
+        elif len({manual_product(d) for d in records if manual_product(d)})>1:
+            return None  # A chapter number alone cannot select between 2D and 3D.
         votes={}
-        for d in self.records(owner):
+        for d in records:
             info=tutorial_from_contents(d['text'],number)
             if info:
-                key=(info['title'],info['page'])
-                votes.setdefault(key,dict(info,file=d['file'],count=0))['count']+=1
+                key=(d['file'],manual_product(d),info['title'],info['page'])
+                votes.setdefault(key,dict(info,file=d['file'],product=manual_product(d) or product,count=0))['count']+=1
         if not votes:return None
         best=max(votes.values(),key=lambda v:v['count'])
+        task=next((m.get('content','') for m in reversed(messages or [])
+                   if m.get('role')=='user' and re.search(r'(?:bài|chương|tutorial|lesson)\s*(?:số\s*)?'+str(number)+r'\b',str(m.get('content','')),re.I)),'')
+        case=re.search(r'\bcase\s+([ABC])\b',task,re.I)
+        best['case']=case.group(1).upper() if case else None
+        matching=[d for d in records if d['file']==best['file']]
         steps=[]
-        for d in self.records(owner):
+        for d in matching:
             steps=tutorial_steps(d['text'],number)
             if steps:break
         best['steps']=steps
         coords=set()
-        for d in self.records(owner):
+        for d in matching:
             coords|=tutorial_coordinates(d['text'],best['page'],best.get('end'))
         best['coords']=sorted(coords)
         return best
@@ -278,6 +303,9 @@ class DocumentMemory:
         elif not words:
             docs=docs[:1]
         if not docs:return ''
+        product=requested_product(messages or [{'role':'user','content':query}])
+        if product and re.search(r'plaxis|manual|tutorial|bài\s*\d|chương',topic,re.I):
+            docs=[d for d in docs if manual_product(d) in (product,None)]
         docs=_distinct(docs)
         sections=[];remaining=limit
         for d in docs[:5]:

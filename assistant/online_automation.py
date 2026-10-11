@@ -618,9 +618,14 @@ def tutorial_unread(state,args,store):
         first=(row.get('args') or [None])[0]
         return not (row['command']=='setproperties' and isinstance(first,dict) and first.get('ref')=='g.Project')
     if not any(builds(r) for r in rows if isinstance(r,dict)):return None
+    if tutorial.get('product') and args.get('version')!=tutorial['product']:
+        return ('Sai manual/phiên bản mô hình: bài hiện tại là PLAXIS '+tutorial['product'].upper()+
+                ', không gửi lệnh dựng sang '+str(args.get('version'))+'. Giữ nguyên dự án và chọn đúng manual.')
     low=tutorial['page']-3;high=(tutorial.get('end') or tutorial['page']+25)+3
     pages=set()
     for _,item in _pdf_reads(state.get('messages',[])):
+        source=str(item.get('path') or item.get('file') or '')
+        if tutorial.get('file') and PureWindowsPath(source).name!=PureWindowsPath(tutorial['file']).name:continue
         for location in item.get('locations',[]):
             if str(location).split()[-1].isdigit():pages.add(int(str(location).split()[-1]))
     try:
@@ -1410,18 +1415,23 @@ class OnlineAutomation:
             volatile+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'],limit=30000 if reading else 6000)
             volatile+=pdf_read_map(state['messages'])
             tutorial=DocumentMemory(self.store).tutorial(state.get('account_username',''),state['messages'])
-            if not tutorial and state.get('tutorial') and not new_unrelated_task(question):
+            from .document_memory import requested_product,requested_tutorial
+            prior=state.get('tutorial') or {}
+            selected_product=requested_product(state['messages'])
+            selected_number=requested_tutorial(state['messages'])
+            can_reuse=(selected_product is not None or selected_number is None) and (not selected_product or prior.get('product')==selected_product) and (selected_number is None or prior.get('number')==selected_number)
+            if not tutorial and prior and can_reuse and not new_unrelated_task(question):
                 # "tra mạng đi", "không biết thì tìm trên mạng" still belong to the tutorial.
                 tutorial=state['tutorial']
             state['tutorial']=tutorial
             if tutorial:
                 span=f"trang {tutorial['page']}"+(f"–{tutorial['end']}" if tutorial.get('end') else '')
-                volatile+=(f"\n\nBÀI ĐANG LÀM (theo mục lục của {tutorial['file']}): Bài {tutorial['number']} = "
+                volatile+=(f"\n\nBÀI ĐANG LÀM: PLAXIS {str(tutorial.get('product') or 'chưa xác định').upper()}, case {tutorial.get('case') or 'chưa chốt'} (theo mục lục của {tutorial['file']}): Bài {tutorial['number']} = "
                               f"\"{tutorial['title']}\", {span} (số trang theo mục lục, trang PDF có thể lệch vài trang). "
                               "Dùng đúng tên và phạm vi trang này, không dùng cách đánh số của phiên bản PLAXIS khác mà bạn nhớ. "
                               "Trước khi dựng mô hình phải đọc các trang của bài này bằng pdf_read (page hoặc query theo tên bài) "
                               "và lấy mọi số liệu từ đó. Khi xác nhận tên bài với người dùng, ghi rõ 'theo mục lục manual'. "
-                              "Chỉ nói đã xong bài khi đã làm MỌI phase/bước tính trong manual (kể cả phân tích an toàn) và đã đọc kết quả "
+                              "Chỉ nói đã xong bài khi đã làm MỌI phase/bước tính của case đã chọn trong manual (kể cả phân tích an toàn) và đã đọc kết quả "
                               "mà manual nêu (ví dụ hệ số an toàn, độ lún), rồi so với giá trị manual. Nếu mới xong một phần, mở đầu bằng "
                               "'Đã làm xong phần …; còn thiếu …' và liệt kê các bước còn lại. "
                               "Chỉ làm các mục trong bảng kiểm của bài; không tự thêm phase, phân tích an toàn hay bước khác "

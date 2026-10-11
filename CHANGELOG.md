@@ -2,6 +2,8 @@
 
 ## Desktop 3.0.0
 
+- Chọn bài tutorial theo manual và 2D/3D, giữ case trong ngữ cảnh; không gom bảng kiểm/tọa độ từ manual khác hoặc dùng trang cùng số của file khác để xác nhận đã đọc.
+
 - Giảm lượt sửa lỗi phase bằng ánh xạ CalculationType sang DeformCalcType khi API đích hỗ trợ; sửa đường gọi hướng dẫn tutorial trong bộ điều khiển trực tuyến.
 - Đo/hiển thị thời gian phản hồi AI và ghi thời gian nhóm lệnh PLAXIS để phân biệt chờ model với tính toán.
 
