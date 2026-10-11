@@ -24,19 +24,19 @@ def save_device(session,device):
     temp=path.with_suffix('.tmp');temp.write_bytes(_dpapi(json.dumps(device).encode()));temp.replace(path)
 
 
-def register_device(session):
+def register_device(session,timeout=12):
     device=load_device(session)
     body={**session,'desktop_id':device['desktop_id'] if device else str(uuid.uuid4()),'name':socket.gethostname()[:100]}
     if device:body['desktop_secret']=device['desktop_secret']
-    result=request_account(session['endpoint'],'/api/remote/desktop/register',body)
+    result=request_account(session['endpoint'],'/api/remote/desktop/register',body,timeout=timeout)
     if not device:
         device={key:result[key] for key in ('desktop_id','desktop_secret')};save_device(session,device)
     return device
 
 
-def desktop_api(session,device,action,**body):
+def desktop_api(session,device,action,timeout=15,**body):
     return request_account(session['endpoint'],'/api/remote/desktop/'+action,
-                           {**body,**device,'username':session['username'],'key':session['key']},timeout=15)
+                           {**body,**device,'username':session['username'],'key':session['key']},timeout=timeout)
 
 
 class RemoteChannel(QThread):

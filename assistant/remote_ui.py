@@ -28,13 +28,23 @@ class RemoteMixin:
             QMessageBox.information(self,'Kết nối điện thoại','Dừng hoặc kết thúc tác vụ hiện tại trước khi tạo phiên kết nối mới.');return
         if not self.server_session:
             QMessageBox.information(self,'Kết nối điện thoại','Đăng nhập cùng tài khoản trên máy tính và điện thoại trước.');return
+        if self.busy():
+            QMessageBox.information(self,'Kết nối điện thoại','Máy tính đang xử lý yêu cầu khác. Chờ tác vụ kết thúc rồi mở kết nối điện thoại.');return
         session=dict(self.server_session)
+        self.status.setText('Đang kết nối server để ghép điện thoại…')
         def setup(emit):
-            device=register_device(session)
+            emit({'type':'status','text':'Kết nối điện thoại · 1/4: xác thực máy tính…'})
+            device=register_device(session,timeout=8)
             # The first explicit connection enables receipt; normal startup does not.
-            desktop_api(session,device,'enable',enabled=True)
-            return device,desktop_api(session,device,'pair'),desktop_api(session,device,'links')
+            emit({'type':'status','text':'Kết nối điện thoại · 2/4: bật nhận việc…'})
+            desktop_api(session,device,'enable',timeout=8,enabled=True)
+            emit({'type':'status','text':'Kết nối điện thoại · 3/4: tạo mã QR…'})
+            pair=desktop_api(session,device,'pair',timeout=8)
+            emit({'type':'status','text':'Kết nối điện thoại · 4/4: tải thiết bị đã ghép…'})
+            links=desktop_api(session,device,'links',timeout=8)
+            return device,pair,links
         def show(result):
+            self.status.setText('Đã tạo mã QR. Quét trên điện thoại rồi xác nhận trên máy tính.')
             device,pair,links=result;self.remote_device=device
             if self.remote_channel and self.remote_channel.isRunning():self.remote_channel.stop()
             self.remote_screen_allowed=False
