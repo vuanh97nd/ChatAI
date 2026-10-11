@@ -363,11 +363,8 @@ def phase_changes(g,session=None):
     """Per calculation phase: what it switches on/off or re-assigns relative to its
     previous phase. Empty for objects whose per-phase state cannot be read.
 
-    Before a phase is calculated PLAXIS reports objects the phase did not set explicitly
-    with un-inherited values (seen: Phase_2 "switched off" the wall and load it never
-    touched, and missed the soil it did switch off). For such phases the explicit
-    activations/materials logged from this session's commands are used instead."""
-    log=(session or {}).get('phase_log',{})
+    Read phase-scoped values (including the guarded tabulate fallback). Session
+    commands are historical hints, not evidence that replaces current values."""
     try:phases=list(g.Phases)
     except Exception:return []
     objects=[]
@@ -378,10 +375,8 @@ def phase_changes(g,session=None):
         current={}
         for name,obj,soil in objects:
             try:
-                active=_value(obj.Active[phase])
-                if active is None:
-                    from .plaxis_stage_guard import active as read_active
-                    active=read_active(obj,phase,g)
+                from .plaxis_stage_guard import active as read_active
+                active=read_active(obj,phase,g)
                 if type(active) is not bool:continue
             except Exception:continue
             material=None
@@ -404,13 +399,9 @@ def phase_changes(g,session=None):
         except Exception:kind=None
         try:pending=bool(_value(phase.ShouldCalculate))
         except Exception:pending=True
-        explicit=pending and session is not None
-        if explicit:
-            entries=log.get(name,{})
-            on=sorted(k for k,v in entries.items() if v==('active',True))
-            off=sorted(k for k,v in entries.items() if v==('active',False))
-            mats=sorted(k for k,v in entries.items() if v[0]=='material')
-            after=entries
+        # A session log may be absent after remeshing/restart and is not model
+        # evidence. Never replace live phase differences with that log.
+        explicit=False
         unreadable=sorted((set(n for n,_,_ in objects)-set(states.get(name,{})))|
                           (set(n for n,_,_ in objects)-set(states.get(previous,{}))))
         rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'unreadable':unreadable,'on':on,'off':off,'materials':mats,

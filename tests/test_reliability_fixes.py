@@ -871,12 +871,12 @@ class UncalculatedPhaseTests(unittest.TestCase):
             setattr(g, attr, [])
         return g
 
-    def test_uncalculated_phase_uses_logged_commands(self):
+    def test_uncalculated_phase_does_not_replace_live_values_with_logs(self):
         from assistant.plaxis_commands import phase_changes
         session = {'phase_log': {'Phase_2': {'Soil_1_1': ('active', False)}}}
         row = [r for r in phase_changes(self.staged(), session) if r['phase'] == 'Phase_2'][0]
-        self.assertEqual((row['on'], row['off']), ([], ['Soil_1_1']))
-        self.assertTrue(row['explicit'])
+        self.assertEqual((row['on'], row['off']), ([], ['Plate_1_1']))
+        self.assertFalse(row['explicit'])
 
     def test_set_active_is_logged(self):
         from tests.test_plaxis_stage_guard import StageGuardTest

@@ -8,6 +8,25 @@ from assistant.windows_apps import resume_automation
 
 class TabulatedActiveTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_calculation_uses_live_phase_differences_with_empty_session_log(self):
+        from assistant.plaxis_commands import execute_commands
+        from tests.test_plaxis_stage_guard import StageGuardTest
+        fixture=StageGuardTest();fixture.setUp()
+        class Opaque(dict):
+            def __getitem__(self,key):raise AttributeError('phase proxy unreadable')
+        try:
+            fixture.soil.Active=Opaque({fixture.initial:True,fixture.phase:False})
+            fixture.outside.Active=Opaque({fixture.initial:True,fixture.phase:True})
+            fixture.phase.DeformCalcType=4;fixture.phase.ShouldCalculate=True
+            fixture.g.Phases=[fixture.initial,fixture.phase]
+            fixture.g.calculate=Mock(return_value='calculated')
+            def table(obj,phase,field=None):
+                return 'Object\tActive\n'+phase.Name+"'\t"+str(dict.__getitem__(obj.Active,phase))
+            fixture.g.tabulate=table
+            result=execute_commands(Mock(),fixture.g,[{'command':'calculate','args':[]}],session=fixture.session)
+            self.assertTrue(result['ok'],result)
+            fixture.g.calculate.assert_called_once_with()
+        finally:fixture.tearDown()
     def test_native_cutobject_text_bounds_and_region_guard(self):
         from assistant.plaxis_stage_guard import bounds,textual_bounds
         from tests.test_plaxis_stage_guard import StageGuardTest
