@@ -50,6 +50,22 @@ def active(obj,phase,g=None):
     return result
 
 
+def textual_bounds(box):
+    """Decode the native CutObject min/max string without guessing tuple order."""
+    match=re.fullmatch(r'\s*min:\s*\(([^()]*)\)\s*max:\s*\(([^()]*)\)\s*',box)
+    if not match:raise StageGuardError('BoundingBox văn bản không đúng dạng min: (...) max: (...).')
+    groups=[part.split(';') for part in match.groups()]
+    if len(groups[0]) not in (2,3) or len(groups[0])!=len(groups[1]):
+        raise StageGuardError('BoundingBox phải có cùng 2 hoặc 3 tọa độ min/max.')
+    numeric=r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?'
+    if any(not re.fullmatch(numeric,token.strip()) for group in groups for token in group):
+        raise StageGuardError('BoundingBox chứa tọa độ không hợp lệ.')
+    lows,highs=[[float(token.strip()) for token in group] for group in groups]
+    if any(not math.isfinite(n) for n in lows+highs) or any(lo>hi for lo,hi in zip(lows,highs)):
+        raise StageGuardError('BoundingBox không hữu hạn hoặc min > max; không xác minh vùng.')
+    return {axis:[lo,hi] for axis,lo,hi in zip(('x','y','z'),lows,highs)}
+
+
 def bounds(obj,g=None):
     def read(target,attribute):
         try:return value(getattr(target,attribute))
@@ -67,6 +83,7 @@ def bounds(obj,g=None):
         if geometry is None or str(geometry) in seen:break
         seen.add(str(geometry))
         box=read(geometry,'BoundingBox');result={}
+        if isinstance(box,str):return textual_bounds(box)
         for axis in ('x','y','z'):
             interval=None
             for prefix in (axis,axis.upper()):

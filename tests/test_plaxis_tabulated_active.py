@@ -8,6 +8,29 @@ from assistant.windows_apps import resume_automation
 
 class TabulatedActiveTests(unittest.TestCase):
     def setUp(self):resume_automation()
+    def test_native_cutobject_text_bounds_and_region_guard(self):
+        from assistant.plaxis_stage_guard import bounds,textual_bounds
+        from tests.test_plaxis_stage_guard import StageGuardTest
+        for raw,expected in (
+            ('min: (40.00; 27.00; 0.00) max: (40.00; 30.00; 0.00)',{'x':[40,40],'y':[27,30],'z':[0,0]}),
+            ('min: (0.00; 27.00; 0.00) max: (40.00; 30.00; 0.00)',{'x':[0,40],'y':[27,30],'z':[0,0]}),
+            ('min: (-1e1; -5) max: (2.0E1; 0)',{'x':[-10,20],'y':[-5,0]})):
+            self.assertEqual(bounds(NS(Parent=NS(BoundingBox=NS(value=raw)))),expected)
+        for raw in ('min: (nan; 0) max: (1; 2)',
+                    'min: (0; 0) max: (1; 2; 3)',
+                    'min: (2; 0) max: (1; 2)',
+                    'min: (0; 0) max: (1e999; 2)',
+                    'min: (0; 0) max: (1; 2) trailing'):
+            with self.assertRaises(StageGuardError):textual_bounds(raw)
+        fixture=StageGuardTest();fixture.setUp()
+        try:
+            fixture.soil.Parent.BoundingBox='min: (10; -5; 0) max: (15; 0; 0)'
+            self.assertTrue(fixture.verify()['ok'])
+            self.assertTrue(fixture.change()['ok'])
+            fixture.soil.Parent.BoundingBox='min: (0; -5; 0) max: (15; 0; 0)'
+            self.assertFalse(fixture.verify()['ok'])
+            self.assertEqual(len(fixture.calls),1)
+        finally:fixture.tearDown()
     def test_geometry_bounds_follow_parent_and_linked_points(self):
         from assistant.plaxis_stage_guard import bounds
         vertices=[NS(x=40,y=14),NS(x=40,y=30)]
