@@ -422,7 +422,21 @@ def verification_block_message(observed):
     reason=str(observed.get('error') or observed.get('note') or '')
     if reason.startswith('Nhóm lệnh ghi này đã chạy thành công'):
         return 'Đã chặn lệnh ghi trùng, không gửi thêm thao tác. '+reason
-    return 'Chưa xác minh hoàn tất thao tác. '+reason+' Cần đọc lại trạng thái/file trước khi tiếp tục.'
+    detail=''
+    command=observed.get('failed_command')
+    args=observed.get('failed_args')
+    if observed.get('failed_properties'):
+        failed=observed['failed_properties'][0]
+        command=failed.get('command',command)
+        args=failed.get('args',args)
+    if command:
+        detail+='\nLệnh: '+str(command)
+        if args is not None:detail+='\nArgs: '+json.dumps(args,ensure_ascii=False)[:2000]
+    if observed.get('signature'):detail+='\nChữ ký API: '+str(observed['signature'])[:1800]
+    if 'Invalid parameters' in reason:
+        action=' Không gửi lại nguyên lệnh lỗi; đối chiếu args với chữ ký và chỉ sửa bước này. Lệnh lỗi tham số không chứng minh mô hình sai.'
+    else:action=' Cần đọc lại trạng thái/file trước khi tiếp tục.'
+    return 'Chưa xác minh hoàn tất thao tác. '+reason+detail+action
 
 
 _PLAXIS_MODE_SWITCHES={'gotosoil','gotostructures','gotomesh','gotostages','gotoflow'}

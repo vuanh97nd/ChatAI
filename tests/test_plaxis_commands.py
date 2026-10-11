@@ -13,6 +13,19 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_invalid_parameters_reports_failed_command_args_and_signature(self):
+        from assistant.online_automation import verification_block_message
+        g=SimpleNamespace(waterlevel=Mock(side_effect=RuntimeError('Invalid parameters')),
+                          commands=Mock(return_value='waterlevel (wl)\n  Coords Coords'))
+        args=[[0,23],[40,20]]
+        result=execute_commands(Mock(),g,[{'command':'waterlevel','args':args}])
+        self.assertEqual(result['failed_command'],'waterlevel')
+        self.assertEqual(result['failed_args'],args)
+        text=verification_block_message(result)
+        self.assertIn('Lệnh: waterlevel',text)
+        self.assertIn('Args: [[0, 23], [40, 20]]',text)
+        self.assertIn('Chữ ký API:',text)
+        self.assertNotIn('Cần đọc lại trạng thái/file',text)
     def test_waterlevel_serializes_distinct_coordinate_pairs(self):
         from plxscripting.server import InputProcessor
         pairs=[[0,23],[40,20],[60,20],[100,23]]

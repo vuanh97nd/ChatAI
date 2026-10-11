@@ -815,11 +815,12 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 except Exception:target=None
                 names=[args[i] for i in range(1,len(args),2) if isinstance(args[i],str)]
                 hint=_property_hint(g,target,names[0] if names else '',exc) if target is not None else ''
-                failed_properties.append({'step':index+1,'properties':names[:6],'error':str(exc)[:300],**({'hint':hint} if hint else {})})
+                failed_properties.append({'step':index+1,'command':'setproperties','args':row.get('args',[]),'properties':names[:6],'error':str(exc)[:300],**({'hint':hint} if hint else {})})
                 results.append({'step':index+1,'command':'setproperties','value':None,'error':str(exc)[:300],**({'hint':hint} if hint else {})})
                 continue
             remaining=[r.get('command','?')+json.dumps(r.get('args',[]),ensure_ascii=False)[:70] for r in rows[index+1:]]
             failure={'ok':False,'results':results,'failed_step':index+1,'failed_command':row['command'],
+                    'failed_args':row.get('args',[]),
                     'error':str(exc)[:2000],'command_started':started,'uncertain':started,
                     'not_executed':not results and not started,
                     'note':'Đã dừng tại bước lỗi. Không chạy lại những bước đã thực hiện; đọc trạng thái hiện tại trước khi sửa.'}
@@ -830,7 +831,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                 failure['note']+=f' {len(remaining)} lệnh sau bước lỗi CHƯA chạy (xem not_run); gửi lại các lệnh đó sau khi sửa.'
             if row['command']=='set' and len(row.get('args',[]))==3 and isinstance(row['args'][2],bool):
                 ref=row['args'][0].get('ref','') if isinstance(row['args'][0],dict) else ''
-                if not ref.endswith('.Active'):
+                if '.' not in ref:
                     failure['activation_hint']=('Kích hoạt theo phase phải đặt thuộc tính Active của đối tượng, dùng tên đối tượng: '
                         'set [{"ref":"Plate_1_1.Active"},{"ref":"p1"},true]. Đọc tên ở g.Plates/g.LineLoads/g.Interfaces trong model_state.')
             if re.search(r"Requested attribute 'Phase_\d+' is not present|Requested attribute 'Phases' is not present",str(exc)):
