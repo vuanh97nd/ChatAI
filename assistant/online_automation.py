@@ -415,6 +415,13 @@ def remember_working_forms(state,call,result):
     del learned[:-15]
 
 
+def verification_block_message(observed):
+    reason=str(observed.get('error') or observed.get('note') or '')
+    if reason.startswith('Nhóm lệnh ghi này đã chạy thành công'):
+        return 'Đã chặn lệnh ghi trùng, không gửi thêm thao tác. '+reason
+    return 'Chưa xác minh hoàn tất thao tác. '+reason+' Cần đọc lại trạng thái/file trước khi tiếp tục.'
+
+
 def stuck_command(state,args):
     """Stop the 4th try of a command that keeps failing with the same error this turn."""
     try:rows=json.loads(args.get('commands','[]')) if isinstance(args.get('commands'),str) else args.get('commands',[])
@@ -442,8 +449,9 @@ def stuck_command(state,args):
             if json.dumps(previous,sort_keys=True,ensure_ascii=False)==key and '"ok": true' in str(reply.get('content','')):repeats+=1
         if repeats>=2:
             return (f'Nhóm lệnh ghi này đã chạy thành công {repeats} lần trong lượt; gửi lại không thay đổi gì. Xem readback trong kết quả: '
-                    'nếu giá trị đã đúng thì chuyển sang bước tiếp; nếu model_state vẫn báo không đổi, kiểm tra phase gốc (phase sau phải nối tiếp phase trước) '
-                    'và đúng tên đối tượng, hoặc đọc lại mục của manual.')
+                    'nếu giá trị đã đúng thì đánh dấu nhóm này hoàn thành và lập lệnh cho hạng mục còn thiếu. '
+                    'Không coi việc chặn lệnh trùng là lỗi ghi hoặc yêu cầu đọc lại toàn mô hình/manual. '
+                    'Chỉ đọc lại đúng đối tượng/phase nếu có bằng chứng mâu thuẫn. Nếu đủ cấu hình, verify_model rồi calculate; không bỏ kiểm chứng.')
     for (command,error),count in counts.items():
         if command in planned and count>=3:
             return (f"Lệnh {command} đã thất bại {count} lần trong lượt này với cùng lỗi ({error[:120]}). Không thử thêm biến thể đoán mò: "
@@ -1644,7 +1652,7 @@ class OnlineAutomation:
                         try:observed=json.loads(latest.get('content','{}'))
                         except (ValueError,TypeError):observed={}
                         if observed.get('uncertain') or observed.get('ok') is False:
-                            text='Chưa xác minh hoàn tất thao tác. '+str(observed.get('error') or observed.get('note') or '')+' Cần đọc lại trạng thái/file trước khi tiếp tục.'
+                            text=verification_block_message(observed)
                     state['messages'].append({'role':'assistant','content':text});state['running']=False
                     yield {'type':'token','text':text}
             except (ValueError,KeyError,TypeError):

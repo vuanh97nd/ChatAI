@@ -13,6 +13,12 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_duplicate_success_message_does_not_require_rereading_everything(self):
+        from assistant.online_automation import verification_block_message
+        text=verification_block_message({'ok':False,'error':'Nhóm lệnh ghi này đã chạy thành công 2 lần trong lượt'})
+        self.assertIn('Đã chặn lệnh ghi trùng',text)
+        self.assertNotIn('Cần đọc lại trạng thái/file',text)
+        self.assertIn('Chưa xác minh',verification_block_message({'ok':False,'error':'Readback mismatch'}))
     def test_indexed_collection_is_resolved_before_parent_properties(self):
         parent=SimpleNamespace(BoundingBox=[40,14,40,30],Geometry='native geometry')
         g=SimpleNamespace(Plates=[SimpleNamespace(Parent=parent)])
