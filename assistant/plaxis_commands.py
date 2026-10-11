@@ -407,7 +407,8 @@ def phase_changes(g,session=None):
             off=sorted(k for k,v in entries.items() if v==('active',False))
             mats=sorted(k for k,v in entries.items() if v[0]=='material')
             after=entries
-        unreadable=sorted(set(n for n,_,_ in objects)-set(states.get(name,{})))
+        unreadable=sorted((set(n for n,_,_ in objects)-set(states.get(name,{})))|
+                          (set(n for n,_,_ in objects)-set(states.get(previous,{}))))
         rows.append({'phase':name,'previous':previous,'kind':kind,'pending':pending,'unreadable':unreadable,'on':on,'off':off,'materials':mats,
                      'explicit':explicit,'state':tuple(sorted(after.items()))})
     return rows
@@ -905,8 +906,13 @@ def model_snapshot(g,limit=2400,session=None,version=None):
         if row['on']:parts.append('bật '+', '.join(row['on'][:6]))
         if row['off']:parts.append('tắt '+', '.join(row['off'][:6]))
         if row['materials']:parts.append('đổi vật liệu '+', '.join(row['materials'][:4]))
+        if row.get('unreadable'):
+            parts.append('CHƯA XÁC ĐỊNH Active ở phase này hoặc phase cha: '+', '.join(row['unreadable'][:6])+
+                         '; không kết luận phase trống hoặc chưa thiết lập')
         label=' [chưa tính; theo lệnh đã đặt]' if row.get('explicit') else ''
-        lines.append(f"{row['phase']} (từ {row['previous']}){label}: "+('; '.join(parts) if parts else 'KHÔNG THAY ĐỔI GÌ'))
+        empty=('Chưa có thay đổi trong nhật ký phiên này; không chứng minh phase trống' if row.get('explicit') else
+               'Không thấy thay đổi Active/vật liệu đã đọc; chưa kiểm tra các tải, chuyển vị và thiết lập phase khác')
+        lines.append(f"{row['phase']} (từ {row['previous']}){label}: "+('; '.join(parts) if parts else empty))
     missing=_soils_without_material(g)
     if missing:
         lines.append('CHƯA CÓ VẬT LIỆU: '+', '.join(missing[:10])+' (chỉ các khối này cần gán; khối khác đã có vật liệu)')

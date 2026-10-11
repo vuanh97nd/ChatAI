@@ -198,6 +198,7 @@ def inspect(g,phase,objects):
 
 
 STAGE_INSTRUCTION = (
+    '\nActive=None/null là chưa đọc được, không chứng minh phase trống hoặc chưa thiết lập staged construction. Nhật ký phiên không có lệnh cũng không chứng minh phase trống; có thể người dùng đã thiết lập trong UI hoặc phiên trước. Thiếu OCR mục staged construction: tự đọc lại đúng trang/ảnh còn thiếu hoặc nguồn chính thức trước khi hỏi người dùng số liệu, không đọc lại toàn bộ manual. '
     '\ninspect_stage, verify_stage, inspect_progress, plan_resume là wrapper của Chat AI trong plaxis_commands, không phải phương thức của g. Gọi bằng trường command; không dùng info/signature/read g.inspect_stage hay g.verify_stage để dò sự tồn tại. '
     '\nNếu tiếp tục bài đang dở: inspect_progress/plan_resume args [chuỗi JSON với source và checks (ref,expected,stage; thêm phase cho Active)] đọc trạng thái thật; expected lấy từ manual, không tự đặt. Với Active thêm phase và expected boolean. Giữ verified, sửa missing_or_wrong, chẩn đoán unreadable trước khi ghi; không dựng lại chỉ vì lỗi đọc. '
     'Schema inspect_progress/plan_resume: stage=project/soil/materials/geometry/mesh/phases/activation/calculate/output; kind chỉ value hoặc count (mặc định value). Không dùng kind=soil/plate/anchor của verify_stage ở đây; không đặt Phase_1 vào stage. Active dùng stage=activation, kind=value, phase=g.Phase_1; đếm g.Plates dùng stage=geometry, kind=count. '

@@ -58,6 +58,19 @@ class ProgressTests(unittest.TestCase):
                 specification(json.dumps({'source':'Manual','checks':[{'ref':'g.Soil_1_1.Active','phase':'g.Phase_1','expected':value}]}))
         with self.assertRaisesRegex(ValueError,'bỏ phase'):
             specification(json.dumps({'source':'Manual','checks':[{'ref':'g.Soils','phase':'g.Phase_1','expected':1,'kind':'count'}]}))
+
+    def test_snapshot_never_calls_unreadable_or_unlogged_phase_empty(self):
+        from assistant.plaxis_commands import model_snapshot
+        from unittest.mock import patch
+        phase={'phase':'Phase_1','previous':'InitialPhase','on':[],'off':[],'materials':[],
+               'explicit':True,'unreadable':['NegativeInterface_1']}
+        g=NS(Phases=[NS(Name='InitialPhase'),NS(Name='Phase_1')])
+        with patch('assistant.plaxis_commands.phase_changes',return_value=[phase]),patch('assistant.plaxis_commands._soils_without_material',return_value=[]):
+            text=model_snapshot(g)
+            self.assertIn('CHƯA XÁC ĐỊNH',text)
+            self.assertNotIn('KHÔNG THAY ĐỔI GÌ',text)
+            phase['unreadable']=[]
+            self.assertIn('không chứng minh phase trống',model_snapshot(g))
     def model(self,states=[True]):
         phase=NS(Name='Phase_1');soil=NS(Name='Soil_1_1',Active=PhaseProperty(states))
         return NS(Project=NS(ModelType=0),Soils=[soil],Phases=[phase],Materials=[],Plates=[],Soil_1_1=soil,Phase_1=phase)
