@@ -19,6 +19,10 @@ def load_config():
 
 def validate_config(cfg):
     cfg = dict(cfg)
+    from .communication import validate_methods
+    validate_methods(cfg)
+    from .application_transport import validate_connections
+    validate_connections(cfg)
     cfg.setdefault('procedure_training_enabled',False)
     if type(cfg['procedure_training_enabled']) is not bool:raise ValueError('Chế độ đào tạo AI phải là bật/tắt.')
     cfg.setdefault('ai_tools_auto_execute',False)
@@ -90,6 +94,16 @@ def validate_config(cfg):
         raise ValueError('Token hoặc độ sáng tạo ngoài giới hạn.')
     if not 12 <= cfg.get('font_size',16) <= 22:
         raise ValueError('Cỡ chữ phải từ 12 đến 22.')
+    cfg.setdefault('task_user_folders_enabled',False)
+    if type(cfg['task_user_folders_enabled']) is not bool:
+        raise ValueError('Quyền thư mục công việc phải là bật/tắt.')
+    extra=cfg.setdefault('task_extra_folders',[])
+    if not isinstance(extra,list) or len(extra)>30 or any(not isinstance(p,str) or not p or len(p)>1000 for p in extra):
+        raise ValueError('Danh sách thư mục công việc không hợp lệ.')
+    cfg['whitelist']=list(cfg['whitelist'])
+    if cfg['task_user_folders_enabled']:
+        from .autonomy import windows_work_folders
+        cfg['whitelist']=list(dict.fromkeys(cfg['whitelist']+windows_work_folders(extra)))
     roots = [(ROOT / p).resolve() for p in cfg["whitelist"]]
     if not roots:
         raise ValueError("Whitelist không được rỗng.")

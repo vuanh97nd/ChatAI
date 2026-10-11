@@ -157,6 +157,37 @@ class SettingsTest(unittest.TestCase):
         with self.assertRaises(ValueError):self.ui.save_settings()
         self.assertEqual((self.root/'config.json').read_bytes(),before)
 
+    def test_work_folder_grant_is_opt_in_and_persists(self):
+        folder=self.root/'Documents';folder.mkdir()
+        cfg=config.load_config()
+        with patch('assistant.autonomy.windows_work_folders',return_value=[str(folder)]) as discover:
+            checked=config.validate_config(cfg)
+            discover.assert_not_called()
+            self.assertNotIn(str(folder),checked['whitelist'])
+            checked['task_user_folders_enabled']=True
+            saved=config.save_config(checked)
+            self.assertIn(str(folder),saved['whitelist'])
+            self.assertIn(folder,saved['roots'])
+            self.assertIn(str(folder),config.load_config()['whitelist'])
+        with self.assertRaises(ValueError):
+            config.validate_config(dict(cfg,task_user_folders_enabled='yes'))
+
+    def test_invalid_extra_folder_settings_are_rejected(self):
+        cfg=config.load_config()
+        for value in ('C:/Users',[None],['']):
+            with self.assertRaises(ValueError):config.validate_config(dict(cfg,task_extra_folders=value))
+
+    def test_communication_selection_persists_and_discards(self):
+        u=self.ui
+        u.communication_checks={'com':Check(True),'uia':Check(True)}
+        u.communication_checks['com'].setChecked(False)
+        self.assertTrue(u.settings_dirty());u.save_settings()
+        self.assertFalse(config.load_config()['communication_methods']['com'])
+        u.communication_checks['com'].setChecked(True)
+        u.discard_settings()
+        self.assertFalse(u.communication_checks['com'].isChecked())
+        self.assertFalse(u.settings_dirty())
+
     def test_discard_restores_fields_without_writing(self):
         before=(self.root/'config.json').read_bytes();self.ui.settings_fields['font_size'].setValue(20)
         self.ui.discard_settings();self.assertFalse(self.ui.settings_dirty());self.assertEqual((self.root/'config.json').read_bytes(),before)

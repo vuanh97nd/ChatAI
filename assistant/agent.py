@@ -176,6 +176,11 @@ class Agent:
                 if previous.get('role') == 'tool':previous.pop('images', None)
         state['messages'].append(recorded)
         state["queue"].pop(0)
+        from .communication import connection_failure_answer
+        answer=connection_failure_answer(call['function']['name'],result)
+        if answer:
+            state['messages'].append({'role':'assistant','content':answer})
+            state.update(running=False,queue=[],pending=None)
         self.save(state)
         return artifacts
 
@@ -215,7 +220,10 @@ class Agent:
             else:
                 result = {"ok": False, "denied": True, "error": "Người dùng từ chối thao tác."}
         except Exception as exc:
+            from .communication import MethodRequired,CONNECTION_WRITES
             result = {"ok": False, "error": str(exc)}
+            if call['function']['name'] in CONNECTION_WRITES:
+                result.update(method_required=isinstance(exc,MethodRequired),uncertain=not isinstance(exc,MethodRequired))
         state["pending"] = None
         artifacts=self.tool_result(state, call, result)
         if allowed:self.finish_media_only(state,call['function']['name'],result,artifacts)
@@ -452,6 +460,12 @@ class Agent:
                               self.capabilities.read(name, args) if self.capabilities else registry[name](**args))
                 except Exception as exc:
                     result = {"ok": False, "error": str(exc)}
+                    from .communication import MethodRequired
+                    if isinstance(exc,MethodRequired):
+                        text=str(exc)
+                        state['messages'].append({'role':'assistant','content':text})
+                        state.update(running=False,queue=[],pending=None);self.save(state)
+                        yield {'type':'token','text':text};return
                     self.store.audit(self.cid, "tool_error", {"name": name, "error": str(exc)})
                 self.tool_result(state, call, result)
             if state["rounds"] >= self.cfg["max_rounds"]:
@@ -509,6 +523,9 @@ class Agent:
                 review_needed=bool(state.get('deep_analysis') or state['routing'].get('complex') or state['routing'].get('high_accuracy'))
                 internal_stage=bool((plan.get('enabled') and plan['stage'] in ('media','vision')) or state.get('ui_mode') in (2,3))
                 instruction = SYSTEM if self.schemas else FAST_SYSTEM
+                if self.schemas:
+                    from .communication import method_status
+                    instruction+='\n'+method_status(self.cfg)
                 try:
                     from .text_normalize import abbreviation_hint
                     _last_user = next((m['content'] for m in reversed(state['messages']) if m['role']=='user' and isinstance(m.get('content'),str)), '')

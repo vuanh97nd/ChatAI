@@ -115,6 +115,17 @@ class OnlineAutomationTest(unittest.TestCase):
         self.assertEqual(self.committed[0]['action'],'windows_list_apps')
         self.assertIsNone(self.state['pending'])
 
+    def test_disabled_method_reports_required_setting_without_retry_or_execution(self):
+        self.cfg['communication_methods']={'win32':False}
+        self.agent.start(self.state,'mở Word','DeepSeek API','admin')
+        events=list(self.agent.run(self.state))
+        self.assertFalse(self.state['running'])
+        self.assertEqual(self.committed,[])
+        self.assertEqual(self.requests,[])
+        text=''.join(event.get('text','') for event in events if event['type']=='token')
+        self.assertIn('Cần bật phương thức Win32',text)
+        self.assertIn('Cài đặt → Phương thức kết nối',text)
+
     def test_explicit_task_grant_executes_model_proposal_without_confirmation(self):
         self.cfg['ai_tools_auto_execute']=True
         self.agent.windows.check=lambda:dict(self.cfg)

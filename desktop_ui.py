@@ -1974,6 +1974,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 from assistant.plaxis_app import PlaxisApp
                 from assistant.plaxis_remote import PlaxisRemoteApp
                 from assistant.geoslope_inspect import GeoslopeInspect
+                from assistant.windows_com import WindowsCOM
+                from assistant.application_transport import ApplicationTransport
+                from assistant.application_macros import ApplicationMacros
                 _plaxis_app=PlaxisApp(files,audit)
                 from assistant.online_office import OnlineOffice
                 from assistant.excel import ExcelTools
@@ -1984,7 +1987,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                     PDFSource(windows,files,audit,pdf_ocr=online_pdf_reader(cfg,session,cancel_event=self.worker.stop_requested,on_status=lambda text:emit({'type':'status','text':text}))),WordApp(windows,files),CadApp(windows,files,audit),Cad3DApp(windows,files,audit),
                     CdmLayoutApp(windows,files,audit),CadTracDocApp(windows,files,audit),
                     plaxis_app=_plaxis_app,plaxis_remote=PlaxisRemoteApp(_plaxis_app,on_status=lambda text:emit({'type':'status','text':text})),
-                    geoslope_inspector=GeoslopeInspect(files),office_tools=office_tools)
+                    geoslope_inspector=GeoslopeInspect(files),office_tools=office_tools,windows_com=WindowsCOM(windows,files,audit),
+                    application_transport=ApplicationTransport(cfg,audit,policy_path=ROOT/'config.json'),
+                    application_macros=ApplicationMacros(windows,files,audit))
                 if prompt is not None:
                     attachments=[]
                     for raw in attachment_paths:
@@ -2328,6 +2333,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         tools_group=QGroupBox('Công cụ trên máy');tools_form=QFormLayout(tools_group)
         self.ai_tools_auto_check=QCheckBox('AI tự thực hiện các công cụ trong phạm vi đã cấp quyền, không hỏi lại từng bước');self.ai_tools_auto_check.setChecked(self.cfg.get('ai_tools_auto_execute',False))
         tools_form.addRow(self.ai_tools_auto_check)
+        self.button(tools_form,'Cấp các quyền công việc cho AI',self.grant_work_permissions)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
         tools_form.addRow(self.auto_python_check)
         self.button(tools_form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
@@ -2335,6 +2341,26 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.settings_fields['max_rounds']=field;tools_form.addRow('Số vòng Agent trên máy',field)
         tools_note=QLabel('Điều khiển Word, Excel, CAD và chạy Python vẫn cần công cụ cài trên máy, kể cả khi AI lập kế hoạch qua API.');tools_note.setWordWrap(True);tools_form.addRow(tools_note)
         group_layout.addWidget(tools_group)
+        from assistant.communication import METHODS
+        connections=QGroupBox('Phương thức kết nối');connections_form=QVBoxLayout(connections)
+        self.communication_checks={}
+        for key,(label,supported,default) in METHODS.items():
+            if supported:
+                field=QCheckBox(label)
+                field.setChecked(self.cfg.get('communication_methods',{}).get(key,default))
+                self.communication_checks[key]=field;connections_form.addWidget(field)
+            else:
+                note=QLabel(label);note.setWordWrap(True);connections_form.addWidget(note)
+        note=QLabel('Bật phương thức cần dùng rồi Lưu cài đặt. AI sẽ báo phương thức còn thiếu khi nhận việc. Quyền tự thực hiện không tự bật các phương thức đang tắt. Các kết nối còn phụ thuộc phần mềm và thư viện đã cài.')
+        note.setWordWrap(True);connections_form.addWidget(note);group_layout.addWidget(connections)
+        connections_form.addWidget(QLabel('Kết nối ứng dụng (JSON): endpoint và chức năng được phép'))
+        self.application_connections_edit=QPlainTextEdit(json.dumps(self.cfg.get('application_connections',{}),ensure_ascii=False,indent=2))
+        self.application_connections_edit.setMaximumHeight(180)
+        self.application_connections_edit.setPlaceholderText('{"office_bridge":{"transport":"http","url":"http://127.0.0.1:8765/","actions":["capabilities","excel_com"]}}')
+        connections_form.addWidget(self.application_connections_edit)
+        self.button(connections_form,'Thêm kết nối ứng dụng…',self.add_application_connection)
+        hint=QLabel('HTTP/WS bên ngoài dùng HTTPS/WSS; IPC TCP dùng loopback, pipe dùng tên cục bộ. Token lấy qua token_env, không điền token vào chat. Plugin bridge phải chạy và ứng dụng đích phải có handler tương ứng. VBA chạy với quyền Office; AutoCAD có thể yêu cầu xác nhận nạp LSP/DVB trong ứng dụng.')
+        hint.setWordWrap(True);connections_form.addWidget(hint)
         layout.addWidget(group)
         self.api_key_group=QGroupBox('Key AI trực tuyến · Quản trị viên');api_form=QFormLayout(self.api_key_group);self.api_key_fields={};self.api_model_fields={}
         api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, OpenAI, Gemini và Groq. OpenAI chưa thiết lập bảng giá. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
@@ -2364,7 +2390,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         files = QGroupBox('Office và thư mục được phép'); box = QVBoxLayout(files)
         box.addWidget(QLabel('Excel, Word, PowerPoint. Mỗi dòng là một thư mục whitelist.'))
         self.settings_roots = QPlainTextEdit('\n'.join(self.cfg['whitelist'])); self.settings_roots.setMaximumHeight(100); box.addWidget(self.settings_roots)
-        box.addWidget(QLabel('Ghi/sửa/xóa/chạy lệnh cần xác nhận; sửa file có backup.'))
+        self.task_user_folders_check=QCheckBox('Cho phép Desktop, Documents, Downloads và thư mục công việc đã khai báo')
+        self.task_user_folders_check.setChecked(self.cfg.get('task_user_folders_enabled',False));box.addWidget(self.task_user_folders_check)
+        box.addWidget(QLabel('AI tự thực hiện trong các thư mục được cấp quyền khi bật chế độ tự thực hiện; sửa file có backup.'))
         self.button(box,'Dùng công cụ Office trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
         layout.addWidget(files)
         automation = QGroupBox('Công cụ AI · Điều khiển ứng dụng Windows'); app_box = QVBoxLayout(automation)
@@ -3132,6 +3160,51 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             from assistant.windows_apps import readiness
             self.windows_readiness_label.setText(readiness(self.cfg))
 
+    def add_application_connection(self):
+        from assistant.application_transport import validate_connections
+        dialog=QDialog(self);dialog.setWindowTitle('Thêm kết nối ứng dụng');form=QFormLayout(dialog)
+        ident=QLineEdit();ident.setPlaceholderText('office_bridge')
+        label=QLineEdit();transport=QComboBox();transport.addItems(['http','websocket','tcp','pipe'])
+        url=QLineEdit('http://127.0.0.1:8765/');port=QSpinBox();port.setRange(1,65535);port.setValue(8765)
+        pipe=QLineEdit('chatai-office-cad');actions=QLineEdit('capabilities');token_env=QLineEdit()
+        token_env.setPlaceholderText('Tên biến môi trường, không nhập token')
+        timeout=QSpinBox();timeout.setRange(1,60);timeout.setValue(15)
+        for name,field in [('Tên kết nối',ident),('Tên hiển thị',label),('Giao thức',transport),('URL (HTTP/WebSocket)',url),('Cổng TCP loopback',port),('Tên named pipe',pipe),('Chức năng được phép (cách nhau dấu phẩy)',actions),('Biến môi trường token',token_env),('Thời gian chờ (giây)',timeout)]:form.addRow(name,field)
+        error=QLabel();error.setWordWrap(True);form.addRow(error)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Thêm kết nối')
+        def accept():
+            try:
+                connections=json.loads(self.application_connections_edit.toPlainText())
+                if not isinstance(connections,dict):raise ValueError('Danh sách kết nối hiện tại phải là JSON object.')
+                name=ident.text().strip()
+                if name in connections:raise ValueError('Tên kết nối đã có; chọn tên khác để không ghi đè.')
+                entry={'transport':transport.currentText(),'label':label.text().strip(),'actions':[item.strip() for item in actions.text().split(',') if item.strip()],'timeout':timeout.value()}
+                if token_env.text().strip():entry['token_env']=token_env.text().strip()
+                if entry['transport'] in ('http','websocket'):entry['url']=url.text().strip()
+                elif entry['transport']=='tcp':entry.update(host='127.0.0.1',port=port.value())
+                else:entry['pipe']=pipe.text().strip()
+                connections[name]=entry;cfg={'application_connections':connections};validate_connections(cfg)
+                self.application_connections_edit.setPlainText(json.dumps(cfg['application_connections'],ensure_ascii=False,indent=2))
+                dialog.accept()
+            except (ValueError,TypeError) as exc:error.setText(str(exc))
+        buttons.accepted.connect(accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
+        dialog.exec()
+
+    def grant_work_permissions(self):
+        if self.busy():
+            self.status.setText('Đợi tác vụ hiện tại kết thúc trước khi cấp quyền.');return
+        from assistant.autonomy import windows_work_folders
+        for name in ('ai_tools_auto_check','auto_python_check','online_tools_check',
+                     'online_upload_check','windows_apps_check','windows_auto_execute_check',
+                     'automation_auto_install_check','windows_all_apps_check'):
+            getattr(self,name).setChecked(True)
+        self.task_user_folders_check.setChecked(True)
+        folders=self.settings_roots.toPlainText().splitlines()
+        folders.extend(windows_work_folders(self.cfg.get('task_extra_folders',[])))
+        self.settings_roots.setPlainText('\n'.join(dict.fromkeys(p for p in folders if p.strip())))
+        self.save_settings()
+
     def proposed_settings(self):
         proposed = {k:v for k,v in self.cfg.items() if k != 'roots'}
         for key,field in self.settings_fields.items():
@@ -3145,6 +3218,11 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             if value:proposed[provider+'_model']=value
         proposed['theme']=self.settings_theme.currentData()
         proposed['auto_python']=self.auto_python_check.isChecked()
+        if hasattr(self,'communication_checks'):
+            proposed['communication_methods']=dict(self.cfg.get('communication_methods',{}),**{key:field.isChecked() for key,field in self.communication_checks.items()})
+        if hasattr(self,'application_connections_edit'):
+            try:proposed['application_connections']=json.loads(self.application_connections_edit.toPlainText())
+            except ValueError:raise ValueError('Kết nối ứng dụng cần JSON hợp lệ.')
         if hasattr(self,'ai_tools_auto_check'):proposed['ai_tools_auto_execute']=self.ai_tools_auto_check.isChecked()
         if hasattr(self,'online_tools_check'):
             proposed['online_tools_enabled']=self.online_tools_check.isChecked()
@@ -3152,6 +3230,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         proposed['chat_provider']=REMOTE_MODELS.get(self.settings_provider.currentText(),'local')
         proposed['server_url']=self.settings_server.text().strip()
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
+        if hasattr(self,'task_user_folders_check'):
+            proposed['task_user_folders_enabled']=self.task_user_folders_check.isChecked()
         if hasattr(self,'windows_apps_check'):
             proposed['windows_apps_enabled']=self.windows_apps_check.isChecked()
             proposed['windows_apps_compact']=self.windows_compact_check.isChecked()
@@ -3173,12 +3253,19 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.settings_theme.setCurrentIndex(self.settings_theme.findData(self.cfg.get('theme','dark')))
         self.apply_theme(self.cfg.get('theme','dark'),self.cfg.get('font_size',13))
         self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
+        if hasattr(self,'communication_checks'):
+            from assistant.communication import METHODS
+            for key,field in self.communication_checks.items():field.setChecked(self.cfg.get('communication_methods',{}).get(key,METHODS[key][2]))
+        if hasattr(self,'application_connections_edit'):
+            self.application_connections_edit.setPlainText(json.dumps(self.cfg.get('application_connections',{}),ensure_ascii=False,indent=2))
         if hasattr(self,'online_tools_check'):
             self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
             self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
         self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'))
         self.settings_server.setText(self.cfg.get('server_url',''))
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
+        if hasattr(self,'task_user_folders_check'):
+            self.task_user_folders_check.setChecked(self.cfg.get('task_user_folders_enabled',False))
         if hasattr(self,'windows_apps_check'):
             self.windows_apps_check.setChecked(self.cfg.get('windows_apps_enabled',False))
             self.windows_compact_check.setChecked(self.cfg.get('windows_apps_compact',True))
@@ -3210,7 +3297,10 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def save_settings(self,checked=False,target_index=None):
         if self.busy():
             QMessageBox.information(self,'Chat AI','Đợi tác vụ hiện tại kết thúc trước khi lưu.');return
-        proposed=self.proposed_settings();proposed['machine_profile_selected']=True;old_endpoint=self.cfg.get('server_url')
+        try:proposed=self.proposed_settings()
+        except ValueError as error:
+            QMessageBox.warning(self,'Cấu hình kết nối',str(error));return
+        proposed['machine_profile_selected']=True;old_endpoint=self.cfg.get('server_url')
         keys={k:f.text().strip() for k,f in self.api_key_fields.items() if f.text().strip()}
         provider_models={k:f.text().strip() for k,f in self.api_model_fields.items() if f.text().strip() and f.text().strip()!=self.cfg.get(k+'_model','')}
         session_snapshot=dict(self.server_session) if self.server_session else None

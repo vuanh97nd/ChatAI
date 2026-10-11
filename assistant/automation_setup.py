@@ -8,7 +8,7 @@ import sys
 import time
 from .windows_apps import _STOP
 
-PACKAGES={'latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
+PACKAGES={'win32clipboard':'pywin32>=305','websockets':'websockets>=15,<16','latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
           'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','pptx':'python-pptx>=1,<2','openpyxl':'openpyxl>=3.1,<4','pandas':'pandas>=2,<3','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
 
 

@@ -1,7 +1,7 @@
 """Provider-neutral JSON tool planning, executed only by the desktop after approval."""
 import json
 import re
-from pathlib import PureWindowsPath
+from pathlib import PureWindowsPath,Path
 from .tools import EXTRA_TOOLS, validate_call
 from .experience import repeated_failure, task_record
 from .windows_visual import VISUAL_TOOLS, WINDOWS_VISUAL_INSTRUCTION, tool_message
@@ -230,6 +230,12 @@ def parse_plan(raw, schemas):
     if tool=='geoslope_profile' and isinstance(args.get('layers'),list):args=dict(args,layers=json.dumps(args['layers'],ensure_ascii=False))
     if tool in ('plaxis_run_problem','plaxis_generate_script') and isinstance(args.get('problem'),dict):
         args=dict(args,problem=json.dumps(args['problem'],ensure_ascii=False,allow_nan=False))
+    fields={'plugin_call':'payload','application_http':'payload','application_websocket':'payload',
+            'application_ipc':'payload','vba_execute':'parameters','excel_com':'rows',
+            'powerpoint_com':'slides','autocad_com':'points'}
+    field=fields.get(tool)
+    if field and isinstance(args.get(field),(dict,list)):
+        args=dict(args,**{field:json.dumps(args[field],ensure_ascii=False,allow_nan=False)})
     if tool:validate_call(tool,args,schemas)
     elif not answer.strip():raise ValueError('Thiếu câu trả lời hoặc công cụ.')
     return {'answer':answer,'tool':tool,'arguments':args}
@@ -1011,14 +1017,15 @@ def application_call(prompt, cfg):
 
 
 def app_permissions(cfg):
+    from .communication import method_status
     mode=('Đã cấp quyền mở ứng dụng đăng ký với Windows; danh sách thủ công KHÔNG phải toàn bộ ứng dụng được phép. '
           'Bắt buộc dùng windows_list_apps để tìm trước khi kết luận ứng dụng không được phép.'
           if cfg.get('windows_apps_all_installed') else 'Chỉ các EXE thêm thủ công được phép; dùng windows_list_apps để kiểm tra.')
-    return mode+' EXE thêm thủ công: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False)
+    return mode+' EXE thêm thủ công: '+json.dumps(cfg.get('windows_apps_allowed',[]),ensure_ascii=False)+' '+method_status(cfg)
 
 
 class OnlineAutomation:
-    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None, plaxis_app=None, plaxis_remote=None, cad_trac_doc=None, geoslope_app=None, geoslope_inspector=None, geoslope_solver=None, office_tools=None):
+    def __init__(self, client, cfg, store, cid, windows, browser, pdf_source=None, word_app=None, cad_app=None, cad3d_app=None, cdm_layout=None, tracdoc_app=None, plaxis_app=None, plaxis_remote=None, cad_trac_doc=None, geoslope_app=None, geoslope_inspector=None, geoslope_solver=None,office_tools=None,windows_com=None,application_transport=None,application_macros=None):
         self.client,self.cfg,self.store,self.cid=client,cfg,store,cid
         self.windows,self.browser=windows,browser
         self.cad3d_app=cad3d_app
@@ -1034,8 +1041,14 @@ class OnlineAutomation:
         self.geoslope_inspector=geoslope_inspector
         self.geoslope_solver=geoslope_solver
         self.office_tools=office_tools
+        self.windows_com=windows_com
+        self.application_transport=application_transport
+        self.application_macros=application_macros
         modules={'windows','browser'} | ({'pdf_source'} if pdf_source else set()) | ({'word_app'} if word_app else set()) | ({'cad_app'} if cad_app else set()) | ({'cad3d_app'} if cad3d_app else set()) | ({'cdm_layout'} if cdm_layout else set()) | ({'tracdoc_app'} if tracdoc_app else set()) | ({'plaxis_app'} if plaxis_app else set()) | ({'plaxis_remote'} if plaxis_remote else set())
         self.schemas=[spec for module,spec in EXTRA_TOOLS if module in modules]
+        if windows_com is not None:self.schemas.extend(spec for module,spec in EXTRA_TOOLS if module=='windows_com')
+        for module,component in (('application_transport',application_transport),('application_macros',application_macros)):
+            if component is not None:self.schemas.extend(spec for key,spec in EXTRA_TOOLS if key==module)
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS if module=='geoslope_app' and
                             ((spec['function']['name'] in ('geoslope_inspect','geoslope_profile') and geoslope_inspector is not None) or
                              (spec['function']['name']=='geoslope_create' and geoslope_app is not None)))
@@ -1118,6 +1131,16 @@ class OnlineAutomation:
         except Exception:pass
 
     def component(self,name):
+        from .communication import require_method
+        policy=self.cfg
+        path=getattr(self.windows,'policy_path',None)
+        if path is not None and Path(path).is_file():policy=json.loads(Path(path).read_text(encoding='utf-8'))
+        require_method(policy,name)
+        from .application_transport import TOOL_NAMES as TRANSPORT_TOOLS
+        from .application_macros import TOOL_NAMES as MACRO_TOOLS
+        if name in TRANSPORT_TOOLS:return self.application_transport
+        if name in MACRO_TOOLS:return self.application_macros
+        if name in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com
         if self.office_tools and any(s['function']['name']==name for s in self.office_tools.schemas):return self.office_tools
         if self.office_tools and (name.startswith('excel_') or name in ('office_read','office_create','word_replace','file_list')):return self.office_tools
         if name in ('geoslope_inspect','geoslope_profile'):return self.geoslope_inspector
@@ -1168,7 +1191,10 @@ class OnlineAutomation:
                         if len(cache)>=10:cache.pop(next(iter(cache)))
                         cache[key]=dict(result)
                     elif not key:cache.clear()
-            except Exception as exc:result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
+            except Exception as exc:
+                from .communication import MethodRequired,CONNECTION_WRITES
+                result={'ok':False,'error':str(exc)[:1000],'note':'Có thể đã thực hiện một phần; không tự chạy lại thao tác ghi.'}
+                if name in CONNECTION_WRITES:result.update(method_required=isinstance(exc,MethodRequired),uncertain=not isinstance(exc,MethodRequired))
         else:result={'ok':False,'denied':True,'note':'Người dùng từ chối. Không gọi lại thao tác này.'}
         # Repair a known failed ChatAI-generated model only when the generator
         # produces a changed script from the exact same validated problem.
@@ -1206,7 +1232,8 @@ class OnlineAutomation:
                 if previous.get('role')=='tool':previous.pop('images',None)
         state['messages'].append(tool_message(name,result))
         state['queue']=[];state['pending']=None
-        answer=direct_drawing_answer(state,name,result)
+        from .communication import connection_failure_answer
+        answer=connection_failure_answer(name,result) or direct_drawing_answer(state,name,result)
         if answer:
             state['messages'].append({'role':'assistant','content':answer});state['running']=False
         self.save(state)
@@ -1265,6 +1292,12 @@ class OnlineAutomation:
                     if task_record(state)['phase']=='discussion':raise RuntimeError('Yêu cầu đang ở giai đoạn trao đổi; chưa thực hiện thao tác.')
                     plan=self.component(name).prepare(name,args)
                 except Exception as exc:
+                    from .communication import MethodRequired
+                    if isinstance(exc,MethodRequired):
+                        text=str(exc)
+                        state['messages'].append({'role':'assistant','content':text})
+                        state.update(running=False,queue=[],pending=None);self.save(state)
+                        yield {'type':'token','text':text};return
                     if task_record(state)['phase']!='discussion':
                         from .procedure_memory import ProcedureMemory
                         ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,{'ok':False,'preparation_failed':True,'not_executed':True,'error':str(exc)},training=self.cfg.get('procedure_training_enabled',False))
@@ -1340,6 +1373,7 @@ class OnlineAutomation:
                          'Khi đã đủ kết quả hoặc bị từ chối, tool rỗng và answer trả lời tiếng Việt. Người dùng trả lời ok/đồng ý là chấp thuận đề xuất gần nhất trong hội thoại; dùng thông số đã chốt và gọi công cụ, không hỏi xác nhận lại. Khi người dùng báo sai bài toán, đọc lại bộ nhớ tài liệu và sửa đúng loại bài toán, không lặp mẫu cũ. '
                          'Không tuyên bố không có công cụ khi danh sách có công cụ phù hợp; gọi công cụ để xin duyệt. '
                          'Không đoán đường dẫn/control; dùng danh sách EXE và kết quả windows_inspect. '
+                         'Excel có excel_com: tạo bảng không cần template. Ưu tiên COM thay nhập từng ô qua ảnh; mode active dùng Book1, mode new tạo workbook. Không yêu cầu lưu thì bỏ path, không hỏi template/thư mục. Dùng word_com/powerpoint_com/autocad_com cho các tác vụ COM trong mô tả công cụ; không tuyên bố có phương thức chưa được tích hợp. '
                          'Yêu cầu 3D dùng cad3d_create_open với box/cylinder/flange. Đây là lưới kín trong DXF, không phải ACIS solid và chưa bo cạnh; không dùng công cụ 2D để báo đã vẽ 3D. '
                          'Khi cần vẽ bằng AutoCAD, dùng cad_create_open để tạo DXF và mở acad.exe. Nếu thiếu kích thước/đơn vị, hỏi rõ rồi tiếp tục dùng công cụ khi người dùng bổ sung. Không tự đoán kích thước. '
                          'Bố trí cọc CDM (Cement Deep Mixing) dùng cad_cdm_layout với đủ 6 thông số: b_road (chiều rộng), l_treatment (chiều dài), d_pile (đường kính), pile_depth (chiều sâu), spacing_x (khoảng cách ngang), spacing_y (khoảng cách dọc). Công cụ tự vẽ mặt cắt ngang và mặt bằng trong cùng một file DXF; không cần hỏi thêm khi đã có đủ 6 thông số. '

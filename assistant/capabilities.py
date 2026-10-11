@@ -17,6 +17,8 @@ from .geo_solver import geo_calculate
 
 class Capabilities:
     def __init__(self, manager, excel, client, cfg, root, audit, owner="local", storage_root=None, allow_web=False, on_status=None):
+        self.cfg=cfg
+        self.policy_path=root/'config.json'
         self.manager, self.excel = manager, excel
         self.allow_web = bool(allow_web)
         self.files = FileTools(cfg["roots"], root / "data" / "backups", audit)
@@ -35,6 +37,12 @@ class Capabilities:
         if not self.allow_web:self.active.discard("web")
         from .windows_apps import WindowsApps, available
         self.windows = WindowsApps(cfg, audit, owner=owner, policy_path=root / 'config.json')
+        from .windows_com import WindowsCOM
+        self.windows_com=WindowsCOM(self.windows,self.files,audit)
+        from .application_transport import ApplicationTransport
+        from .application_macros import ApplicationMacros
+        self.application_transport=ApplicationTransport(cfg,audit,policy_path=root/'config.json')
+        self.application_macros=ApplicationMacros(self.windows,self.files,audit)
         if cfg.get('windows_apps_enabled') and available():self.active.add('windows')
         from .browser import BrowserTools, available as browser_available
         self.browser = BrowserTools(cfg,audit,policy_path=root/'config.json',on_status=on_status)
@@ -69,7 +77,8 @@ class Capabilities:
         self.active.add('klxldy')
         self.active.add('tm_xldy')
         self.active.add('geoslope_xldy')
-        if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app'})
+        if 'windows' in self.active:self.active.update({'pdf_source','word_app','cad_app','cad3d_app','windows_com','application_macros'})
+        self.active.add('application_transport')
         self.active.add('plaxis_app')
         self.active.add('plaxis_remote')
         self.active.add('geoslope_app')
@@ -83,6 +92,12 @@ class Capabilities:
         self.schemas = [dict(spec,function=dict(spec['function'],description=spec['function']['description']+' '+app_permissions(cfg))) if spec['function']['name'] in {'windows_open','browser_search','browser_run'} else spec for spec in self.schemas]
 
     def prepare(self, name, args):
+        self.check_method(name)
+        from .application_transport import TOOL_NAMES as TRANSPORT_TOOLS
+        from .application_macros import TOOL_NAMES as MACRO_TOOLS
+        if name in TRANSPORT_TOOLS:return self.application_transport.prepare(name,args)
+        if name in MACRO_TOOLS:return self.application_macros.prepare(name,args)
+        if name in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com.prepare(name,args)
         if name=='geoslope_profile':
             from .geoslope_inspect import GeoslopeInspect
             return GeoslopeInspect(self.files).prepare(name,args)
@@ -132,9 +147,15 @@ class Capabilities:
 
     def commit(self, plan):
         action = plan.get("action", "excel_edit_cell")
+        self.check_method(action)
+        from .application_transport import TOOL_NAMES as TRANSPORT_TOOLS
+        from .application_macros import TOOL_NAMES as MACRO_TOOLS
         module = next((m for m, t in EXTRA_TOOLS if t["function"]["name"] == action), None)
         if module is not None and module not in self.active:
             raise RuntimeError("Module đã bị tắt hoặc chưa sẵn sàng; thao tác không chạy.")
+        if action in TRANSPORT_TOOLS:return self.application_transport.commit(plan)
+        if action in MACRO_TOOLS:return self.application_macros.commit(plan)
+        if action in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com.commit(plan)
         if action in {'source_edit','source_restore'}:return self.source_tools.commit(plan)
         if action=='road_analyze':return self.road_pipeline.commit_analyze(plan)
         if action=='road_verify':return self.road_pipeline.commit_verify(plan)
@@ -187,6 +208,7 @@ class Capabilities:
         return self.rag.commit(plan)
 
     def read(self, name, args):
+        self.check_method(name)
         if name=='geoslope_inspect':
             from .geoslope_inspect import GeoslopeInspect
             inspector=GeoslopeInspect(self.files)
@@ -216,6 +238,13 @@ class Capabilities:
                     "rag_search": self.rag.rag_search, "office_read": self.office.office_read,
                     "template_scan": self.template.scan_template}
         return registry[name](**args)
+
+    def check_method(self,name):
+        from .communication import require_method
+        policy=getattr(self,'cfg',{})
+        path=getattr(self,'policy_path',None)
+        if path is not None and path.is_file():policy=json.loads(path.read_text(encoding='utf-8'))
+        require_method(policy,name)
 
     # ------------------------------------------------------------------
     # Google Drive upload helper

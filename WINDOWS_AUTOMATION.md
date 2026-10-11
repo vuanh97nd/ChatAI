@@ -149,3 +149,103 @@ Kiểm thử giả lập không thay cho kiểm thử Windows thật. Bản sử
 - Runtime đóng gói có đủ Pillow, pywin32, pywinauto, psutil, comtypes; 7 tệp Python thay đổi kiểm tra cú pháp đạt; `git diff --check` không báo lỗi.
 - Một lần chạy bộ rộng hơn (116 test) còn 7 lỗi ngoài phần visual: 5 lỗi test gán PosixPath trên Windows, 2 lỗi PLAXIS về kỳ vọng parser/định tuyến Output theo môi trường. Chưa sửa các test/mã PLAXIS đó trong công việc này.
 - Chưa kiểm thử Windows thật: công cụ computer-use báo `js execution timed out; kernel reset, rerun your request`, vẫn lỗi sau reset. Không coi unit test là xác nhận điều khiển thực tế; chưa tiếp tục hoặc sửa dự án `Tunnel_1`.
+# Phương thức kết nối do người dùng chọn
+
+Trong **Cài đặt → Phương thức kết nối**, bật/tắt riêng COM, API ứng dụng,
+UI Automation, Win32, chuột/bàn phím, ảnh cửa sổ, xử lý file, trình duyệt,
+Python và dòng lệnh trong Docker, Clipboard, Plugin/Add-in, VBA/AutoLISP,
+HTTP/WebSocket và IPC. Bấm **Lưu cài đặt** để áp dụng.
+COM mặc định bật; lựa chọn đã lưu của người dùng được giữ nguyên. Các phương thức cũ giữ mặc định
+để không thay đổi quyền đã sử dụng; vẫn có thể tắt từng mục.
+
+AI nhận trạng thái các phương thức khi lập kế hoạch. Công cụ bị tắt sẽ
+dừng trước khi thực hiện và báo tên phương thức, tên công cụ và vị trí bật.
+AI không tự bật lại phương thức và không thử lại liên tục vì thiếu quyền.
+Quyền **tự thực hiện công việc** không thay thế lựa chọn phương thức kết nối.
+
+Các adapter COM hiện có:
+
+| Công cụ | Chức năng |
+| --- | --- |
+| `excel_com` | Tạo workbook mới hoặc ghi/đọc workbook đang mở, ghi cả bảng và đọc lại xác minh; không cần template |
+| `word_com` | Tạo tài liệu có nội dung chữ và đọc lại xác minh |
+| `powerpoint_com` | Tạo slide tiêu đề/nội dung và đọc lại xác minh |
+| `autocad_com` | Vẽ đoạn thẳng từ các điểm 3D và đọc lại tọa độ |
+
+Excel, Word và PowerPoint không có `path` sẽ để mở chưa lưu. Lưu mới
+chỉ vào thư mục được phép; không ghi đè file có sẵn. Excel ghi literal,
+chưa hỗ trợ nhập công thức trong adapter COM này. AutoCAD làm trên bản vẽ
+đang mở và chưa có thao tác lưu trong adapter này. Các adapter cần Windows,
+phần mềm tương ứng, thư viện comtypes và EXE được cấp quyền.
+
+Các kết nối bổ sung đã có công cụ thực thi:
+
+| Công cụ | Chức năng |
+| --- | --- |
+| `office_addin` | Liệt kê, bật/tắt và đọc lại trạng thái COM Add-in đã cài trong Excel, Word, PowerPoint |
+| `plugin_call` | Gọi action đã đăng ký trên cầu nối ứng dụng qua HTTP, WebSocket, TCP hoặc named pipe |
+| `vba_execute` | Ghi module mới, đọc lại mã và chạy VBA trong tài liệu Office đang mở; AutoCAD chạy dự án DVB có sẵn |
+| `autolisp_execute` | Nạp mã vào AutoCAD, chờ file kết quả có mã yêu cầu và dấu hoàn tất; không coi SendCommand là hoàn thành |
+| `application_http`, `application_websocket` | Gửi JSON tới endpoint đã cấu hình và nhận phản hồi |
+| `application_ipc` | Gọi action qua TCP loopback hoặc Windows named pipe |
+| `application_connections` | Xem các kết nối và action được cấu hình, không lộ token |
+| `windows_clipboard` | Đọc/ghi văn bản Unicode và xác minh; dán bằng `windows_input` với quan sát cửa sổ mới |
+
+Những phương thức bổ sung này mặc định tắt. AI báo đúng mục cần bật trong
+Cài đặt; không tự bật thay người dùng. VBA cần Office Trust Center cho phép
+truy cập VBA Project; AutoCAD VBA cần VBA Enabler tương ứng. Không tự thay
+Trust Center hoặc SECURELOAD. PLAXIS tiếp tục dùng Remote Scripting riêng.
+Không phải mọi ứng dụng Windows đều có COM hoặc SDK giống nhau.
+
+### Cấu hình cầu nối ứng dụng
+
+Trên Windows cài thư viện và chạy cầu nối mẫu cho các adapter Office/AutoCAD:
+
+```powershell
+python -m pip install -r requirements-windows-automation.txt
+python -m examples.office_cad_bridge --transport http --port 8765
+```
+
+Trong Cài đặt → Phương thức kết nối chọn **Thêm kết nối ứng dụng…**, khai báo
+HTTP `http://127.0.0.1:8765/` và action cần dùng, rồi bấm **Lưu cài đặt**.
+Ví dụ cấu hình JSON tương đương:
+
+```json
+{
+  "office_local": {
+    "transport": "http",
+    "url": "http://127.0.0.1:8765/",
+    "actions": ["capabilities", "excel_com", "word_com", "powerpoint_com", "autocad_com"],
+    "methods": ["GET", "POST"],
+    "timeout": 15
+  }
+}
+```
+
+Nếu dùng xác thực, thêm `token_env` chứa tên biến môi trường, đặt giá trị
+trên cả Chat AI và tiến trình bridge, và chạy bridge với `--token-env TÊN_BIẾN`.
+Không đưa token vào nội dung chat hoặc JSON cấu hình. TCP chỉ kết nối loopback;
+HTTP/WS bên ngoài máy cần HTTPS/WSS. Named pipe là pipe nội bộ Windows.
+
+`assistant.plugin_bridge.BridgeServer` là SDK để plugin đăng ký callback cụ thể;
+không tự nạp DLL hay chạy hàm bất kỳ theo tên. Plugin thực cần adapter cho API
+của ứng dụng và chuyển thao tác sang luồng UI nếu SDK yêu cầu. Lệnh
+`python -m assistant.plugin_bridge` chỉ chạy bridge kiểm tra với ping/capabilities;
+cầu nối Office thực nằm trong `examples.office_cad_bridge`.
+
+VBA chạy trong tài liệu đang mở; AutoLISP dùng file tạm trong thư mục được phép.
+Các công cụ không tự lưu tài liệu sau khi chạy macro. Cần đọc lại ô/đối tượng để
+xác minh thay đổi; phản hồi bridge xác nhận nhận kết quả, không chứng minh mọi tác
+động đúng. Khi timeout hoặc kết quả chưa rõ, dừng lượt xử lý để tránh gửi lặp.
+COM/Office/AutoCAD/Clipboard/named pipe phải kiểm tra thêm trên Windows thật.
+
+Để cấp các quyền công việc và thư mục đã chọn bằng lệnh, đóng Chat AI rồi chạy:
+
+```powershell
+python -m assistant.autonomy --folder "G:\My Drive\AI"
+```
+
+Lệnh lưu quyền công cụ và thêm thư mục vào cấu hình có backup. Desktop,
+Documents và Downloads lấy đường dẫn Windows, gồm đường dẫn chuyển sang
+OneDrive nếu có. Lệnh không tự bật các phương thức kết nối người dùng đã tắt,
+không cấp quyền quản trị Windows và không cài plugin mới.
