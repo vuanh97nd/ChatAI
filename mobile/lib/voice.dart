@@ -104,6 +104,8 @@ class VoiceController extends ChangeNotifier {
   String? error;
   bool _disposed = false;
   int _generation = 0;
+  Timer? _recognitionWatchdog;
+  static const noWordsTimeout = Duration(seconds: 12);
   VoiceController({VoiceEngine? engine}) : engine = engine ?? AndroidVoiceEngine() {
     if (this.engine is AndroidVoiceEngine) {
       (this.engine as AndroidVoiceEngine).onLevel = (level) {
@@ -115,6 +117,7 @@ class VoiceController extends ChangeNotifier {
 
   Future<void> start(void Function(String) onWords) async {
     if (_disposed || starting || listening) return;
+    _recognitionWatchdog?.cancel();
     final run = ++_generation;
     var receivedWords = false;
     var ended = false;
@@ -128,6 +131,7 @@ class VoiceController extends ChangeNotifier {
         if (status == 'listening') { listening = true; _changed(); }
         if (status == 'done' || status == 'notListening') {
           ended = true;
+          _recognitionWatchdog?.cancel();
           listening = false;
           if (!starting && !receivedWords && error == null) {
             error = 'Chưa nghe được lời nói. Hãy bấm mic và nói lại; kiểm tra quyền micro nếu vẫn không nhận chữ.';
@@ -136,6 +140,8 @@ class VoiceController extends ChangeNotifier {
         }
       }, (message) {
         if (run != _generation || _disposed) return;
+        ended = true;
+        _recognitionWatchdog?.cancel();
         listening = false;
         error = 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
         _changed();
@@ -153,10 +159,27 @@ class VoiceController extends ChangeNotifier {
       await engine.listen(vietnamese.first, (words) {
         if (!_disposed && run == _generation && words.trim().isNotEmpty) {
           receivedWords = true;
+          _recognitionWatchdog?.cancel();
           onWords(words);
         }
       }).timeout(const Duration(seconds: 15), onTimeout: () => throw Exception('Dịch vụ nhận dạng không mở được mic. Kiểm tra quyền micro, dịch vụ nhận dạng và kết nối mạng rồi thử lại.'));
-      if (run == _generation && !_disposed && error == null && !ended) { listening = true; }
+      if (run == _generation && !_disposed && error == null) {
+        if (ended && !receivedWords) {
+          error = 'Chưa nghe được lời nói. Bấm mic và nói lại; kiểm tra dịch vụ nhận dạng trong cài đặt Android.';
+        } else if (!ended) {
+          listening = true;
+          if (!receivedWords) {
+            _recognitionWatchdog = Timer(noWordsTimeout, () {
+              if (_disposed || run != _generation || receivedWords || !listening) return;
+              _generation++;
+              listening = false; starting = false; soundLevel = 0;
+              error = 'Chưa nhận được chữ từ micro. Kiểm tra quyền micro, kết nối mạng và dịch vụ nhận dạng giọng nói Android rồi thử lại.';
+              unawaited(engine.cancel().catchError((Object _) {}));
+              _changed();
+            });
+          }
+        }
+      }
     } catch (e) {
       if (run == _generation && !_disposed) {
         _generation++;
@@ -171,6 +194,7 @@ class VoiceController extends ChangeNotifier {
 
   Future<void> read(String text) async {
     if (_disposed || text.trim().isEmpty) return;
+    _recognitionWatchdog?.cancel();
     final run = ++_generation;
     listening = false; starting = false; speaking = true; error = null; _changed();
     try {
@@ -185,12 +209,14 @@ class VoiceController extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _recognitionWatchdog?.cancel();
     _generation++; listening = false; speaking = false; starting = false; _changed();
     try { await engine.cancel(); } catch (_) {}
     try { await engine.stopSpeaking(); } catch (_) {}
   }
   @override
   void dispose() {
+    _recognitionWatchdog?.cancel();
     _disposed = true; _generation++;
     // Plugin cleanup is asynchronous; late callbacks must never update the UI.
     engine.cancel().catchError((Object _) {});

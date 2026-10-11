@@ -58,6 +58,30 @@ void main() {
     expect(voice.error, contains('Chưa nghe được'));
   });
 
+  testWidgets('recognizer with no words cannot stay listening indefinitely', (tester) async {
+    final engine = FakeVoice();
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    await voice.start((_) {});
+    await tester.pump(VoiceController.noWordsTimeout);
+    expect(voice.listening, isFalse);
+    expect(voice.error, contains('Chưa nhận được chữ'));
+    expect(engine.cancels, greaterThan(0));
+  });
+  testWidgets('partial words appear immediately and cancel the empty result timeout', (tester) async {
+    final engine = FakeVoice();
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    var text = '';
+    await voice.start((words) => text = words);
+    engine.recognition!('xin');
+    expect(text, 'xin');
+    engine.recognition!('xin chào');
+    expect(text, 'xin chào');
+    await tester.pump(VoiceController.noWordsTimeout);
+    expect(voice.error, isNull);
+    engine.status!('done');
+    expect(voice.listening, isFalse);
+  });
+
   test('Vietnamese bare language code can start dictation', () async {
     final engine = FakeVoice()..supported = ['vi'];
     final voice = VoiceController(engine: engine);
