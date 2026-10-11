@@ -249,3 +249,17 @@ Lệnh lưu quyền công cụ và thêm thư mục vào cấu hình có backup.
 Documents và Downloads lấy đường dẫn Windows, gồm đường dẫn chuyển sang
 OneDrive nếu có. Lệnh không tự bật các phương thức kết nối người dùng đã tắt,
 không cấp quyền quản trị Windows và không cài plugin mới.
+
+
+### Tự cài thư viện khi thực hiện công việc
+
+Quyền tự cài thư viện được bật sẵn khi cập nhật bản này; sau đó người dùng
+vẫn có thể tắt và lựa chọn được giữ lại. Trước khi điều khiển ứng dụng,
+Chat AI kiểm tra các thư viện hỗ trợ, gồm `plxscripting.easy`, tự cài phần
+thiếu trong venv hoặc Python runtime riêng của bộ cài, rồi kiểm tra nạp lại.
+Hiển thị tiến độ trong chat; Dừng hoặc tắt quyền sẽ ngắt tiến trình cài đặt.
+Chỉ cài các gói trong danh sách của ứng dụng, không nhận tên gói/URL từ AI.
+
+Không cài PLAXIS, Office hoặc AutoCAD thay cho thư viện Python kết nối.
+Bản EXE thiếu Python runtime cần sửa/cập nhật bộ cài; không chạy pip bằng
+file EXE Chat AI. Không tự cài vào Python hệ thống và không nâng quyền admin.

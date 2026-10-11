@@ -241,3 +241,12 @@ class SettingsTest(unittest.TestCase):
         config.save_config(cfg)
         self.assertFalse(config.load_config()['ai_tools_auto_execute'])
         self.assertFalse(config.load_config()['windows_apps_auto_execute'])
+
+    def test_auto_install_migrates_once_and_keeps_later_disable(self):
+        import json
+        path=self.root/'config.json';cfg=json.loads(path.read_text())
+        cfg.pop('dependency_install_revision',None);cfg['automation_auto_install']=False
+        path.write_text(json.dumps(cfg))
+        cfg=config.load_config();self.assertTrue(cfg['automation_auto_install'])
+        cfg['automation_auto_install']=False;config.save_config(cfg)
+        self.assertFalse(config.load_config()['automation_auto_install'])

@@ -15,6 +15,9 @@ def load_config():
         cfg.update(ai_tools_auto_execute=True,windows_apps_auto_execute=True,
                    auto_python=True,task_execution_revision=1)
         migrated=True
+    if cfg.get('dependency_install_revision') != 1:
+        cfg.update(automation_auto_install=True,dependency_install_revision=1)
+        migrated=True
     if cfg.get('chat_font_revision') != 2:
         cfg['font_size']=13
         cfg['chat_font_revision']=2

@@ -10,9 +10,9 @@ from assistant.windows_apps import WindowsApps,resume_automation,stop_automation
 class AutomationPermissionsTest(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
-    def test_default_permissions_off_and_strict_booleans(self):
+    def test_auto_install_defaults_on_and_strict_booleans(self):
         cfg={};validate_settings(cfg)
-        self.assertFalse(cfg['automation_auto_install']);self.assertFalse(cfg['windows_apps_all_installed'])
+        self.assertTrue(cfg['automation_auto_install']);self.assertFalse(cfg['windows_apps_all_installed'])
         for flag in ('automation_auto_install','windows_apps_all_installed'):
             with self.assertRaises(ValueError):validate_settings({flag:'yes'})
     def test_registry_discovery_resolves_icons_and_filters_non_apps(self):
@@ -96,3 +96,14 @@ class AutomationPermissionsTest(unittest.TestCase):
             with patch('os.name','nt'),patch('assistant.automation_setup.Path',PosixPath),patch('assistant.automation_setup.sys.executable',str(python)),patch('assistant.automation_setup.missing_modules',return_value=['playwright']),patch('assistant.automation_setup.subprocess.Popen',return_value=process):
                 with self.assertRaises(PermissionError):ensure_dependencies(cfg)
                 self.assertTrue(process.done)
+
+    def test_plaxis_dependency_installed_and_verified_in_same_runtime(self):
+        with tempfile.TemporaryDirectory() as folder:
+            python=Path(folder)/'python.exe';python.write_bytes(b'fixture')
+            (python.parent/'chat-ai-runtime.json').write_text('{}')
+            status=[];process=SimpleNamespace(poll=lambda:0,returncode=0)
+            cfg={'automation_auto_install':True,'windows_apps_enabled':True}
+            with patch('os.name','nt'),patch('assistant.automation_setup.Path',PosixPath),patch('assistant.automation_setup.sys.executable',str(python)),patch('assistant.automation_setup.missing_modules',side_effect=[['plxscripting'],[]]),patch('assistant.automation_setup.subprocess.Popen',return_value=process) as launch:
+                ensure_dependencies(cfg,on_status=status.append)
+            self.assertIn('plxscripting>=1,<2',launch.call_args.args[0])
+            self.assertIn('tiếp tục công việc',status[-1])

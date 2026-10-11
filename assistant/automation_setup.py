@@ -1,4 +1,4 @@
-"""Opt-in installer: fixed packages only, in the app's isolated Python runtime."""
+"""Permission-controlled installer: fixed packages only, in the app's isolated Python runtime."""
 import importlib
 import importlib.util
 import json
@@ -8,7 +8,7 @@ import sys
 import time
 from .windows_apps import _STOP
 
-PACKAGES={'win32clipboard':'pywin32>=305','websockets':'websockets>=15,<16','latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
+PACKAGES={'plxscripting':'plxscripting>=1,<2','win32clipboard':'pywin32>=305','websockets':'websockets>=15,<16','latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
           'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','pptx':'python-pptx>=1,<2','openpyxl':'openpyxl>=3.1,<4','pandas':'pandas>=2,<3','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
 
 
@@ -19,7 +19,7 @@ def missing_modules():
             # COM must be initialized later by WindowsBackend on the action thread.
             if name in {'pywinauto','comtypes','psutil','win32com'}:
                 if importlib.util.find_spec(name) is None:raise ImportError(name)
-            else:importlib.import_module(name+'.sync_api' if name=='playwright' else name)
+            else:importlib.import_module(name+'.sync_api' if name=='playwright' else name+'.easy' if name=='plxscripting' else name)
         except (ImportError,OSError):missing.append(name)
     return missing
 
@@ -36,14 +36,16 @@ def ensure_dependencies(cfg,policy_path=None,on_status=None,audit=None):
     python=executable.with_name('python.exe') if executable.name.lower()=='pythonw.exe' else executable
     if sys.prefix==sys.base_prefix and not (python.parent/'chat-ai-runtime.json').is_file():
         raise RuntimeError('Không tự cài vào Python hệ thống. Chạy ChatAI trong .venv hoặc runtime đóng gói của app.')
-    if not python.is_file():raise RuntimeError('Không tìm thấy Python của ChatAI để cài thư viện.')
+    if getattr(sys,'frozen',False) or python.suffix.lower() != '.exe':
+        raise RuntimeError('Bản ứng dụng này không có Python runtime dùng để tự cài thư viện. Cần cập nhật bộ cài kèm runtime; không chạy pip bằng EXE Chat AI.')
+    if not python.is_file():raise RuntimeError('Không tìm thấy Python runtime của ChatAI. Cần sửa hoặc cập nhật bộ cài ứng dụng.')
     if _STOP.is_set():raise PermissionError('Đã dừng AI; chưa cài thư viện.')
     if on_status:on_status('Đang tự cài thư viện vào '+str(python)+': '+', '.join(missing))
     # Model cannot supply a package, command, index or URL. Never elevate or disable TLS verification.
     # CREATE_NO_WINDOW prevents a console flash from python.exe on Windows.
     launch_options={'creationflags':getattr(subprocess,'CREATE_NO_WINDOW',0x08000000)} if os.name=='nt' else {}
     process=subprocess.Popen([str(python),'-m','pip','install','--disable-pip-version-check',
-                              *[PACKAGES[name] for name in missing]],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,shell=False,**launch_options)
+                              *list(dict.fromkeys(PACKAGES[name] for name in missing))],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,shell=False,**launch_options)
     started=time.monotonic();last=started
     try:
         while process.poll() is None:

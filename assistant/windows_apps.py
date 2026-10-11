@@ -69,7 +69,7 @@ def readiness(cfg):
 def validate_settings(cfg):
     enabled = cfg.setdefault('windows_apps_enabled', False)
     background = cfg.setdefault('browser_background', False)
-    auto_install=cfg.setdefault('automation_auto_install',False)
+    auto_install=cfg.setdefault('automation_auto_install',True)
     compact=cfg.setdefault('windows_apps_compact',True)
     auto_execute=cfg.setdefault('windows_apps_auto_execute',False)
     all_installed=cfg.setdefault('windows_apps_all_installed',False)
