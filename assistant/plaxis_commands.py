@@ -591,6 +591,15 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             if row['command'].lower() not in {'read','info','signature','summarize','verify_model','verify_stage','inspect_stage','inspect_progress','plan_resume','plan_excavation','commands','tabulate','echo'}:
                 session.pop('stage_permit',None)
             args=[resolve(v) for v in row.get('args',[])]
+            if row['command'].lower() in {'waterlevel','wl'}:
+                # Native signature: Coords{2,...}, each Coords is (x,y).
+                # Do not pass a flat vector or one nested collection to POL.
+                if len(args)==1 and isinstance(args[0],list):args=args[0]
+                if len(args)>=4 and len(args)%2==0 and all(type(n) in (int,float) for n in args):
+                    args=[args[i:i+2] for i in range(0,len(args),2)]
+                if len(args)<2 or not all(isinstance(point,(list,tuple)) and len(point)==2 and
+                        all(type(n) in (int,float) and math.isfinite(n) for n in point) for point in args):
+                    raise ValueError('waterlevel cần ít nhất hai cặp tọa độ 2D [x,y] hữu hạn theo chữ ký Coords; không đoán tọa độ hoặc mốc.')
             # polygon expects separate points, not one parenthesized collection.
             # Unwrap only an unambiguous numeric point collection; preserve
             # polycurve references and all other command argument layouts.
@@ -765,6 +774,9 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             entry={'step':index+1,'command':row['command'],
                    'value':result if row['command'] in {'inspect_stage','verify_stage','inspect_progress','plan_resume','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
             if normalized_properties:entry['normalized_properties']=normalized_properties
+            if row['command'].lower() in {'waterlevel','wl'}:
+                entry['coordinates_sent']=args
+                entry['readback_required']='Chọn đúng đối tượng WaterLevel từ kết quả và đọc tọa độ thực trước khi gán phase. Nếu result là nhiều đối tượng, không dùng cả result hoặc WaterLevelHelperPoint làm WaterLevel. Tên dùng Name/rename theo info thực, không mặc định Identification. Lệnh tạo thành công chưa chứng minh tọa độ đúng.'
             raw_args=row.get('args',[])
             if (row['command']=='set' and len(raw_args)==3 and isinstance(raw_args[2],bool)
                     and isinstance(raw_args[0],dict) and str(raw_args[0].get('ref','')).endswith('.Active')):

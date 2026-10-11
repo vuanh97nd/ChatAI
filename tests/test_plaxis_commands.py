@@ -13,6 +13,19 @@ from assistant.windows_apps import resume_automation,stop_automation
 class PlaxisCommandTests(unittest.TestCase):
     def setUp(self):resume_automation()
     def tearDown(self):resume_automation()
+    def test_waterlevel_serializes_distinct_coordinate_pairs(self):
+        from plxscripting.server import InputProcessor
+        pairs=[[0,23],[40,20],[60,20],[100,23]]
+        for args in ([0,23,40,20,60,20,100,23],pairs,[pairs]):
+            g=SimpleNamespace(waterlevel=Mock(return_value=('WaterLevelHelperPoint_7','UserWaterLevel_2')))
+            result=execute_commands(Mock(),g,commands_from_json(json.dumps([{'command':'waterlevel','args':args,'result':'lwl2'}])))
+            self.assertTrue(result['ok'],result)
+            g.waterlevel.assert_called_once_with(*pairs)
+            self.assertEqual(result['results'][0]['coordinates_sent'],pairs)
+            self.assertEqual(InputProcessor().params_to_string(g.waterlevel.call_args.args),'(0 23) (40 20) (60 20) (100 23)')
+        g=SimpleNamespace(waterlevel=Mock())
+        result=execute_commands(Mock(),g,[{'command':'waterlevel','args':[0,23,40]}])
+        self.assertFalse(result['ok']);g.waterlevel.assert_not_called()
     def test_verify_model_switches_modes_per_check_before_reading_phase(self):
         g=SimpleNamespace(Phase_6=SimpleNamespace(PorePresCalcType=2))
         moves=[]
