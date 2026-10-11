@@ -2586,10 +2586,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self.account_status.setToolTip(f'{len(failures)} hội thoại chưa đồng bộ được (vẫn lưu trên máy): '+'; '.join(f'{t}: {e}' for t,(_,e) in zip(titles,failures)))
         else:self.account_status.setToolTip('Nội dung hội thoại đã đồng bộ lên server. Ảnh và tệp gốc được giữ trên máy.')
         if result.get('changed') and not self.busy():
-            state=self.store.load(self.cid)
-            if not state.get('messages'):
-                saved=self.store.last_conversation(session['username'])
-                if saved:self.cid=saved
+            # Refresh the history list without replacing the user's blank/new chat.
             self.html_cache.clear();self.render()
 
     def restore_login(self):
@@ -2635,8 +2632,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.trial.adopt(session['username'])
         current=self.store.load(self.cid)
         if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
-        saved=self.store.last_conversation(session['username'])
-        if saved and not self.store.load(self.cid).get('messages'):self.cid=saved
         self.store.remember_conversation(session['username'],self.cid)
         self.render()
 
@@ -2763,8 +2758,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self.load_account_enrichment(dict(self.server_session))
             current=self.store.load(self.cid)
             if current.get('account_username') not in (None,session['username']):self.cid=self.store.create(persist=False)
-            saved=self.store.last_conversation(session['username'])
-            if saved and not self.store.load(self.cid).get('messages'):self.cid=saved
             self.store.remember_conversation(session['username'],self.cid)
             self.render()
             self.sync_history()

@@ -107,3 +107,24 @@ class AutomationPermissionsTest(unittest.TestCase):
                 ensure_dependencies(cfg,on_status=status.append)
             self.assertIn('plxscripting>=1,<2',launch.call_args.args[0])
             self.assertIn('tiếp tục công việc',status[-1])
+
+    def test_failed_import_preserves_actual_missing_dependency(self):
+        from assistant.automation_setup import missing_modules,_IMPORT_ERRORS
+        def import_module(name):
+            if name=='plxscripting.easy':raise ModuleNotFoundError("No module named 'distutils'")
+            return SimpleNamespace()
+        with patch('assistant.automation_setup.importlib.util.find_spec',return_value=object()),patch('assistant.automation_setup.importlib.import_module',side_effect=import_module):
+            self.assertEqual(missing_modules(),['plxscripting'])
+        self.assertIn('distutils',_IMPORT_ERRORS['plxscripting'])
+
+    def test_cloud_history_refresh_keeps_new_chat_selected(self):
+        from unittest.mock import Mock
+        from desktop_ui import Window
+        session={'username':'owner','endpoint':'https://example.org'}
+        window=SimpleNamespace(history_sync_loading=True,server_session=session,
+            account_status=Mock(),store=Mock(),cid='new-chat',busy=lambda:False,
+            html_cache={'old':'cached'},render=Mock())
+        Window.apply_history_sync(window,{'session':session,'changed':True})
+        self.assertEqual(window.cid,'new-chat')
+        window.store.last_conversation.assert_not_called()
+        window.render.assert_called_once()

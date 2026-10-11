@@ -2,6 +2,9 @@
 
 ## Desktop 3.0.0
 
+- Sửa PLAXIS Remote Scripting không nạp được trên Python 3.12: đóng gói setuptools hỗ trợ distutils và báo nguyên nhân import thực.
+- Mở ứng dụng bằng hội thoại mới; đồng bộ lịch sử không tự chọn lại hội thoại cũ.
+
 - Đồng bộ phiên bản PC: giao diện, updater, runtime và bộ cài Windows.
 - Bổ sung COM, cầu nối ứng dụng và quyền tự thực hiện công việc.
 - Bật sẵn tự cài thư viện hỗ trợ, gồm PLAXIS Remote Scripting.

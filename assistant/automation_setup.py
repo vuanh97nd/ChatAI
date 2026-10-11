@@ -8,19 +8,24 @@ import sys
 import time
 from .windows_apps import _STOP
 
-PACKAGES={'plxscripting':'plxscripting>=1,<2','win32clipboard':'pywin32>=305','websockets':'websockets>=15,<16','latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
+PACKAGES={'setuptools':'setuptools>=70,<81','plxscripting':'plxscripting>=1,<2','win32clipboard':'pywin32>=305','websockets':'websockets>=15,<16','latex2mathml':'latex2mathml>=3.77,<4','mathml2omml':'mathml2omml>=0.0.2,<1','win32com':'pywin32>=305','PIL':'Pillow>=10,<13','pywinauto':'pywinauto>=0.6.9,<0.7','psutil':'psutil>=5.9,<8',
           'comtypes':'comtypes>=1.4,<2','playwright':'playwright>=1.50,<2','pypdf':'pypdf>=5,<7','docx':'python-docx>=1.1,<2','pptx':'python-pptx>=1,<2','openpyxl':'openpyxl>=3.1,<4','pandas':'pandas>=2,<3','ezdxf':'ezdxf>=1.3,<2','mapbox_earcut':'mapbox-earcut>=1,<3'}
 
 
+_IMPORT_ERRORS={}
+
 def missing_modules():
     missing=[]
+    _IMPORT_ERRORS.clear()
     for name in PACKAGES:
         try:
             # COM must be initialized later by WindowsBackend on the action thread.
             if name in {'pywinauto','comtypes','psutil','win32com'}:
                 if importlib.util.find_spec(name) is None:raise ImportError(name)
             else:importlib.import_module(name+'.sync_api' if name=='playwright' else name+'.easy' if name=='plxscripting' else name)
-        except (ImportError,OSError):missing.append(name)
+        except (ImportError,OSError) as error:
+            missing.append(name)
+            _IMPORT_ERRORS[name]=type(error).__name__+': '+str(error)[:500]
     return missing
 
 
@@ -66,5 +71,7 @@ def ensure_dependencies(cfg,policy_path=None,on_status=None,audit=None):
     importlib.invalidate_caches()
     remaining=missing_modules()
     if audit:audit('automation_dependencies_install',{'packages':missing,'remaining':remaining,'python':str(python)})
-    if remaining:raise RuntimeError('Đã cài nhưng chưa nạp được '+', '.join(remaining)+'. Khởi động lại ChatAI để nạp thư viện.')
+    if remaining:
+        details='; '.join(name+': '+_IMPORT_ERRORS.get(name,'chưa xác minh import') for name in remaining)
+        raise RuntimeError('Cài thư viện xong nhưng kiểm tra nạp vẫn lỗi: '+details+'. Không tự cài lặp lại trong lượt này.')
     if on_status:on_status('Đã cài thư viện cần thiết; tiếp tục công việc.')
