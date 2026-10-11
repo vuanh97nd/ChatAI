@@ -17,9 +17,11 @@ class TabulatedActiveTests(unittest.TestCase):
         obj.Active=Empty()
         g=NS(tabulate=Mock(return_value='Object\tActive[InitialPhase]\tActive[Phase_1]\nPlate_1_1\tTrue\tFalse'))
         self.assertIs(active(obj,phase,g),False)
-        g.tabulate.assert_called_once()
-        for table in ('Object\tActive\nPlate_1_1\tFalse',
-                      'Object\tActive[Phase_2]\nPlate_1_1\tFalse',
+        g.tabulate.assert_called_once_with(obj,phase)
+        g.tabulate=Mock(return_value='Object\tActive\nPlate_1_1\tFalse')
+        self.assertIs(active(obj,phase,g),False)
+        g.tabulate.assert_called_once_with(obj,phase)
+        for table in ('Object\tActive[Phase_2]\nPlate_1_1\tFalse',
                       'Object\tActive[Phase_1]\nOther\tFalse',
                       'Object\tActive[Phase_1]\nPlate_1_1\t0',
                       'Object\tActive[Phase_1]\nPlate_1_1\tNone'):
@@ -34,8 +36,8 @@ class TabulatedActiveTests(unittest.TestCase):
             def __getitem__(self,key):return None
         fixture.soil.Active=Opaque(fixture.soil.Active)
         fixture.outside.Active=Opaque(fixture.outside.Active)
-        def table(obj,field,phase=None):
-            self.assertEqual(field,'Active')
+        def table(obj,phase,field=None):
+            self.assertIn(phase,(fixture.initial,fixture.phase,fixture.other_phase))
             phases=[fixture.initial,fixture.phase,fixture.other_phase]
             header='Object\t'+'\t'.join('Active['+p.Name+']' for p in phases)
             row=obj.Name+'\t'+'\t'.join(str(dict.__getitem__(obj.Active,p)) for p in phases)
@@ -51,6 +53,20 @@ class TabulatedActiveTests(unittest.TestCase):
             self.assertIs(dict.__getitem__(fixture.soil.Active,fixture.phase),False)
             self.assertIs(dict.__getitem__(fixture.outside.Active,fixture.phase),True)
         finally:fixture.tearDown()
+
+    def test_native_phase_argument_precedes_optional_property_and_has_no_unscoped_retry(self):
+        from assistant.plaxis_active import tabulated_active
+        obj=NS(Name='Soil_1_1');phase=NS(Name='Phase_1')
+        def native(target,selected_phase,*fields):
+            if selected_phase is not phase:raise RuntimeError('Invalid parameters')
+            if not fields:raise RuntimeError('Property required')
+            self.assertEqual(fields,('Active',))
+            return 'Object\tActive\nSoil_1_1\tTrue'
+        g=NS(tabulate=Mock(side_effect=native))
+        self.assertIs(tabulated_active(g,obj,phase,'Soil_1_1','Phase_1'),True)
+        self.assertEqual(g.tabulate.call_count,2)
+        self.assertEqual(g.tabulate.call_args_list[0].args,(obj,phase))
+        self.assertEqual(g.tabulate.call_args_list[1].args,(obj,phase,'Active'))
 
     def test_wall_links_find_missing_side_without_confusing_unrelated_interfaces(self):
         g=NS(Plates=[NS(Name='Plate_1',Parent='wall1'),NS(Name='Plate_2',Parent='wall2')],
