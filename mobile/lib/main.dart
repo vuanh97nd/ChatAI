@@ -748,9 +748,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               content: SingleChildScrollView(child: SelectableText(error!)),
               actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])), child: const Text('Chi tiết')),
           if (voice.error != null) TextButton(onPressed: () async {
-            try { await openVoiceSettings(true); }
+            try { await openVoiceSettings(!voice.recognitionError); }
             catch (e) { changed(() => error = '$e'); }
-          }, child: const Text('Cài đặt giọng đọc')),
+          }, child: Text(voice.recognitionError ? 'Cài đặt nhận dạng' : 'Cài đặt giọng đọc')),
           TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
         if (working) const LinearProgressIndicator(),
         Expanded(child: pageContent()),

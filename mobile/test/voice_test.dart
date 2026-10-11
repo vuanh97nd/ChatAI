@@ -9,12 +9,14 @@ class FakeVoice implements VoiceEngine {
   void Function(String)? recognition;
   int cancels = 0, stops = 0;
   bool failListen = false;
-  void Function(String)? status;
+  void Function(String)? status, recognitionError;
   Completer<bool>? permission;
   Completer<void>? reading;
   @override
-  Future<bool> initialize(void Function(String) status, void Function(String) error) async =>
-      _initialize(status);
+  Future<bool> initialize(void Function(String) status, void Function(String) error) async {
+    recognitionError = error;
+    return _initialize(status);
+  }
   Future<bool> _initialize(void Function(String) callback) async {
     status = callback;
     return permission == null ? available : await permission!.future;
@@ -42,6 +44,16 @@ void main() {
     expect(vietnameseVoice([{'name': 'English', 'locale': 'en-US'}]), isNull);
   });
 
+  test('missing recognition language directs to speech settings, not TTS', () async {
+    final engine = FakeVoice();
+    final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    await voice.start((_) {});
+    engine.recognitionError!('error_language_unavailable');
+    expect(voice.listening, isFalse);
+    expect(voice.recognitionError, isTrue);
+    expect(voice.error, contains('dịch vụ nhận dạng Google'));
+    expect(voice.error, isNot(contains('error_language_unavailable')));
+  });
   test('recognizer start failure resets mic and shows the error', () async {
     final engine = FakeVoice()..failListen = true;
     final voice = VoiceController(engine: engine); addTearDown(voice.dispose);

@@ -109,6 +109,7 @@ class VoiceController extends ChangeNotifier {
   bool listening = false, speaking = false, starting = false;
   double soundLevel = 0;
   String? error;
+  bool recognitionError = false;
   bool _disposed = false;
   int _generation = 0;
   Timer? _recognitionWatchdog;
@@ -128,7 +129,7 @@ class VoiceController extends ChangeNotifier {
     final run = ++_generation;
     var receivedWords = false;
     var ended = false;
-    starting = true; error = null; _changed();
+    starting = true; recognitionError = true; error = null; _changed();
     try {
       await engine.stopSpeaking();
       if (run != _generation || _disposed) return;
@@ -150,7 +151,9 @@ class VoiceController extends ChangeNotifier {
         ended = true;
         _recognitionWatchdog?.cancel();
         listening = false;
-        error = 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
+        error = ['error_language_unavailable', 'error_language_not_supported'].contains(message)
+          ? 'Dịch vụ nhận dạng trên máy chưa dùng được tiếng Việt. Chọn dịch vụ nhận dạng Google và bật hoặc tải tiếng Việt trong cài đặt giọng nói Android. Bạn vẫn có thể nhập chữ.'
+          : 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
         _changed();
       }).timeout(const Duration(seconds: 20), onTimeout: () => throw TimeoutException('Mở micro quá lâu. Kiểm tra quyền micro và dịch vụ nhận dạng giọng nói Android.'));
       if (run != _generation || _disposed) return;
@@ -203,7 +206,7 @@ class VoiceController extends ChangeNotifier {
     if (_disposed || text.trim().isEmpty) return;
     _recognitionWatchdog?.cancel();
     final run = ++_generation;
-    listening = false; starting = false; speaking = true; error = null; _changed();
+    listening = false; starting = false; speaking = true; recognitionError = false; error = null; _changed();
     try {
       await engine.cancel(); await engine.stopSpeaking();
       if (run != _generation || _disposed) return;
