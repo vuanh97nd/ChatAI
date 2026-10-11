@@ -32,6 +32,32 @@ class ProgressTests(unittest.TestCase):
         check.update(kind='value',stage='Phase_1')
         with self.assertRaisesRegex(ValueError,r'checks\[1\].stage=.*phase_1.*Tên Phase_1'):
             specification(json.dumps({'source':'Manual','checks':[check]}))
+
+    def test_phase_material_and_numeric_properties_are_read_without_active_coercion(self):
+        g=self.model()
+        class Property:
+            def __init__(self,value):self.value=value
+            def __getitem__(self,phase):return NS(value=self.value)
+        g.Soil_1_1.Material=Property(NS(Name='Sand'))
+        g.Soil_1_1.Load=Property(-10.0)
+        g.Soil_1_1.Unknown=Property(None)
+        spec={'source':'Manual','checks':[
+            {'ref':'g.Soil_1_1.Material','phase':'g.Phase_1','expected':'Sand','stage':'materials'},
+            {'ref':'g.Soil_1_1.Load','phase':'g.Phase_1','expected':-10.,'stage':'phases'},
+            {'ref':'g.Soil_1_1.Unknown','phase':'g.Phase_1','expected':0.,'stage':'phases'}]}
+        result=execute_commands(Mock(),g,commands_from_json(json.dumps([{'command':'inspect_progress','args':spec}])))
+        report=result['results'][0]['value']
+        self.assertEqual(len(report['verified']),2)
+        self.assertEqual(len(report['unreadable']),1)
+        self.assertEqual(report['missing_or_wrong'],[])
+
+    def test_active_expected_remains_strict_and_phase_count_is_rejected(self):
+        from assistant.plaxis_progress import specification
+        for value in ('false',0,None):
+            with self.assertRaises(ValueError):
+                specification(json.dumps({'source':'Manual','checks':[{'ref':'g.Soil_1_1.Active','phase':'g.Phase_1','expected':value}]}))
+        with self.assertRaisesRegex(ValueError,'bỏ phase'):
+            specification(json.dumps({'source':'Manual','checks':[{'ref':'g.Soils','phase':'g.Phase_1','expected':1,'kind':'count'}]}))
     def model(self,states=[True]):
         phase=NS(Name='Phase_1');soil=NS(Name='Soil_1_1',Active=PhaseProperty(states))
         return NS(Project=NS(ModelType=0),Soils=[soil],Phases=[phase],Materials=[],Plates=[],Soil_1_1=soil,Phase_1=phase)

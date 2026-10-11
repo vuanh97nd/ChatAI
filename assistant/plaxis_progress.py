@@ -36,7 +36,12 @@ def specification(raw):
         tolerance=check.get('tolerance',1e-6)
         if type(tolerance) not in (int,float) or not math.isfinite(tolerance) or tolerance<0:raise ValueError('tolerance không hợp lệ.')
         if 'phase' in check:
-            if not isinstance(check['phase'],str) or not REF.fullmatch(check['phase']) or not check['ref'].endswith('.Active') or type(check['expected']) is not bool:raise ValueError('phase chỉ dùng kiểm tra Active với expected boolean.')
+            if not isinstance(check['phase'],str) or not REF.fullmatch(check['phase']):
+                raise ValueError(f'checks[{index}].phase cần ref tới phase thực tế, ví dụ g.Phase_1; không dùng số, mảng hoặc đối tượng JSON.')
+            if check['kind']!='value':
+                raise ValueError(f'checks[{index}]: phase chỉ dùng đọc thuộc tính theo phase với kind=value. Đếm collection dùng kind=count và bỏ phase.')
+            if check['ref'].endswith('.Active') and type(check['expected']) is not bool:
+                raise ValueError(f'checks[{index}].expected cho Active phải là boolean JSON true/false, không phải chuỗi hoặc số. Không tự ép kiểu.')
     if checks and not spec.get('source','').strip():raise ValueError('Ghi nguồn manual/mục/trang cho các giá trị dự kiến.')
     return spec
 
@@ -87,9 +92,14 @@ def inspect_progress(g,raw,resolve):
             if 'phase' in check:
                 phase_ref=check['phase'] if check['phase'].startswith('g.') else 'g.'+check['phase']
                 phase=resolve({'ref':phase_ref})
-                target=resolve({'ref':ref[:-7]})
-                # Read the actual per-phase property; None never becomes False.
-                actual=active(target,phase)
+                if ref.endswith('.Active'):
+                    target=resolve({'ref':ref[:-7]})
+                    # Read the actual per-phase property; None never becomes False.
+                    actual=active(target,phase)
+                else:
+                    actual=scalar(obj[phase])
+                    if ref.endswith('.Material') and type(actual) not in (str,int,float,bool,type(None)):
+                        actual=describe(actual)
             elif check.get('kind')=='count':actual=len(obj)
             else:actual=scalar(obj)
             if actual is None or type(actual) not in (str,int,float,bool) or isinstance(actual,float) and not math.isfinite(actual):
