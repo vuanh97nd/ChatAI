@@ -17,7 +17,7 @@ def tabulated_active(g,obj,phase,object_name,phase_name):
     """At most two phase-scoped reads; never fall back to an unscoped table."""
     errors=[]
     evidence=''
-    for arguments in ((obj,phase),(obj,phase,'Active')):
+    for arguments in ((obj,phase,'Active'),(obj,phase)):
         try:
             table=g.tabulate(*arguments)
             if not isinstance(table,str):raise ValueError('tabulate chưa trả bảng văn bản')

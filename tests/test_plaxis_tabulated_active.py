@@ -56,7 +56,7 @@ class TabulatedActiveTests(unittest.TestCase):
             table=separator.join(('Object','Active'))+'\n'+separator.join(('InitialPhase','True'))+'\n'+separator.join(("Phase_1'",'False'))
             g=NS(tabulate=Mock(return_value=table))
             self.assertIs(tabulated_active(g,obj,phase,'Soil_1_1','Phase_1'),False)
-            self.assertEqual(g.tabulate.call_count,2)
+            self.assertEqual(g.tabulate.call_count,1)
         for table in ('Object\tActive\nInitialPhase\tTrue\nPhase_2\tFalse',
                       "Object\tActive\nPhase_1\tTrue\nPhase_1'\tFalse",
                       "Object\tActive\nPhase_1'\tNone"):
@@ -81,10 +81,10 @@ class TabulatedActiveTests(unittest.TestCase):
         obj.Active=Empty()
         g=NS(tabulate=Mock(return_value='Object\tActive[InitialPhase]\tActive[Phase_1]\nPlate_1_1\tTrue\tFalse'))
         self.assertIs(active(obj,phase,g),False)
-        g.tabulate.assert_called_once_with(obj,phase)
+        g.tabulate.assert_called_once_with(obj,phase,'Active')
         g.tabulate=Mock(return_value='Object\tActive\nPlate_1_1\tFalse')
         self.assertIs(active(obj,phase,g),False)
-        g.tabulate.assert_called_once_with(obj,phase)
+        g.tabulate.assert_called_once_with(obj,phase,'Active')
         for table in ('Object\tActive[Phase_2]\nPlate_1_1\tFalse',
                       'Object\tActive[Phase_1]\nOther\tFalse',
                       'Object\tActive[Phase_1]\nPlate_1_1\t0',
@@ -128,9 +128,8 @@ class TabulatedActiveTests(unittest.TestCase):
             return 'Object\tActive\nSoil_1_1\tTrue'
         g=NS(tabulate=Mock(side_effect=native))
         self.assertIs(tabulated_active(g,obj,phase,'Soil_1_1','Phase_1'),True)
-        self.assertEqual(g.tabulate.call_count,2)
-        self.assertEqual(g.tabulate.call_args_list[0].args,(obj,phase))
-        self.assertEqual(g.tabulate.call_args_list[1].args,(obj,phase,'Active'))
+        self.assertEqual(g.tabulate.call_count,1)
+        self.assertEqual(g.tabulate.call_args_list[0].args,(obj,phase,'Active'))
 
     def test_wall_links_find_missing_side_without_confusing_unrelated_interfaces(self):
         g=NS(Plates=[NS(Name='Plate_1',Parent='wall1'),NS(Name='Plate_2',Parent='wall2')],
