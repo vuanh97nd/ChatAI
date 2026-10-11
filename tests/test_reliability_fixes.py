@@ -781,16 +781,22 @@ class BatchRobustnessTests(unittest.TestCase):
 
 class Tutorial3RoundThreeTests(unittest.TestCase):
     def test_active_value_is_read_back(self):
-        from unittest.mock import Mock, MagicMock
-        from assistant.plaxis_commands import execute_commands
-        from assistant import windows_apps
-        windows_apps.resume_automation()
-        prop = MagicMock(); prop.__getitem__.return_value = Mock(value=True)  # PLAXIS still reports active
-        soil = Mock(); soil.Active = prop
-        g = Mock(); g.Soil_1_2 = soil; g.p4 = Mock()
-        result = execute_commands(Mock(), g, [{'command': 'set', 'args': [{'ref': 'Soil_1_2.Active'}, {'ref': 'g.p4'}, False]}])
-        self.assertIs(result['results'][0]['readback'], True)
-        self.assertIn('khác giá trị vừa đặt', result['results'][0]['readback_warning'])
+        from tests.test_plaxis_stage_guard import StageGuardTest
+        fixture = StageGuardTest(); fixture.setUp(); self.addCleanup(fixture.tearDown)
+        self.assertTrue(fixture.verify()['ok'])
+        # The server accepts set, but still reports the original Active value.
+        fixture.g.set = lambda *args: fixture.calls.append(args)
+        result = fixture.run_rows([
+            {'command': 'set', 'args': [{'ref': 'Soil_1.Active'}, {'ref': 'Phase_1'}, False]},
+            {'command': 'gotostages'},
+        ])
+        self.assertFalse(result['ok'])
+        self.assertTrue(result['command_started'])
+        self.assertTrue(result['uncertain'])
+        self.assertIn('Active đọc lại không khớp', result['error'])
+        self.assertEqual(len(result['not_run']), 1)
+        self.assertEqual(len(fixture.calls), 1)
+        self.assertNotIn('phase_log', fixture.session)
 
     def test_phase_branching_from_older_phase_is_flagged(self):
         from unittest.mock import Mock
@@ -871,16 +877,19 @@ class UncalculatedPhaseTests(unittest.TestCase):
         self.assertTrue(row['explicit'])
 
     def test_set_active_is_logged(self):
-        from unittest.mock import Mock, MagicMock
-        from assistant.plaxis_commands import execute_commands
-        from assistant import windows_apps
-        windows_apps.resume_automation()
-        prop = MagicMock(); prop.__getitem__.return_value = Mock(value=False)
-        soil = Mock(); soil.Active = prop; phase = Mock(); phase.Name.value = 'Phase_2'
-        g = Mock(); g.Soil_1_1 = soil; g.Phase_2 = phase
-        session = {'aliases': {}, 'created': {}}
-        execute_commands(Mock(), g, [{'command': 'set', 'args': [{'ref': 'Soil_1_1.Active'}, {'ref': 'Phase_2'}, False]}], session=session)
-        self.assertEqual(session['phase_log'], {'Phase_2': {'Soil_1_1': ('active', False)}})
+        from tests.test_plaxis_stage_guard import StageGuardTest
+        fixture = StageGuardTest(); fixture.setUp(); self.addCleanup(fixture.tearDown)
+        # Unverified requests never send a command or create a success log.
+        self.assertFalse(fixture.change()['ok'])
+        self.assertEqual(fixture.calls, [])
+        self.assertNotIn('phase_log', fixture.session)
+        self.assertTrue(fixture.verify()['ok'])
+        result = fixture.change()
+        self.assertTrue(result['ok'], result)
+        self.assertFalse(result['results'][0]['readback'])
+        self.assertEqual(fixture.session['phase_log'], {'Phase_1': {'Soil_1': ('active', False)}})
+        self.assertTrue(fixture.soil.Active[fixture.initial])
+        self.assertTrue(fixture.outside.Active[fixture.phase])
 
     def test_calculate_requires_one_verification(self):
         from assistant.online_automation import calculate_unverified
