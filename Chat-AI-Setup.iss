@@ -15,7 +15,7 @@
 AppId={{B4EE6C12-BA44-4F5D-9D18-570316F70791}
 AppName={#AppName}
 AppVersion={#AppVersion}
-; Bundled runtime includes Pillow, imageio, imageio-ffmpeg, OpenCV, and Windows automation (pywin32, pywinauto, comtypes, psutil, plxscripting).
+; Bundled runtime includes Pillow, imageio, imageio-ffmpeg, OpenCV, and Windows automation (pywin32, pywinauto, comtypes, psutil, plxscripting, Playwright, WebSocket, Office and mathematical formatting).
 AppPublisher=Chat AI
 AppPublisherURL=https://github.com/vuanh97nd/ChatAI
 AppSupportURL=https://github.com/vuanh97nd/ChatAI/issues

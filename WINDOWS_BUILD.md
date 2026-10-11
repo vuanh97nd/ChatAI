@@ -94,3 +94,11 @@ Nguồn: https://ollama.com/library/deepseek-coder-v2:16b ; https://ollama.com/l
 ## Tìm kiếm mạng trực tiếp
 
 Bing dùng thư viện chuẩn Python, không cài module mạng. Đã bỏ hàng Bật/Tải/Tắt mạng và bỏ điều kiện tải module trước khi gửi. Tùy chọn `web=0` lưu từ bản cũ không còn chặn tra cứu. Bấm Tìm kiếm mạng khi đã nhập câu hỏi sẽ gửi tra cứu ngay; chưa nhập thì đưa con trỏ vào khung nhập. Bấm lần nữa tắt tìm mạng. Chỉ khi nút bật mới tìm/đọc web; vẫn cần Internet và AI local đã tải (hoặc AI server được phép dùng). Theo yêu cầu, không chạy lại kiểm thử cho thay đổi này.
+
+
+Runtime bộ cài bao gồm PLAXIS `plxscripting`, Playwright và WebSocket,
+cùng các thư viện Office/COM và định dạng toán. Build kiểm tra import trong
+runtime tạm và kiểm tra lại sau khi chuyển sang vị trí đóng gói; thiếu thư
+viện sẽ làm build thất bại. Cần build lại bằng `Build-Setup.bat` để các gói
+được cài sẵn trong EXE mới. Playwright dùng Chrome đã cài trên máy theo cấu
+hình điều khiển trình duyệt hiện có; không đóng gói PLAXIS/Office/AutoCAD.
