@@ -101,7 +101,7 @@ class ConfigProviderTests(unittest.TestCase):
                 config.save_preferences(dict(current,whitelist=['workspace','new-denied']),current)
             self.assertEqual((self.root/'config.json').read_bytes(),persisted)
             with self.assertRaises(PermissionError):
-                config.save_preferences(dict(current,task_user_folders_enabled=True),current)
+                config.save_preferences(dict(current,task_user_folders_enabled=not current.get('task_user_folders_enabled',False)),current)
 
     def test_legacy_revision_preserves_existing_provider_choice(self):
         for provider in ('local', 'deepseek_flash', 'groq', 'nvidia'):
