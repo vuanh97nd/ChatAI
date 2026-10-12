@@ -10,6 +10,56 @@ class Ref:
     def __hash__(self):return id(self)
 
 class StageGuardTest(unittest.TestCase):
+    def test_initial_phase_inspection_has_no_parent(self):
+        result=self.run_rows([{'command':'inspect_stage','args':[{'ref':'g.InitialPhase'},{'ref':'g.Soils'}]}])
+        self.assertTrue(result['ok'],result)
+        row=result['results'][0]['value']['objects'][0]
+        self.assertIsNone(row['parent_phase'])
+        self.assertIsNone(row['parent_active'])
+        self.assertNotIn('error',row)
+
+    def test_verified_initial_soil_activation_keeps_construction_phases_unchanged(self):
+        self.soil.Active[self.initial]=False
+        result=self.verify(phase='InitialPhase',parent_phase=None,parent_active=None,before=False,after=True)
+        self.assertTrue(result['ok'],result)
+        written=self.change(phase='InitialPhase',after=True)
+        self.assertTrue(written['ok'],written)
+        self.assertIs(self.soil.Active[self.initial],True)
+        self.assertIs(self.soil.Active[self.phase],True)
+        self.assertEqual(len(self.calls),1)
+
+    def test_initial_phase_does_not_allow_excavation_or_structure_activation(self):
+        result=self.verify(phase='InitialPhase',parent_phase=None,parent_active=None,after=False)
+        self.assertFalse(result['ok'])
+        self.assertEqual(self.calls,[])
+        result=self.verify(phase='Phase_1',parent_phase=None,parent_active=None,after=True)
+        self.assertFalse(result['ok'])
+        self.assertEqual(self.calls,[])
+
+    def test_initial_soil_group_reads_twice_and_only_writes_inactive_soil(self):
+        from unittest.mock import patch
+        from assistant.plaxis_stage_guard import initialize_soils,active
+        self.soil.Active[self.initial]=False
+        spec={'objects':{'Soil_1':False,'Soil_2':True},'region':{'x':[0,20],'y':[-10,0]},'source':'User requested initial soil activation'}
+        with patch('assistant.plaxis_stage_guard.active',wraps=active) as reads:
+            result=initialize_soils(self.g,spec)
+        self.assertTrue(result['verified'])
+        self.assertEqual(reads.call_count,4)
+        self.assertEqual(result['activated'],['Soil_1'])
+        self.assertEqual(self.calls,[(self.soil.Active,self.initial,True)])
+        self.assertIs(self.soil.Active[self.phase],True)
+
+    def test_initial_soil_group_command_and_stale_inventory_guard(self):
+        self.soil.Active[self.initial]=False
+        spec={'objects':{'Soil_1':False,'Soil_2':True},'region':{'x':[0,20],'y':[-10,0]},'source':'Manual initial state'}
+        result=self.run_rows([{'command':'initialize_soils','args':spec}])
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(result['results'][0]['value']['activated'],['Soil_1'])
+        self.assertEqual(len(self.calls),1)
+        result=self.run_rows([{'command':'initialize_soils','args':spec}])
+        self.assertFalse(result['ok'])
+        self.assertEqual(len(self.calls),1)
+
     def setUp(self):
         resume_automation()
         self.initial=Ref('InitialPhase')

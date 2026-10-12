@@ -7,7 +7,7 @@ from .plaxis_stage_guard import StageGuardError
 _NAME=re.compile(r'[A-Za-z][A-Za-z0-9_]*\Z')
 _INDEXED=re.compile(r'([A-Za-z][A-Za-z0-9_.]*)\[(\d{1,5})\]\Z')
 _REF_PART=re.compile(r'([A-Za-z][A-Za-z0-9_]*)(?:\[(\d{1,5})\])?\Z')
-_LOCAL_HELPERS={'inspect_stage','verify_stage','inspect_progress','plan_resume','verify_model'}
+_LOCAL_HELPERS={'inspect_stage','verify_stage','inspect_progress','plan_resume','verify_model','initialize_soils'}
 _BLOCKED={'open','save','saveas','import','export','run','exec','execute','system','apply','evaluate','python','runscript','runpython'}
 
 
@@ -86,7 +86,7 @@ def commands_from_json(raw):
         cmd=row.get('command','')
         if not isinstance(cmd,str) or not _NAME.fullmatch(cmd) or cmd.casefold() in _BLOCKED:
             raise ValueError('Cần tên lệnh API PLAXIS; không nhận shell/Python hoặc lệnh truy cập tệp.')
-        if cmd in {'verify_stage','plan_excavation','draw_excavation','inspect_progress','plan_resume'}:
+        if cmd in {'verify_stage','plan_excavation','draw_excavation','inspect_progress','plan_resume','initialize_soils'}:
             spec=row.get('args',[])
             if isinstance(spec,str):spec=[spec]
             elif isinstance(spec,dict):spec=[json.dumps(spec,allow_nan=False)]
@@ -121,6 +121,10 @@ def commands_from_json(raw):
             if len(args)!=1:raise ValueError('Tiến độ cần một đặc tả JSON source/checks.')
             specification(args[0])
         if cmd=='inspect_stage' and len(args)!=2:raise ValueError('inspect_stage cần phase và collection đối tượng.')
+        if cmd=='initialize_soils':
+            from .plaxis_stage_guard import initial_soil_spec
+            if len(args)!=1:raise ValueError('initialize_soils cần một JSON source, region, objects.')
+            initial_soil_spec(args[0])
         if cmd=='new_project' and args:raise ValueError('new_project không nhận tham số.')
         if cmd=='read':
             ref=_read_ref(args[0]) if len(args) in (1,2) else None
@@ -638,6 +642,11 @@ def execute_commands(server,g,rows,on_status=None,session=None):
             elif row['command'] in {'inspect_progress','plan_resume'}:
                 from .plaxis_progress import inspect_progress,plan_resume
                 result=(inspect_progress if row['command']=='inspect_progress' else plan_resume)(g,args[0],resolve)
+            elif row['command']=='initialize_soils':
+                from .plaxis_stage_guard import initialize_soils,initial_soil_spec
+                session.pop('stage_permit',None)
+                started=True
+                result=initialize_soils(g,initial_soil_spec(args[0]))
             elif row['command']=='inspect_stage':
                 result=inspect(g,args[0],args[1])
             elif row['command']=='verify_stage':
@@ -772,7 +781,7 @@ def execute_commands(server,g,rows,on_status=None,session=None):
                     session['created'][row['result']]=json.dumps([row['command'],row.get('args',[])],sort_keys=True,ensure_ascii=False)
             truncated=isinstance(result,(tuple,list,str)) and len(result)>(6000 if isinstance(result,str) else 100)
             entry={'step':index+1,'command':row['command'],
-                   'value':result if row['command'] in {'inspect_stage','verify_stage','inspect_progress','plan_resume','plan_excavation','draw_excavation'} else plain(result),'truncated':truncated}
+                   'value':result if row['command'] in {'inspect_stage','verify_stage','inspect_progress','plan_resume','plan_excavation','draw_excavation','initialize_soils'} else plain(result),'truncated':truncated}
             if normalized_properties:entry['normalized_properties']=normalized_properties
             if row['command'].lower() in {'waterlevel','wl'}:
                 entry['coordinates_sent']=args
@@ -978,8 +987,16 @@ def run_batch(server,g,rows,on_status=None,port=None,version=None):
         # objects created by later steps in this same batch under the new key.
         _SESSIONS[(port,project)]=session
     first=not session.get('seen');session['seen']=True
+    initialized=[r['value'] for r in result.get('results',[]) if r.get('command')=='initialize_soils'
+                 and isinstance(r.get('value'),dict) and r['value'].get('verified')]
+    initial_only=(result.get('ok') and initialized and
+                  all(r['command'] in {'gotostages','initialize_soils'} for r in rows))
     # First contact with this project: show what is already there before anything is built.
-    if first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
+    if initial_only:
+        count=len(initialized[-1]['after'])
+        result['model_state']=f'Đã đọc lại và xác minh {count} khối đất Active=True tại InitialPhase.'
+        result['model_state_note']='Chỉ xác minh nhóm đất ở InitialPhase; chưa đọc kết cấu/tải hoặc các phase đào. Không quét lại toàn mô hình sau phép đọc xác nhận nhóm.'
+    elif first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
         try:
             result['model_state']=model_snapshot(g,session=session,version=version)
             result['model_state_note']=('model_state là trạng thái thật của PLAXIS sau lệnh này. Trước khi tạo borehole, lớp đất, '

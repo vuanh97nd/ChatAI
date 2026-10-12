@@ -46,6 +46,7 @@ def planning_instruction(schemas: list, permissions: str, authorized: bool) -> s
         'Kết quả công cụ mới là bằng chứng; lời AI cũ và bộ nhớ bài khác không chứng minh mô hình hiện tại. '
         'Sau mesh đọc collection mới trong gotostages; không dùng ref/GUID cũ. '
         'Active=None là chưa đọc được, không phải False. Hình học staged lấy qua Parent. '
+        'InitialPhase không có cha: dùng parent_phase=null, parent_active=null để xác minh bật soil. '
         'Borehole/Head chỉ tạo nếu bài yêu cầu; bài dùng polygon và không xét nước không cần tự thêm. '
         'Chỉ đào đúng vùng trong hố; giữ đất ngoài hố và dưới đáy, nối phase đúng cha. '
         'Lỗi nhóm có thể đã ghi một phần: chỉ kiểm tra mục mâu thuẫn, không chạy lại cả nhóm. '
