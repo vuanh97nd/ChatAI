@@ -4,6 +4,16 @@ from assistant.backup_provider import backup_provider_request
 
 SESSION={'endpoint':'https://backup.example','username':'backup-admin','key':'backup-token'}
 class BackupProviderTests(unittest.TestCase):
+    def test_models_catalog_only_addresses_backup_and_reuses_stored_provider_key(self):
+        with patch('assistant.backup_provider.request_account',return_value={'success':True,'models':['nvidia/model-a','nvidia/model-b']}) as call:
+            result=backup_provider_request(SESSION,'models','nvidia')
+            endpoint,path,body=call.call_args.args
+            self.assertEqual(endpoint,'https://backup.example')
+            self.assertEqual(path,'/api/admin/providers/models')
+            self.assertEqual(body['provider'],'nvidia')
+            self.assertEqual(body['api_key'],'')
+            self.assertNotIn('model',body)
+            self.assertEqual(len(result['models']),2)
     def test_save_only_to_backup_and_blank_key_keeps_previous_key(self):
         with patch('assistant.backup_provider.request_account',return_value={'success':True}) as call:
             backup_provider_request(SESSION,'save','deepseek',model='deepseek-flash')

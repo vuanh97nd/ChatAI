@@ -7,6 +7,29 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/backup_provider_page.dart';
 
 void main() {
+  testWidgets('model catalog uses backup session and choosing does not save automatically', (tester) async {
+    final calls = <http.Request>[];
+    final api = ChatApi(endpoint: 'https://backup.example', client: MockClient((request) async {
+      calls.add(request);
+      expect(request.url.host, 'backup.example');
+      expect(request.url.path, '/api/admin/providers/models');
+      final body = jsonDecode(request.body);
+      expect(body['key'], 'backup-token');
+      expect(body['provider'], 'nvidia');
+      expect(body['api_key'], '');
+      return http.Response('{"success":true,"models":["nvidia/test-model-a","nvidia/test-model-b"]}', 200);
+    }))..session = Session('admin', 'backup-token', '', admin: true);
+    await tester.pumpWidget(MaterialApp(home: BackupProviderPage(api: api)));
+    await tester.ensureVisible(find.text('Chọn / nhập thêm model'));
+    await tester.tap(find.text('Chọn / nhập thêm model'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('nvidia/test-model-b'));
+    await tester.pumpAndSettle();
+    expect((tester.widget<TextField>(find.byType(TextField).at(1))).controller!.text, 'nvidia/test-model-b');
+    expect(calls.length, 1);
+    expect(find.textContaining('Chọn mới chưa lưu'), findsOneWidget);
+    api.close();
+  });
   testWidgets('saves backup key only to backup, clears input, then verifies real answer', (tester) async {
     final calls = <http.Request>[];
     final api = ChatApi(endpoint:'https://backup.example', client:MockClient((request) async {

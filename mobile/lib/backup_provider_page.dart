@@ -23,6 +23,46 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
   void initState() { super.initState(); modelInput.text = models[provider]!; }
   @override
   void dispose() { keyInput.dispose(); modelInput.dispose(); super.dispose(); }
+  Future<void> chooseModels() async {
+    if (busy || provider == 'cloudflare') return;
+    final selected = provider, secret = keyInput.text.trim();
+    setState(() { busy = true; message = 'Đang lấy model từ server dự phòng…'; });
+    try {
+      final result = await widget.api.post('/api/admin/providers/models', {'provider': selected, 'api_key': secret});
+      final valid = RegExp(r'^[A-Za-z0-9._/-]{1,160}$');
+      final catalog = (result['models'] as List<dynamic>? ?? []).whereType<String>()
+          .where(valid.hasMatch).toSet().toList()..sort();
+      if (!mounted) return;
+      if (catalog.isEmpty) {
+        setState(() => message = 'Chưa có danh sách model. Có thể nhập mã vào ô Model rồi Kiểm tra AI.');
+        return;
+      }
+      var query = '';
+      final chosen = await showDialog<String>(context: context, builder: (dialogContext) =>
+        StatefulBuilder(builder: (dialogContext, update) {
+          final filtered = catalog.where((m) => m.toLowerCase().contains(query.toLowerCase())).toList();
+          return AlertDialog(title: Text('Model ${names[selected]} · dự phòng'),
+            content: SizedBox(width: double.maxFinite, height: 350, child: Column(children: [
+              TextField(onChanged: (value) => update(() => query = value.trim()),
+                decoration: const InputDecoration(labelText: 'Tìm hoặc nhập mã model')),
+              const Text('Chọn model chat; embedding/reranker không dùng để trò chuyện.'),
+              Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (_, index) =>
+                ListTile(title: Text(filtered[index]), onTap: () => Navigator.pop(dialogContext, filtered[index])))),
+            ])), actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Hủy')),
+              TextButton(onPressed: valid.hasMatch(query) ? () => Navigator.pop(dialogContext, query) : null,
+                child: const Text('Dùng mã đang nhập')),
+            ]);
+        }));
+      if (!mounted || chosen == null) return;
+      setState(() {
+        modelInput.text = chosen;
+        message = 'Đã lấy ${catalog.length} model. Chọn mới chưa lưu: bấm Kiểm tra AI rồi Lưu API dự phòng.';
+      });
+    } catch (error) {
+      if (mounted) setState(() => message = 'Chưa lấy được danh sách: ${secret.isEmpty ? '$error' : '$error'.replaceAll(secret, '[ẨN]')}');
+    } finally { if (mounted) setState(() => busy = false); }
+  }
   Future<void> perform(String action) async {
     if (busy) return;
     final selected = provider, secret = keyInput.text.trim(), model = modelInput.text.trim();
@@ -90,6 +130,8 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
       TextField(controller:modelInput, enabled:!busy && provider!='cloudflare', maxLength:160,
         decoration:const InputDecoration(labelText:'Model')),
       Text(message),
+      TextButton(onPressed: busy || provider == 'cloudflare' ? null : chooseModels,
+        child: const Text('Chọn / nhập thêm model')),
       TextButton(onPressed:busy ? null : () => perform('status'), child:const Text('Xem trạng thái')),
       FilledButton(onPressed:busy || provider=='cloudflare' ? null : () => perform('save'), child:const Text('Lưu API dự phòng')),
       OutlinedButton(onPressed:busy ? null : () => perform('test'), child:const Text('Kiểm tra AI')),

@@ -2773,22 +2773,35 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         def request(action):
             if self.busy():return
             name=provider.currentData();api_key=key.text().strip();selected=model.text().strip()
+            if action=='models' and name=='cloudflare':
+                message.setText('Cloudflare dùng model theo cấu hình Worker.');return
             if action=='save' and name=='cloudflare':
                 message.setText('Cloudflare không cần lưu khóa ở đây. Thêm binding AI trong Cloudflare rồi bấm Kiểm tra AI.');return
             if action=='save' and not api_key and not selected:
                 message.setText('Nhập khóa API hoặc model để lưu.');return
             for button in buttons:button.setEnabled(False)
+            provider.setEnabled(False);key.setEnabled(False);model.setEnabled(False)
             message.setText('Đang '+('kiểm tra AI (có thể tính phí API)…' if action=='test' else 'kết nối server dự phòng…'))
             def task(emit):
                 from assistant.backup_provider import backup_provider_request
-                try:return {'value':backup_provider_request(session,action,name,api_key,selected)}
+                try:return {'value':backup_provider_request(session,action,name,api_key,'' if action=='models' else selected)}
                 except Exception as error:return {'error':str(error).replace(api_key,'[ẨN]') if api_key else str(error)}
             def done(result):
                 if not dialog.isVisible():return
                 for button in buttons:button.setEnabled(True)
+                provider.setEnabled(True);key.setEnabled(name!='cloudflare');model.setEnabled(name!='cloudflare')
                 if result.get('error'):message.setText('Chưa thành công: '+result['error']);return
                 value=result['value']
-                if action=='status':
+                if action=='models':
+                    catalog=value.get('models',[])
+                    catalog=sorted(set(m for m in catalog if isinstance(m,str) and re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',m))) if isinstance(catalog,list) else []
+                    if not catalog:message.setText('Server dự phòng chưa trả danh sách model. Có thể nhập mã vào ô Model rồi Kiểm tra AI.');return
+                    chosen,ok=QInputDialog.getItem(dialog,'Model '+PROVIDER_NAMES.get(name,name)+' · server dự phòng',
+                        'Chọn hoặc nhập mã model chat; embedding/reranker không dùng để trò chuyện:',catalog,catalog.index(selected) if selected in catalog else 0,True)
+                    if ok:
+                        model.setText(chosen.strip())
+                        message.setText('Đã lấy '+str(len(catalog))+' model từ server dự phòng. Chọn mới chưa được lưu: bấm Kiểm tra AI rồi Lưu API dự phòng.')
+                elif action=='status':
                     states=value.get('providers',{})
                     for ident,item in states.items():
                         if ident in models and item.get('model'):models[ident]=item['model']
@@ -2797,7 +2810,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 elif not str(value.get('answer') or '').strip():message.setText(value.get('message') or 'API phản hồi nhưng chưa có nội dung AI. Chưa xác nhận dự phòng hoạt động.')
                 else:message.setText('AI dự phòng đã trả lời thành công tại '+session['endpoint']+'. Nếu vừa thay đổi khóa/model, bấm Lưu API để áp dụng.')
             self.work(task,done)
-        for label,action in [('Xem trạng thái','status'),('Lưu API dự phòng','save'),('Kiểm tra AI','test')]:
+        for label,action in [('Chọn / nhập thêm model','models'),('Xem trạng thái','status'),('Lưu API dự phòng','save'),('Kiểm tra AI','test')]:
             button=QPushButton(label);button.clicked.connect(lambda checked=False,a=action:request(a));controls.addWidget(button);buttons.append(button)
         form.addRow(controls)
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
