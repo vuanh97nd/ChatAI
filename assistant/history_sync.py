@@ -8,8 +8,18 @@ from .procedure_memory import clean_records as clean_procedures,clean_progress
 from .plaxis_confirmation import active_problem
 
 
-def dialogue(state):
-    return {'messages':[{'role':m['role'],'content':m.get('content',''),**({'tool_name':str(m.get('tool_name') or 'tool')[:100]} if m['role']=='tool' else {})}
+def _export_case_memory(owner, store):
+    """Export case records for sync; never raises."""
+    try:
+        from .case_memory import CaseMemory
+        return CaseMemory(store).export(owner)
+    except Exception:
+        return []
+
+
+def dialogue(state, store=None):
+    owner = state.get('account_username')
+    result = {'messages':[{'role':m['role'],'content':m.get('content',''),**({'tool_name':str(m.get('tool_name') or 'tool')[:100]} if m['role']=='tool' else {})}
                         for m in state.get('messages',[]) if m.get('role') in ('user','assistant','tool')
                         and isinstance(m.get('content',''),str)],
             'custom_title':str(state.get('custom_title') or '')[:120], 'model':state.get('model')[:150] if isinstance(state.get('model'),str) else None,
@@ -19,10 +29,16 @@ def dialogue(state):
             'procedure_progress':clean_progress(state.get('procedure_progress',{})),
             'procedure_environment':str(state.get('procedure_environment') or 'unknown')[:160],
             'plaxis_active_problem':active_problem(state)}
+    # Include case_memory in sync payload so it survives across devices.
+    if owner and store is not None:
+        result['case_memory'] = _export_case_memory(owner, store)
+    elif state.get('case_memory'):
+        result['case_memory'] = state['case_memory']
+    return result
 
 
-def fingerprint(state):
-    return hashlib.sha256(dumps(dialogue(state)).encode()).hexdigest()
+def fingerprint(state, store=None):
+    return hashlib.sha256(dumps(dialogue(state, store=store)).encode()).hexdigest()
 
 
 class HistorySync:
@@ -63,6 +79,13 @@ class HistorySync:
             DocumentMemory(self.store).import_records(self.owner,state.get('document_memory',[]),db=db)
             from .procedure_memory import ProcedureMemory
             ProcedureMemory(self.store).import_records(self.owner,state.get('procedure_memory',[]),db=db)
+            # Sync case_memory from server to local.
+            if state.get('case_memory'):
+                try:
+                    from .case_memory import CaseMemory
+                    CaseMemory(self.store).import_records(self.owner,state['case_memory'],db=db)
+                except Exception:
+                    pass
             state['procedure_memory_version']=1
             state['document_memory_version']=1
             if remote['deleted']:
@@ -116,10 +139,10 @@ class HistorySync:
         # crash leftover or an approval wait: back up its dialogue, never overwrite it.
         if state and not state.get('messages'):return False
         revision,base_hash=self.baseline(cid)
-        local_hash='DELETED' if deleted else fingerprint(state) if state else None
+        local_hash='DELETED' if deleted else fingerprint(state,self.store) if state else None
         if item and item['revision']!=revision:
             fetched=self.api('get',conversation_id=cid)
-            remote_hash='DELETED' if fetched['deleted'] else fingerprint(fetched['state'])
+            remote_hash='DELETED' if fetched['deleted'] else fingerprint(fetched['state'],self.store)
             if local_hash==remote_hash:
                 self.mark(cid,item['revision'],remote_hash);self.forget_deletion(cid,deleted)
                 return False
@@ -139,7 +162,7 @@ class HistorySync:
                 # Never uploaded: nothing to delete on the server.
                 self.forget_deletion(cid,True);return False
             result=self.api('put',conversation_id=cid,revision=revision,deleted=deleted,
-                            state=dialogue(state or {'messages':[]}))
+                            state=dialogue(state or {'messages':[]},store=self.store))
             self.mark(cid,result['revision'],local_hash)
             self.forget_deletion(cid,deleted)
         return False

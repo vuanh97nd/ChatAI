@@ -113,3 +113,93 @@ class PersonalMemory:
     def delete(self,identifier):
         with self.store.connection() as db:
             db.execute('DELETE FROM personal_memory WHERE owner=? AND id=?',(self.owner,identifier))
+
+
+class UserPreferenceProfile:
+    """Accumulates user preferences (software, workflow, conventions) across sessions.
+
+    Stores a single JSON record per user in personal_memory under id='pref:profile'.
+    Preferences are merged on each update, never overwritten wholesale.
+    """
+
+    _PREF_ID = 'pref:profile'
+    _PREF_TITLE = 'Hồ sơ sở thích người dùng'
+
+    # Patterns that reveal a preference from conversation text.
+    _PATTERNS = [
+        (re.compile(r'\b(PLAXIS\s+[23]D|GeoSlope|AutoCAD|Revit|Excel|Word)\b', re.I), 'preferred_software'),
+        (re.compile(r'\b(Mohr.Coulomb|Hardening\s+Soil|Soft\s+Soil|Linear\s+Elastic|MC|HS|SS)\b', re.I), 'preferred_soil_model'),
+        (re.compile(r'\b([23]D)\b', re.I), 'preferred_dimension'),
+        (re.compile(r'tiêu chuẩn\s+(TCVN|Eurocode|ASCE|AISC|ACI)\s*[\d-]*', re.I), 'preferred_standard'),
+        (re.compile(r'đơn vị\s+(kN|kPa|MPa|N/m|kN/m)', re.I), 'preferred_units'),
+        (re.compile(r'ngôn ngữ\s+(tiếng\s+Việt|Vietnamese|English|tiếng\s+Anh)', re.I), 'preferred_language'),
+    ]
+
+    def __init__(self, store, owner):
+        if not owner:
+            raise ValueError('Bộ nhớ cần tài khoản đăng nhập.')
+        self.store = store
+        self.owner = owner
+
+    def _load(self):
+        import json as _json
+        with self.store.connection() as db:
+            row = db.execute(
+                'SELECT text FROM personal_memory WHERE owner=? AND id=?',
+                (self.owner, self._PREF_ID),
+            ).fetchone()
+        if not row:
+            return {}
+        try:
+            return _json.loads(row[0])
+        except (ValueError, TypeError):
+            return {}
+
+    def _save(self, prefs):
+        import json as _json
+        text = _json.dumps(prefs, ensure_ascii=False)[:1200]
+        with self.store.connection() as db:
+            db.execute(
+                'INSERT OR REPLACE INTO personal_memory VALUES (?,?,?,?,?,?,?)',
+                (self.owner, self._PREF_ID, self._PREF_TITLE, text, None, None, now()),
+            )
+
+    def update_from_messages(self, messages):
+        """Scan recent messages and merge discovered preferences into the profile."""
+        text = '\n'.join(
+            m.get('content', '') for m in (messages or [])[-20:]
+            if m.get('role') == 'user' and isinstance(m.get('content'), str)
+        )
+        if not text.strip():
+            return
+        prefs = self._load()
+        changed = False
+        for pattern, key in self._PATTERNS:
+            match = pattern.search(text)
+            if match:
+                value = match.group(0).strip()
+                if prefs.get(key) != value:
+                    prefs[key] = value
+                    changed = True
+        if changed:
+            self._save(prefs)
+
+    def set(self, key, value):
+        """Explicitly set a preference (from user instruction)."""
+        if not isinstance(key, str) or not key.strip():
+            return
+        prefs = self._load()
+        prefs[key.strip()[:60]] = str(value)[:200]
+        self._save(prefs)
+
+    def get(self):
+        """Return current preference dict."""
+        return self._load()
+
+    def context(self):
+        """Return a short instruction string to inject into the AI prompt."""
+        prefs = self._load()
+        if not prefs:
+            return ''
+        lines = ', '.join(f'{k}: {v}' for k, v in list(prefs.items())[:10])
+        return '\nSỞ THÍCH NGƯỜI DÙNG (từ hồ sơ tích lũy): ' + lines + '. Ưu tiên các lựa chọn này khi không có chỉ dẫn khác.'
