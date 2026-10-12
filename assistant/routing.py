@@ -57,6 +57,8 @@ def fallback_route(text, has_documents=False):
     category = "knowledge"
     if has_documents or contains(r"file|tệp|tài liệu của tôi|excel|pdf|docx|xlsx"):
         category = "personal_documents"
+    if contains(r"geoslope|geostudio|slope.?w|gsz|mái dốc|ổn định mái|bth xử lý|sltt|mặt cắt địa tầng|đường trượt|bishop|morgenstern|spencer|fellenius"):
+        category = "personal_documents"
     elif contains(r"thời tiết|tin tức|hôm nay|hiện tại|mới nhất|tra cứu|tìm kiếm|tìm trên mạng"):
         category = "current_web"
     elif contains(r"python|javascript|lập trình|viết code|sửa code|debug|sql|traceback"):

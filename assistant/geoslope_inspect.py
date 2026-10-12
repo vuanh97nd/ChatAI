@@ -134,9 +134,16 @@ def inspect_workbook(path, sheet='', cell_range='A1:J20'):
                                  'declared_unit':row_by_number[r][unit_column-1].value if unit_column else None,
                                  'row_context':[str(x.value) for x in row_by_number[r][:unit_column-1] if x.value is not None] if unit_column else []}
                 materials.append({'name':str(h.value),'header_cell':h.coordinate,'fields':fields})
-            tables.append({'sheet':s.title,'materials':materials})
+            warnings=[]
+            for mat in materials:
+                uw=mat['fields'].get('unit_weight',{})
+                v=uw.get('value')
+                if isinstance(v,(int,float)) and not isinstance(v,bool):
+                    if v<14 or v>25:
+                        warnings.append(f"{mat['name']} ({uw.get('cell','')}): γ={v} ngoài khoảng đất thông thường [14–25] kN/m³ — kiểm tra đơn vị khai báo '{uw.get('declared_unit','')}' trong bảng.")
+            tables.append({'sheet':s.title,'materials':materials,'unit_warnings':warnings})
         return {'sheets':sheets,'material_tables':tables,'section_tables':sections,
-                'note':'Bảng nhận diện theo nhãn chỉ tiêu. Không tự chọn c tổng/c hiệu quả, quy đổi đơn vị hay ghép tên lớp; đọc vùng ô để kiểm tra.'}
+                'note':'Bảng nhận diện theo nhãn chỉ tiêu. Không tự chọn c tổng/c hiệu quả, quy đổi đơn vị hay ghép tên lớp; đọc vùng ô để kiểm tra. unit_warnings liệt kê dung trọng ngoài khoảng [14–25] kN/m³ để người dùng xác nhận đơn vị.'}
     finally:
         values.close();formulas.close()
 

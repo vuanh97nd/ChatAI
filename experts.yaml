@@ -14,6 +14,7 @@
     {"name":"calculate","kind":"tool","role":"calculation","tool":"calculate","mission":"Tính bằng công cụ, không tự nhẩm","when":{"need_calculation":true}},
     {"name":"sandbox","kind":"tool","role":"sandbox","tool":"python_run","mission":"Chạy Python không mạng trong Docker, theo quyền và xác nhận","when":{"need_code":true}},
     {"name":"image","kind":"tool","role":"image","tool":"image_generate","mission":"Model ảnh đang chọn (SD-Turbo nhanh hoặc SDXL-Turbo chất lượng cao) tạo ảnh từ prompt đã cải thiện, có xác nhận","when":{"need_image":true}},
-    {"name":"video","kind":"tool","role":"video","tool":"video_generate","mission":"MP4 chuyển động từ ảnh, không nhận là video diffusion","when":{"need_video":true}}
+    {"name":"video","kind":"tool","role":"video","tool":"video_generate","mission":"MP4 chuyển động từ ảnh, không nhận là video diffusion","when":{"need_video":true}},
+    {"name":"geoslope","kind":"llm","role":"chat","model":"qwen2.5:7b","fallback_models":["qwen2.5:14b"],"temperature":0.1,"mission":"Chuyên gia SLOPE/W và GeoStudio: đọc BTH/SLTT Excel, nhận diện lớp đất, kiểm tra đơn vị (γ kN/m³, c/Su kPa, φ độ), dùng geoslope_inspect/geoslope_profile/geoslope_create đúng bước; không tự bịa thông số, không áp vật liệu mẫu sang bài mới","when":{"need_geoslope":true}}
   ]
 }

@@ -11,9 +11,9 @@ ROOT=Path(__file__).resolve().parents[1]
 PLAN_SCHEMA={'type':'object','properties':{
     'inputs':{'type':'object','properties':{k:{'type':'boolean'} for k in ('images','files','audio')},'required':['images','files','audio'],'additionalProperties':False},
     'task':{'type':'string'},'domain':{'type':'string'},
-    **{k:{'type':'boolean'} for k in ('need_web','need_rag','need_code','need_memory')},
+    **{k:{'type':'boolean'} for k in ('need_web','need_rag','need_code','need_memory','need_geoslope')},
     'steps':{'type':'array','items':{'type':'object','properties':{'expert':{'type':'string'},'task':{'type':'string'}},'required':['expert','task'],'additionalProperties':False}}},
-    'required':['inputs','task','domain','need_web','need_rag','need_code','need_memory','steps'],'additionalProperties':False}
+    'required':['inputs','task','domain','need_web','need_rag','need_code','need_memory','need_geoslope','steps'],'additionalProperties':False}
 PLAN_GUIDANCE='''Thêm team JSON: nhận diện mọi phần yêu cầu, domain và các bước phụ thuộc nhau.
 Ảnh code/lỗi: vision chép nguyên văn -> code phân tích/sửa -> sandbox nếu được phép.
 Ảnh tài liệu/bảng/bản vẽ: vision trích xuất -> calculator nếu có số cần tính -> general.

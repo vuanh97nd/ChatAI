@@ -98,4 +98,30 @@ class GeoslopeInputTest(unittest.TestCase):
         self.assertEqual(json.loads(plan['arguments']['layers'])[0]['thickness'],4.5)
 
 
+    def test_unit_weight_warning_flags_values_outside_14_to_25(self):
+        from openpyxl import Workbook
+        w=Workbook();m=w.active;m.title='SLTT'
+        m.append([]);m.append(['Tên chỉ tiêu','Ký hiệu','Đơn vị','Lớp A','Lớp B'])
+        m.append(['Dung trọng','g','kN/m3',17.0,9.5])
+        m.append(['Lực dính','c','kPa',10,5])
+        m.append(['Góc ma sát trong','phi','độ',20,15])
+        p=self.root/'warn.xlsx';w.save(p)
+        r=inspect_workbook(p)
+        warnings=r['material_tables'][0]['unit_warnings']
+        self.assertEqual(len(warnings),1)
+        self.assertIn('Lớp B',warnings[0])
+        self.assertIn('9.5',warnings[0])
+
+    def test_unit_weight_no_warning_when_values_in_range(self):
+        from openpyxl import Workbook
+        w=Workbook();m=w.active;m.title='SLTT'
+        m.append([]);m.append(['Tên chỉ tiêu','Ký hiệu','Đơn vị','Lớp C'])
+        m.append(['Dung trọng','g','kN/m3',18.5])
+        m.append(['Lực dính','c','kPa',15])
+        m.append(['Góc ma sát trong','phi','độ',20])
+        p=self.root/'notwarn.xlsx';w.save(p)
+        r=inspect_workbook(p)
+        self.assertEqual(r['material_tables'][0]['unit_warnings'],[])
+
+
 if __name__=='__main__':unittest.main()

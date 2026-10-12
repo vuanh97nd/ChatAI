@@ -1437,6 +1437,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             ('🔢 Kiểm tra nội lực / tổ hợp tải trọng', 'Kiểm tra nội lực và tổ hợp tải trọng cho cấu kiện. Hỏi tôi loại kết cấu và số liệu.'),
             ('🌊 Tính lún cố kết theo thời gian', 'Tính lún cố kết theo thời gian cho nền đất. Hỏi tôi thông số lớp đất và tải trọng.'),
             ('🔍 Tìm tiêu chuẩn TCVN / QCVN liên quan', 'Tìm và giải thích các tiêu chuẩn TCVN / QCVN liên quan đến yêu cầu kỹ thuật. Hỏi tôi lĩnh vực cần tra.'),
+            ('📋 GeoSlope — Đọc bảng BTH/SLTT', 'Dùng geoslope_inspect đọc file Excel BTH/SLTT và cho tôi biết:\n- Tên mặt cắt, lý trình, hố khoan, thứ tự lớp và bề dày (ghi rõ ô nguồn)\n- Thông số γ, c/Su, φ từng lớp (ghi rõ ô nguồn và đơn vị khai báo)\nKhông tự suy đoán, chỉ đọc và liệt kê. Hỏi tôi đường dẫn file và tên sheet.'),
+            ('📐 GeoSlope — Dựng địa tầng từ BTH', 'Dùng geoslope_profile tạo DXF địa tầng từ đường tự nhiên DXF và bề dày đứng BTH. Hỏi tôi: đường dẫn DXF, handle/layer đường tự nhiên, và danh sách lớp (tên lớp + bề dày + ô BTH nguồn). Bề dày là đứng, không phải offset vuông góc.'),
+            ('✅ GeoSlope — Kiểm tra kết quả GSZ', 'Dùng geoslope_inspect đọc file .gsz sau Solve và cho tôi biết:\n- Tất cả SolveRun và thời gian chạy (phân biệt run mới vs run từ mẫu cũ)\n- Fs nhỏ nhất từ CSV mặt trượt, số slip surfaces, phương pháp\n- Trạng thái hội tụ và miền tìm mặt trượt\nHỏi tôi đường dẫn file .gsz.'),
         ]
         for label, prompt in quick_items:
             btn = QPushButton(label)
