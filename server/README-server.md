@@ -232,3 +232,9 @@ Workflow báo lỗi rõ nếu thiếu secrets hoặc không truy cập được 
 đã triển khai khi bước Deploy thành công. Thay đổi chỉ ở desktop không kích hoạt
 triển khai server. Nếu Worker đang được quản lý bằng Workers Builds, dùng một
 luồng triển khai để tránh hai hệ thống ghi đè nhau.
+
+# Bộ nhớ dùng song song trên hai server
+
+Xem [MEMORY-SYNC.md](MEMORY-SYNC.md) để triển khai đồng bộ bộ nhớ cá nhân và bài
+học giữa hai Worker. Cần cập nhật cả hai Worker, khóa đồng bộ riêng và cấu hình
+ghép tài khoản; mặc định chưa bật. Không đồng bộ tài khoản/ví hoặc trạng thái chạy.

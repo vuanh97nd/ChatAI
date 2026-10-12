@@ -7,6 +7,159 @@
  */
 // Web search is independent of the answer model (Qwen, DeepSeek, etc.).
 // Bing RSS is public search, not the retired Bing Search API. No API key required.
+/** Optional paired-server memory replication. No accounts, wallets or runtime state. */
+export function memorySyncConfig(env) {
+ const endpoint=String(env.MEMORY_SYNC_PEER||'').trim(), key=String(env.MEMORY_SYNC_KEY||'');
+ if(!endpoint&&!key)return null;
+ const url=new URL(endpoint);
+ if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||!['','/'].includes(url.pathname)||key.length<32)throw new Error('Memory sync requires an HTTPS peer and a secret of at least32 characters.');
+ const pairs=JSON.parse(env.MEMORY_SYNC_ACCOUNTS||'[]');
+ const account=name=>name==='admin'||validUser(name);
+ if(!Array.isArray(pairs)||pairs.length>100||pairs.some(p=>!p||!account(p.local)||!account(p.remote)||(p.local==='admin')!==(p.remote==='admin')))throw new Error('Invalid explicit memory account mapping.');
+ if(new Set(pairs.map(p=>p.local)).size!==pairs.length||new Set(pairs.map(p=>p.remote)).size!==pairs.length)throw new Error('Memory account mappings must be one-to-one.');
+ return {peer:url.origin,key,pairs,shared:String(env.MEMORY_SYNC_SHARED||'false')==='true'};
+}
+const memorySyncSchemas=new WeakMap();
+async function ensureMemorySyncSchema(db){
+ if(!memorySyncSchemas.has(db))memorySyncSchemas.set(db,db.batch([
+  db.prepare('CREATE TABLE IF NOT EXISTS memory_sync_clock(owner TEXT NOT NULL,id TEXT NOT NULL,changed_at TEXT NOT NULL,PRIMARY KEY(owner,id))'),
+  db.prepare('CREATE TABLE IF NOT EXISTS memory_sync_cursor(peer TEXT NOT NULL,owner TEXT NOT NULL,kind TEXT NOT NULL,cursor TEXT NOT NULL,PRIMARY KEY(peer,owner,kind))'),
+  db.prepare('CREATE TABLE IF NOT EXISTS memory_sync_schedule(id INTEGER PRIMARY KEY,next_scope INTEGER NOT NULL)'),
+  db.prepare("CREATE TRIGGER IF NOT EXISTS memory_sync_lesson_insert AFTER INSERT ON ai_lessons BEGIN INSERT INTO memory_sync_clock(owner,id,changed_at) VALUES(NEW.owner,NEW.id,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(owner,id) DO UPDATE SET changed_at=excluded.changed_at; END"),
+  db.prepare("CREATE TRIGGER IF NOT EXISTS memory_sync_lesson_update AFTER UPDATE OF data,deleted ON ai_lessons WHEN NEW.data<>OLD.data OR NEW.deleted<>OLD.deleted BEGIN INSERT INTO memory_sync_clock(owner,id,changed_at) VALUES(NEW.owner,NEW.id,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(owner,id) DO UPDATE SET changed_at=excluded.changed_at; END")
+ ]).catch(e=>{memorySyncSchemas.delete(db);throw e;}));
+ await memorySyncSchemas.get(db);
+}
+const syncDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)&&Number.isFinite(Date.parse(value));
+function syncVersion(local,incoming){
+ if(!local)return 'write';
+ if(incoming.changed_at<local.changed_at)return 'older';
+ if(incoming.changed_at===local.changed_at)return memoryCanonical(incoming.value)===memoryCanonical(local.value)&&incoming.deleted===local.deleted?'same':'conflict';
+ return 'write';
+}
+async function memorySyncReady(env){
+ await lessonSchema(env.DB);await ensurePersonalSchema(env.DB);await ensureMemorySyncSchema(env.DB);
+}
+async function memorySyncExport(env,request,body){
+ let cfg;try{cfg=memorySyncConfig(env);}catch{return fail('Memory sync configuration invalid.',503);}
+ if(!cfg)return fail('Memory sync not enabled.',404);
+ if(!same(request.headers.get('Authorization')||'','Bearer '+cfg.key))return fail('Memory sync authentication required.',401);
+ if(request.method!=='POST')return fail('POST required.',405);
+ const owner=body.owner;
+ if(!(owner==='@shared'?cfg.shared:cfg.pairs.some(p=>p.local===owner)))return fail('Account is not explicitly paired.',403);
+ if(owner!=='@shared'&&owner!=='admin'&&!await env.DB.prepare("SELECT username FROM users WHERE username=? AND account_status='active'").bind(owner).first())return fail('Paired account unavailable.',409);
+ await memorySyncReady(env);
+ if(body.kind==='lessons'){
+  const cursor=body.cursor??0;if(!Number.isSafeInteger(cursor)||cursor<0)return fail('Invalid cursor.');
+  const rows=(await env.DB.prepare("SELECT l.seq,l.id,l.data,l.deleted,COALESCE(c.changed_at,json_extract(l.data,'$.updated')) AS changed_at FROM ai_lessons l LEFT JOIN memory_sync_clock c ON c.owner=l.owner AND c.id=l.id WHERE l.owner=? AND l.seq>? ORDER BY l.seq LIMIT 20").bind(owner,cursor).all()).results||[];
+  return reply({success:true,items:rows.map(r=>({id:r.id,changed_at:new Date(r.changed_at).toISOString(),deleted:Boolean(r.deleted),value:JSON.parse(r.data)})),cursor:rows.length?rows[rows.length-1].seq:cursor,has_more:rows.length===20});
+ }
+ if(body.kind==='personal'&&owner!=='@shared'){
+  if(typeof body.cursor!=='string'||body.cursor.length>120)return fail('Invalid cursor.');
+  const parts=body.cursor.split('|'),date=parts[0]||'',id=parts[1]||'';
+  const rows=(await env.DB.prepare("SELECT id,kv_key,updated_at,deleted_at FROM personal_memory_index WHERE owner=? AND (COALESCE(deleted_at,updated_at)>? OR (COALESCE(deleted_at,updated_at)=? AND id>?)) ORDER BY COALESCE(deleted_at,updated_at),id LIMIT 20").bind(owner,date,date,id).all()).results||[];
+  const kv=personalStore(env);if(!kv||!env.MEMORY_ENCRYPTION_KEY)return fail('Personal memory storage not configured.',503);
+  const items=[];
+  for(const r of rows){
+   let value=null;
+   if(!r.deleted_at){
+    const raw=await kv.get(r.kv_key);
+    // Eventual KV consistency must not advance the cursor past a missing item.
+    if(!raw)return fail('Personal memory temporarily unavailable; retry later.',503);
+    value=await decryptMemory(env,r.kv_key,raw);
+   }
+   items.push({id:r.id,changed_at:r.deleted_at||r.updated_at,deleted:Boolean(r.deleted_at),value});
+  }
+  const last=rows[rows.length-1];
+  return reply({success:true,items,cursor:last?(last.deleted_at||last.updated_at)+'|'+last.id:body.cursor,has_more:rows.length===20});
+ }
+ return fail('Invalid memory kind.');
+}
+async function applyMemorySyncItem(env,owner,kind,item){
+ if(!item||!syncDate(item.changed_at)||typeof item.deleted!=='boolean')throw new Error('Invalid memory version.');
+ const db=env.DB;
+ if(kind==='lessons'){
+  if(!/^[a-f0-9]{64}$/.test(item.id)||item.value?.id!==item.id)throw new Error('Invalid lesson id.');
+  const value=lessonRecord(item.value,owner==='@shared');
+  const row=await db.prepare("SELECT l.data,l.deleted,COALESCE(c.changed_at,json_extract(l.data,'$.updated')) AS changed_at FROM ai_lessons l LEFT JOIN memory_sync_clock c ON c.owner=l.owner AND c.id=l.id WHERE l.owner=? AND l.id=?").bind(owner,item.id).first();
+  const decision=syncVersion(row?{changed_at:new Date(row.changed_at).toISOString(),deleted:Boolean(row.deleted),value:JSON.parse(row.data)}:null,{...item,value});
+  if(decision!=='write')return decision;
+  const data=JSON.stringify(value),deleted=item.deleted?1:0;
+  const results=await db.batch([
+   db.prepare("INSERT INTO ai_lessons(owner,id,data,deleted) VALUES(?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET data=excluded.data,deleted=excluded.deleted,seq=(SELECT COALESCE(MAX(seq),0)+1 FROM ai_lessons) WHERE ai_lessons.data=? AND ai_lessons.deleted=? AND COALESCE((SELECT changed_at FROM memory_sync_clock WHERE owner=ai_lessons.owner AND id=ai_lessons.id),json_extract(ai_lessons.data,'$.updated'))=?").bind(owner,item.id,data,deleted,row?.data||'',row?.deleted??0,row?.changed_at||''),
+   db.prepare("INSERT INTO memory_sync_clock(owner,id,changed_at) SELECT ?,?,? WHERE changes()>0 ON CONFLICT(owner,id) DO UPDATE SET changed_at=excluded.changed_at").bind(owner,item.id,item.changed_at)
+  ]);
+  return results[0]?.meta?.changes?'write':'retry';
+ }
+ if(kind!=='personal'||owner==='@shared'||!/^[a-f0-9-]{36}$/.test(item.id))throw new Error('Invalid personal memory id.');
+ const kv=personalStore(env);if(!kv||!env.MEMORY_ENCRYPTION_KEY)throw new Error('Personal memory storage not configured.');
+ const row=await db.prepare('SELECT kv_key,updated_at,deleted_at FROM personal_memory_index WHERE owner=? AND id=?').bind(owner,item.id).first();
+ let current=null;
+ if(row){
+  let value=null;
+  if(!row.deleted_at){const raw=await kv.get(row.kv_key);if(!raw)throw new Error('Local personal memory temporarily unavailable.');value=await decryptMemory(env,row.kv_key,raw);}
+  current={changed_at:row.deleted_at||row.updated_at,deleted:Boolean(row.deleted_at),value};
+ }
+ const incoming={...item};
+ if(!item.deleted){
+  const v=item.value;
+  if(!v||v.id!==item.id||typeof v.title!=='string'||!v.title.trim()||v.title.length>120||typeof v.text!=='string'||!v.text.trim()||v.text.length>4000)throw new Error('Invalid personal memory.');
+  incoming.value={id:item.id,title:v.title,text:v.text,updated_at:item.changed_at};
+ }
+ const decision=syncVersion(current,incoming);if(decision!=='write')return decision;
+ if(!item.deleted&&(!row||row.deleted_at)){const count=await db.prepare('SELECT COUNT(*) AS total FROM personal_memory_index WHERE owner=? AND deleted_at IS NULL').bind(owner).first();if(Number(count?.total||0)>=100)throw new Error('Personal memory full.');}
+ const keyName=item.deleted?'':'chat-ai:private:v1:'+await memoryHash(owner)+':'+item.id+':'+crypto.randomUUID();
+ if(!item.deleted)await kv.put(keyName,await encryptMemory(env,keyName,incoming.value));
+ let written;
+ try{
+  written=await db.prepare("INSERT INTO personal_memory_index(owner,id,kv_key,updated_at,deleted_at) VALUES(?,?,?,?,?) ON CONFLICT(owner,id) DO UPDATE SET kv_key=excluded.kv_key,updated_at=excluded.updated_at,deleted_at=excluded.deleted_at WHERE personal_memory_index.updated_at=? AND COALESCE(personal_memory_index.deleted_at,'')=?").bind(owner,item.id,keyName,item.changed_at,item.deleted?item.changed_at:null,row?.updated_at||'',row?.deleted_at||'').run();
+ }catch(e){if(keyName)await kv.delete(keyName).catch(()=>{});throw e;}
+ if(!written.meta?.changes){if(keyName)await kv.delete(keyName).catch(()=>{});return 'retry';}
+ if(row?.kv_key)await kv.delete(row.kv_key).catch(()=>{});
+ return 'write';
+}
+export async function runMemorySync(env,send=fetch){
+ const cfg=memorySyncConfig(env);if(!cfg)return {enabled:false};
+ await ensureSchema(env.DB);await ensureAdminSchema(env.DB);await memorySyncReady(env);
+ const scopes=cfg.pairs.map(p=>({...p,kinds:['lessons','personal']}));
+ if(cfg.shared)scopes.push({local:'@shared',remote:'@shared',kinds:['lessons']});
+ const result={enabled:true,written:0,conflicts:0,errors:0};
+ const rotation=await env.DB.prepare('SELECT next_scope FROM memory_sync_schedule WHERE id=1').first();
+ const start=scopes.length?(rotation?.next_scope||0)%scopes.length:0;
+ let calls=0,resume=start;
+ scopeLoop:for(let offset=0;offset<scopes.length;offset++){
+  const index=(start+offset)%scopes.length,pair=scopes[index];
+  if(pair.local!=='@shared'&&pair.local!=='admin'&&!await env.DB.prepare("SELECT username FROM users WHERE username=? AND account_status='active'").bind(pair.local).first()){result.errors++;continue;}
+  for(const kind of pair.kinds){
+   try{
+    const cursorOwner=pair.local+'|'+pair.remote;
+    const saved=await env.DB.prepare('SELECT cursor FROM memory_sync_cursor WHERE peer=? AND owner=? AND kind=?').bind(cfg.peer,cursorOwner,kind).first();
+    let cursor=saved?JSON.parse(saved.cursor):kind==='lessons'?0:'';
+    for(let page=0;page<10;page++){
+     if(calls>=40){result.deferred=true;resume=index;break scopeLoop;}
+     calls++;
+     const response=await send(cfg.peer+'/api/internal/memory-sync/export',{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/json',Authorization:'Bearer '+cfg.key},body:JSON.stringify({owner:pair.remote,kind,cursor})});
+     if(!response.ok)throw new Error('Peer refused memory sync.');
+     const raw=await limitedBody(response,1600000),data=JSON.parse(raw);
+     if(data.success!==true||!Array.isArray(data.items)||data.items.length>20||typeof data.has_more!=='boolean'||(kind==='lessons'?(!Number.isSafeInteger(data.cursor)||data.cursor<cursor):(typeof data.cursor!=='string'||data.cursor<cursor)))throw new Error('Invalid peer memory page.');
+     if(data.has_more&&data.cursor===cursor)throw new Error('Memory cursor did not advance.');
+     for(const item of data.items){
+      const changed=await applyMemorySyncItem(env,pair.local,kind,item);
+      if(changed==='retry')throw new Error('Memory changed concurrently; retry later.');
+      if(changed==='conflict'){result.conflicts++;throw new Error('Memory version conflict; cursor kept for review.');}
+      if(changed==='write')result.written++;
+     }
+     cursor=data.cursor;
+     await env.DB.prepare('INSERT INTO memory_sync_cursor(peer,owner,kind,cursor) VALUES(?,?,?,?) ON CONFLICT(peer,owner,kind) DO UPDATE SET cursor=excluded.cursor').bind(cfg.peer,cursorOwner,kind,JSON.stringify(cursor)).run();
+     if(!data.has_more)break;
+    }
+   }catch{result.errors++;}
+  }
+  resume=(index+1)%scopes.length;
+ }
+ await env.DB.prepare('INSERT INTO memory_sync_schedule(id,next_scope) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET next_scope=excluded.next_scope').bind(resume).run();
+ return result;
+}
 export async function requestWebSearch(env,query,send=fetch){
  query=String(query||'').trim();
  if(!query||query.length>600||query.split(/\s+/).length>75)throw new Error('Câu hỏi tra cứu cần từ 1 đến 600 ký tự, tối đa 75 từ.');
@@ -1366,6 +1519,14 @@ export default {
    }
    await ensureSchema(env.DB);
    await ensureAdminSchema(env.DB);
+   if(env.MEMORY_SYNC_PEER&&env.MEMORY_SYNC_KEY)await memorySyncReady(env);
+   if(path==='/api/internal/memory-sync/export')return respond(await memorySyncExport(env,request,body));
+   if(path==='/api/admin/memory-sync/run'){
+    if(request.method!=='POST')return respond(fail('POST required.',405));
+    const actor=await auth(env,body.username,body.key);
+    if(!actor||!administrator(actor))return respond(fail('Admin required.',403));
+    return respond(reply({success:true,result:await runMemorySync(env)}));
+   }
    if(path==='/api/voice/transcribe'){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -1502,6 +1663,7 @@ export default {
  scheduled(event,env,ctx){
   if(!env.DB)return;
   ctx.waitUntil((async()=>{await ensureSchema(env.DB);await ensureAdminSchema(env.DB);await env.DB.prepare('DELETE FROM account_tokens WHERE expires_at<?').bind(new Date().toISOString()).run();referenceWorker.scheduled(event,env,ctx);})());
+  if(env.MEMORY_SYNC_PEER&&env.MEMORY_SYNC_KEY)ctx.waitUntil(runMemorySync(env).then(result=>console.log('memory_sync',JSON.stringify(result))).catch(()=>console.error('memory_sync_failed')));
  }
 };
 
