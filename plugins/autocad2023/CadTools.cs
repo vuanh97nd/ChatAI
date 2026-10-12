@@ -31,15 +31,15 @@ namespace ChatAI.AutoCAD2023 {
             return n;
         }
         private static Point3d Point(object value) {
-            var a = value as object[];
-            if (a == null || a.Length != 3) throw new ArgumentException("Điểm phải có [x,y,z].");
+            var a = value as System.Collections.IList;
+            if (a == null || a.Count != 3) throw new ArgumentException("Điểm phải có [x,y,z].");
             return new Point3d(Number(a[0]), Number(a[1]), Number(a[2]));
         }
         internal static int Apply(Document doc, string json) {
             var plan = ChatClient.Json.Deserialize<Dictionary<string, object>>(json);
             if (plan.Count != 1 || !plan.ContainsKey("operations")) throw new ArgumentException("Cần JSON operations.");
-            var ops = plan["operations"] as object[];
-            if (ops == null || ops.Length == 0 || ops.Length > 100) throw new ArgumentException("Chỉ nhận 1–100 thao tác.");
+            var ops = plan["operations"] as System.Collections.IList;
+            if (ops == null || ops.Count == 0 || ops.Count > 100) throw new ArgumentException("Chỉ nhận 1–100 thao tác.");
             using (doc.LockDocument())
             using (var tr = doc.Database.TransactionManager.StartTransaction()) {
                 var table = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
@@ -62,7 +62,7 @@ namespace ChatAI.AutoCAD2023 {
                 // Any invalid operation aborts the entire transaction.
                 tr.Commit();
             }
-            doc.Editor.Regen(); return ops.Length;
+            doc.Editor.Regen(); return ops.Count;
         }
     }
 }

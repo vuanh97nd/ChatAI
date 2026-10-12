@@ -28,6 +28,8 @@ namespace ChatAI.AutoCAD2023 {
         private readonly TextBox endpoint = new TextBox { Text = "https://chatai-backup.vuanh97nd1.workers.dev" };
         private readonly TextBox username = new TextBox();
         private readonly TextBox password = new TextBox { UseSystemPasswordChar = true };
+        private readonly TextBox repository = new TextBox();
+        private readonly Button browse = new Button { Text = "Chọn thư mục mã nguồn ChatAI", AutoSize = true };
         private readonly ComboBox provider = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
         private readonly TextBox question = new TextBox { Multiline = true, Height = 80 };
         private readonly TextBox answer = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Height = 220 };
@@ -46,7 +48,13 @@ namespace ChatAI.AutoCAD2023 {
             foreach (var item in new Control[] { new Label { Text = "Server HTTPS", AutoSize = true }, endpoint,
                 new Label { Text = "Tài khoản", AutoSize = true }, username,
                 new Label { Text = "Mật khẩu", AutoSize = true }, password, login, provider, context,
-                question, ask, answer, apply, status }) { item.Width = 350; layout.Controls.Add(item); }
+                repository, browse, question, ask, answer, apply, status }) { item.Width = 350; layout.Controls.Add(item); }
+            browse.Click += delegate {
+                using (var dialog = new FolderBrowserDialog()) {
+                    dialog.Description = "Thư mục chứa assistant và .venv của ChatAI";
+                    if (dialog.ShowDialog() == DialogResult.OK) repository.Text = dialog.SelectedPath;
+                }
+            };
             login.Click += async delegate {
                 if (busy) return; SetBusy(true); apply.Enabled = false;
                 try { await client.Login(endpoint.Text, username.Text, password.Text); password.Clear(); status.Text = "Đã đăng nhập"; }
@@ -57,7 +65,9 @@ namespace ChatAI.AutoCAD2023 {
                 if (busy || string.IsNullOrWhiteSpace(question.Text)) return;
                 SetBusy(true); apply.Enabled = false;
                 try {
-                    target = Acad.DocumentManager.MdiActiveDocument;
+                    var current = Acad.DocumentManager.MdiActiveDocument;
+                    if (target != current) client.ClearHistory();
+                    target = current;
                     if (target == null) throw new InvalidOperationException("Mở bản vẽ trước.");
                     var data = context.Checked ? CadTools.Inspect(target) : "Không gửi dữ liệu bản vẽ. Đơn vị/tọa độ do người dùng cung cấp.";
                     status.Text = "Đang chờ AI…";
@@ -66,19 +76,40 @@ namespace ChatAI.AutoCAD2023 {
                 } catch (System.Exception ex) { status.Text = ex.Message; }
                 finally { SetBusy(false); }
             };
-            apply.Click += delegate {
+            apply.Click += async delegate {
                 if (busy) return;
+                var consumed = false;
                 try {
                     if (target == null || target != Acad.DocumentManager.MdiActiveDocument)
                         throw new InvalidOperationException("Bản vẽ đã đổi; gửi yêu cầu mới.");
+                    var plan = ChatClient.Json.Deserialize<System.Collections.Generic.Dictionary<string, object>>(answer.Text);
+                    if (plan.ContainsKey("action")) {
+                        var json = answer.Text;
+                        using (var dialog = new SaveFileDialog { Filter = "DXF (*.dxf)|*.dxf", FileName = "CDM-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dxf", OverwritePrompt = true }) {
+                            if (dialog.ShowDialog() != DialogResult.OK) return;
+                            if (System.IO.File.Exists(dialog.FileName)) throw new InvalidOperationException("Chọn tên file mới; không ghi đè bản vẽ.");
+                            if (MessageBox.Show("Tạo DXF mới theo JSON đang hiển thị và mở bản vẽ kết quả?", "CDM", MessageBoxButtons.OKCancel) != DialogResult.OK) return;
+                            SetBusy(true); apply.Enabled = false; status.Text = "Đang tạo DXF CDM…";
+                            var result = await CdmBridge.Render(repository.Text, json, dialog.FileName);
+                            consumed = true;
+                            status.Text = "Đã lưu: " + dialog.FileName + " · " + Convert.ToString(result["note"]);
+                            try { Acad.DocumentManager.Open(dialog.FileName, false); }
+                            catch (System.Exception) { status.Text = "DXF đã lưu tại " + dialog.FileName + "; mở bằng OPEN. Không tạo lại."; }
+                        }
+                        return;
+                    }
                     if (MessageBox.Show("Vẽ vào ModelSpace, tọa độ WCS, theo JSON đang hiển thị?", "Chat AI",
                         MessageBoxButtons.OKCancel) != DialogResult.OK) return;
                     status.Text = "Đã tạo " + CadTools.Apply(target, answer.Text) + " đối tượng. Không tự lưu.";
-                    apply.Enabled = false;
+                    consumed = true;
                 } catch (System.Exception ex) { status.Text = ex.Message; }
+                finally { SetBusy(false); if (consumed) apply.Enabled = false; }
             };
         }
-        private void SetBusy(bool value) { busy = value; login.Enabled = ask.Enabled = !value; }
+        private void SetBusy(bool value) {
+            busy = value; login.Enabled = ask.Enabled = browse.Enabled = !value;
+            question.ReadOnly = answer.ReadOnly = repository.ReadOnly = value;
+        }
         protected override void Dispose(bool disposing) { if (disposing) client.Dispose(); base.Dispose(disposing); }
     }
 }
