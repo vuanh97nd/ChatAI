@@ -56,7 +56,7 @@ def validate_config(cfg, *, allow_unavailable_roots=False):
         cfg['online_document_provider']='deepseek_flash'
         cfg['online_document_revision']=2
     cfg.setdefault('online_document_pages',0)
-    if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia','openai','groq') and not str(cfg['online_document_provider']).startswith('ai_'):raise ValueError('API đọc PDF không hợp lệ.')
+    if cfg['online_document_provider'] not in ('deepseek_flash','gemini','nvidia','openai','groq','openrouter') and not str(cfg['online_document_provider']).startswith('ai_'):raise ValueError('API đọc PDF không hợp lệ.')
     if type(cfg['online_document_pages']) is not int or not 0<=cfg['online_document_pages']<=1000000:raise ValueError('Số trang trực tuyến phải từ 0 đến 1000000; 0 là không giới hạn.')
 
     if cfg['machine_profile'] not in ('weak','medium','high'):raise ValueError('Cấu hình máy không hợp lệ.')
@@ -72,10 +72,11 @@ def validate_config(cfg, *, allow_unavailable_roots=False):
     cfg.setdefault('deepseek_model','deepseek-flash')
     cfg.setdefault('gemini_model','gemini-3.8-flash')
     cfg.setdefault('openai_model','gpt-4.1-mini')
+    cfg.setdefault('openrouter_model','openai/gpt-4.1-mini')
     import re
-    for provider in ('nvidia','deepseek','gemini','openai'):
-        if not isinstance(cfg[provider+'_model'],str) or not re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',cfg[provider+'_model']):raise ValueError('Tên model API không hợp lệ.')
-    if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","groq","openai","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
+    for provider in ('nvidia','deepseek','gemini','openai','openrouter'):
+        if not isinstance(cfg[provider+'_model'],str) or not re.fullmatch(r'[A-Za-z0-9._/:-]{1,160}',cfg[provider+'_model']):raise ValueError('Tên model API không hợp lệ.')
+    if cfg["chat_provider"] not in ("nvidia","deepseek","deepseek_flash","deepseek_pro","deepseek_r1","gemini","groq","openai","openrouter","cloudflare","local") and cfg["chat_provider"] not in {x["id"] for x in cfg["custom_ai"]}:raise ValueError("Dịch vụ AI không hợp lệ.")
     for key,value in {"num_predict":2048,"font_size":13,"auto_python":True}.items():cfg.setdefault(key,value)
     cfg.setdefault('api_num_predict',4096)
     cfg.setdefault('api_temperature',min(1,cfg.get('temperature',.2)))

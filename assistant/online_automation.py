@@ -782,7 +782,7 @@ def compress_numbers(numbers):
 
 
 def planning_messages(state,instruction,provider=''):
-    if provider=='nvidia':
+    if provider in ('nvidia','openrouter'):
         from .nvidia_planning import messages_for_nvidia
         return messages_for_nvidia(state,instruction)
     # Cut history in blocks of 20, not one message per call: a sliding window changes the
@@ -1490,7 +1490,10 @@ class OnlineAutomation:
             if plaxis_context and not _OTHER_APP_REQUEST.search(question):
                 # ~49k characters of Word/CAD/CDM/GeoStudio schemas were sent on every PLAXIS step.
                 planning_schemas=[s for s in planning_schemas if s['function']['name'] in _PLAXIS_TOOLSET]
-            nvidia_planning=getattr(self.client,'provider','')=='nvidia' and not research
+            planning_provider=getattr(self.client,'provider','')
+            from .cloud import CUSTOM_PROVIDER_TYPES
+            planning_provider=CUSTOM_PROVIDER_TYPES.get(planning_provider,planning_provider)
+            nvidia_planning=planning_provider in ('nvidia','openrouter') and not research
             if nvidia_planning:
                 from .nvidia_planning import schemas_for_nvidia
                 planning_schemas=schemas_for_nvidia(planning_schemas)
@@ -1586,7 +1589,7 @@ class OnlineAutomation:
                 instruction+='\nPLAXIS quy trình ngắn: '+RULES+' Khi chưa chọn bài, dùng plaxis_tutorial_guide chapter=0; sau đó chỉ đọc hướng dẫn chương liên quan, không đọc lại cả danh mục mỗi lượt.'
             if nvidia_planning:
                 instruction=instruction.replace('"arguments":"{}"','"arguments":{}').replace('arguments là chuỗi JSON tham số','arguments là object JSON tham số')
-            messages=planning_messages(state,instruction,provider='nvidia' if nvidia_planning else '')
+            messages=planning_messages(state,instruction,provider=planning_provider if nvidia_planning else '')
             if research:
                 messages.append({'role':'system','content':'Lượt hiện tại chỉ đọc/tra tài liệu tại URL được gửi. Không tiếp tục dựng mô hình hoặc lặp báo cáo bài cũ. Gọi browser_run navigate/read, đọc các liên kết API/Python liên quan; trả nội dung nguồn đã đọc, nêu rõ lỗi truy cập hoặc phạm vi chưa đọc. inspect_stage/verify_stage là wrapper nội bộ Chat AI, không phải phương thức g của PLAXIS.'})
             if volatile.strip():
@@ -1610,8 +1613,8 @@ class OnlineAutomation:
             if nvidia_planning:
                 text_chars=sum(len(m['content']) if isinstance(m.get('content'),str) else
                     sum(len(p.get('text','')) for p in m.get('content',[]) if isinstance(p,dict)) for m in messages)
-                self.store.audit(self.cid,'automation_nvidia_context',{'text_chars':text_chars,'messages':len(messages),
-                    'original_history_messages':len(state['messages']),'profile':'nvidia-compact-1'})
+                self.store.audit(self.cid,'automation_'+planning_provider+'_context',{'text_chars':text_chars,'messages':len(messages),
+                    'original_history_messages':len(state['messages']),'profile':planning_provider+'-compact-1'})
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
                 try:

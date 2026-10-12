@@ -599,6 +599,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               isExpanded: true, value: provider, hint: const Text('Chọn AI'),
               icon: const Icon(Icons.keyboard_arrow_down, size: 18),
               items: const [
+                DropdownMenuItem(value: 'openrouter', child: ProviderOption(provider: 'openrouter', label: 'OpenRouter')),
                 DropdownMenuItem(value: 'nvidia', child: ProviderOption(provider: 'nvidia', label: 'NVIDIA')),
                 DropdownMenuItem(value: 'deepseek_flash', child: ProviderOption(provider: 'deepseek_flash', label: 'DeepSeek')),
                 DropdownMenuItem(value: 'cloudflare', child: ProviderOption(provider: 'cloudflare', label: 'Cloudflare AI')),

@@ -6,7 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 String providerLabel(String? provider) => const {
-  'nvidia': 'NVIDIA', 'deepseek_flash': 'DeepSeek', 'cloudflare': 'Cloudflare AI',
+  'openrouter': 'OpenRouter', 'nvidia': 'NVIDIA', 'deepseek_flash': 'DeepSeek', 'cloudflare': 'Cloudflare AI',
   'gemini': 'Gemini', 'groq': 'Groq',
 }[provider] ?? '';
 

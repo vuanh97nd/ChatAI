@@ -2,7 +2,7 @@
 import re
 from .accounts import request_account
 
-PROVIDERS={'nvidia','deepseek','gemini','groq','openai','cloudflare'}
+PROVIDERS={'nvidia','deepseek','gemini','groq','openai','openrouter','cloudflare'}
 
 def backup_server_choices(primary,current=''):
     from urllib.parse import urlparse
@@ -19,7 +19,7 @@ def backup_server_choices(primary,current=''):
 def backup_provider_request(session, action, provider, api_key='', model=''):
     if action not in {'status','save','test','models'} or provider not in PROVIDERS:
         raise ValueError('Thao tác hoặc nhà cung cấp không hợp lệ.')
-    if model and not re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',model):
+    if model and not re.fullmatch(r'[A-Za-z0-9._/:-]{1,160}',model):
         raise ValueError('Model không hợp lệ.')
     if api_key and not 10<=len(api_key)<=4096:
         raise ValueError('Khóa API phải từ 10 đến 4096 ký tự.')

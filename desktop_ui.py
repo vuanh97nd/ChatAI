@@ -2383,7 +2383,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.online_tools_check=QCheckBox('Cho phép dùng công cụ API trực tuyến');self.online_tools_check.setChecked(self.cfg.get('online_tools_enabled',False))
         self.online_upload_check=QCheckBox('Cho phép gửi ảnh trang tài liệu tới dịch vụ AI');self.online_upload_check.setChecked(self.cfg.get('online_document_upload',False))
         network_form.addRow(self.online_tools_check);network_form.addRow(self.online_upload_check)
-        field=QComboBox();field.addItems(['deepseek_flash','nvidia','gemini','openai','groq']+[x['id'] for x in self.cfg.get('custom_ai',[]) if isinstance(x,dict) and x.get('id')]);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
+        field=QComboBox();field.addItems(['deepseek_flash','nvidia','gemini','openai','groq','openrouter']+[x['id'] for x in self.cfg.get('custom_ai',[]) if isinstance(x,dict) and x.get('id')]);field.setCurrentText(self.cfg.get('online_document_provider','deepseek_flash'))
         self.settings_fields['online_document_provider']=field;network_form.addRow('API đọc trang PDF',field)
         field=QSpinBox();field.setRange(0,1000000);field.setSpecialValueText('Không giới hạn');field.setValue(self.cfg.get('online_document_pages',0))
         self.settings_fields['online_document_pages']=field;network_form.addRow('Số trang nhận dạng tối đa',field)
@@ -2422,11 +2422,11 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         hint.setWordWrap(True);connections_form.addWidget(hint)
         layout.addWidget(group)
         self.api_key_group=QGroupBox('Key AI trực tuyến · Quản trị viên');api_form=QFormLayout(self.api_key_group);self.api_key_fields={};self.api_model_fields={}
-        api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, OpenAI, Gemini và Groq. OpenAI chưa thiết lập bảng giá. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
-        for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT')]:
+        api_form.addRow(QLabel('Danh sách chọn nhanh có Cloudflare, NVIDIA, DeepSeek, OpenAI, OpenRouter, Gemini và Groq. OpenAI chưa thiết lập bảng giá. Cloudflare dùng binding Workers; các dịch vụ còn lại dùng key quản trị viên.'))
+        for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT'),('openrouter','OpenRouter')]:
             field=QLineEdit();field.setEchoMode(QLineEdit.EchoMode.Password);field.setPlaceholderText('Nhập key mới; để trống để giữ key trên server');self.api_key_fields[provider]=field;api_form.addRow(label,field)
             model_field=QLineEdit(self.cfg.get(provider+'_model',''));self.api_model_fields[provider]=model_field;api_form.addRow('Mã AI '+label,model_field)
-            if provider in ('nvidia','deepseek','groq','openai'):
+            if provider in ('nvidia','deepseek','groq','openai','openrouter'):
                 self.button(api_form,'Chọn AI từ '+label,lambda checked=False,p=provider:self.load_provider_catalog(True,p))
                 field.editingFinished.connect(lambda p=provider:QTimer.singleShot(200,lambda:self.load_provider_catalog(False,p)))
             self.button(api_form,'Kiểm tra '+label,lambda checked=False,p=provider:self.check_online_provider(p))
@@ -2791,7 +2791,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         change_server.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_login_dialog)))
         form.addRow(change_server)
         form.addRow(QLabel('Lưu khóa cần quyền Admin trên server dự phòng. Để trống để giữ khóa cũ.'))
-        provider=QComboBox();models={'nvidia':self.cfg.get('nvidia_model',''),'deepseek':self.cfg.get('deepseek_model',''),'gemini':self.cfg.get('gemini_model',''),'groq':'openai/gpt-oss-120b','openai':self.cfg.get('openai_model',''),'cloudflare':''}
+        provider=QComboBox();models={'nvidia':self.cfg.get('nvidia_model',''),'deepseek':self.cfg.get('deepseek_model',''),'gemini':self.cfg.get('gemini_model',''),'groq':'openai/gpt-oss-120b','openai':self.cfg.get('openai_model',''),'openrouter':self.cfg.get('openrouter_model','openai/gpt-4.1-mini'),'cloudflare':''}
         for name in models:provider.addItem(PROVIDER_NAMES.get(name,name),name)
         key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password);key.setMaxLength(4096)
         model=QLineEdit();model.setMaxLength(160);message=QLabel('Chưa kiểm tra AI.');message.setWordWrap(True)
@@ -2828,7 +2828,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 value=result['value']
                 if action=='models':
                     catalog=value.get('models',[])
-                    catalog=sorted(set(m for m in catalog if isinstance(m,str) and re.fullmatch(r'[A-Za-z0-9._/-]{1,160}',m))) if isinstance(catalog,list) else []
+                    catalog=sorted(set(m for m in catalog if isinstance(m,str) and re.fullmatch(r'[A-Za-z0-9._/:-]{1,160}',m))) if isinstance(catalog,list) else []
                     if not catalog:message.setText('Server dự phòng chưa trả danh sách model. Có thể nhập mã vào ô Model rồi Kiểm tra AI.');return
                     chosen,ok=QInputDialog.getItem(dialog,'Model '+PROVIDER_NAMES.get(name,name)+' · server dự phòng',
                         'Chọn hoặc nhập mã model chat; embedding/reranker không dùng để trò chuyện:',catalog,catalog.index(selected) if selected in catalog else 0,True)
@@ -3211,7 +3211,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         label=QLineEdit();model=QLineEdit();key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password)
         key.setPlaceholderText('Để trống để dùng key chung đã lưu trên server')
         provider=QComboBox()
-        for title,value in [('NVIDIA','nvidia'),('DeepSeek','deepseek'),('Gemini','gemini'),('Groq','groq'),('OpenAI / ChatGPT','openai')]:provider.addItem(title,value)
+        for title,value in [('NVIDIA','nvidia'),('DeepSeek','deepseek'),('Gemini','gemini'),('Groq','groq'),('OpenAI / ChatGPT','openai'),('OpenRouter','openrouter')]:provider.addItem(title,value)
         form.addRow('Tên hiển thị',label);form.addRow('Dịch vụ',provider);form.addRow('Mã AI',model);form.addRow('API key',key)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
@@ -3235,7 +3235,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self.ai_server_models[session['endpoint']]={k:v.get('model','') for k,v in states.items()}
             self.refresh_ai_identity()
             lines=[]
-            for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT')]:
+            for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT'),('openrouter','OpenRouter')]:
                 item=states.get(provider,{})
                 lines.append(label+(': Đã có key trên server' if item.get('configured') else ': Chưa có key'))
                 if item.get('model'):self.api_model_fields[provider].setText(item['model'])

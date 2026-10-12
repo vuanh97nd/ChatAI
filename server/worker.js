@@ -1867,7 +1867,7 @@ async function writeProviderConfig(env,provider,value){
  try{await env.DB.prepare('INSERT INTO provider_credentials(provider,encrypted_value,updated_at) VALUES(?,?,?) ON CONFLICT(provider) DO UPDATE SET encrypted_value=excluded.encrypted_value,updated_at=excluded.updated_at').bind(provider,encrypted,new Date().toISOString()).run();}catch{throw providerFailure('storage');}
 }
 async function providerAPI(env,path,body){
- const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','openai','groq'];
+ const allowed=['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','gemini','openai','groq','openrouter'];
  await initializeProviderStore(env);
  if(path.endsWith('/deepseek-presets')){
   const shared=await readProviderConfig(env,'deepseek');
@@ -1892,7 +1892,7 @@ async function providerAPI(env,path,body){
  }
  if(path.endsWith('/add')){
   const provider=body.provider,label=String(body.label||'').trim(),model=String(body.model||'').trim(),key=String(body.api_key||'').trim();
-  if(!allowed.includes(provider)||!label||label.length>80||!model||!/^[A-Za-z0-9._/-]{1,160}$/.test(model)||key.length>4096)return fail('Tên, dịch vụ, mã AI hoặc key không hợp lệ.');
+  if(!allowed.includes(provider)||!label||label.length>80||!model||!/^[A-Za-z0-9._/:-]{1,160}$/.test(model)||key.length>4096)return fail('Tên, dịch vụ, mã AI hoặc key không hợp lệ.');
   if(key&&key.length<10)return fail('Key quá ngắn.');
   const base=key?{}:await readProviderConfig(env,provider);
   if(!key&&!base.key&&!env[provider.toUpperCase()+'_API_KEY'])return fail('Nhập key cho AI mới hoặc lưu key chung của dịch vụ trước.');
@@ -1918,7 +1918,7 @@ async function providerAPI(env,path,body){
  }
  if(path.endsWith('/save')){
   const keys=body.providers,models=body.models||{};if(!keys||typeof keys!=='object'||Array.isArray(keys)||typeof models!=='object'||Array.isArray(models))return fail('Cấu hình không hợp lệ.');
-  for(const [provider,model] of Object.entries(models))if(!allowed.includes(provider)||typeof model!=='string'||(model!==''&&!/^[A-Za-z0-9._/-]{1,160}$/.test(model)))return fail('Mã AI không hợp lệ.');
+  for(const [provider,model] of Object.entries(models))if(!allowed.includes(provider)||typeof model!=='string'||(model!==''&&!/^[A-Za-z0-9._/:-]{1,160}$/.test(model)))return fail('Mã AI không hợp lệ.');
   for(const [provider,key] of Object.entries(keys)){
    if(!allowed.includes(provider)||typeof key!=='string'||key.length<10||key.length>4096)return fail('Key không hợp lệ.');
   }
@@ -1961,14 +1961,14 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  if(!key)key=String(env[_baseProvider.toUpperCase()+'_API_KEY']||'');
  if(!key)return fail('Quản trị viên chưa cấu hình key cho AI này.',503);
  if(path.endsWith('/models')){
-  if(!['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','openai','groq','gemini'].includes(provider))return fail('Dịch vụ này chưa có danh sách AI tự động.');
+  if(!['nvidia','deepseek','deepseek_flash','deepseek_pro','deepseek_r1','openai','groq','gemini','openrouter'].includes(provider))return fail('Dịch vụ này chưa có danh sách AI tự động.');
   const cancel=new AbortController(),timer=setTimeout(()=>cancel.abort(),20000);
   try{
    const gemini=_baseProvider==='gemini';
-   const response=await fetch(gemini?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000':_baseProvider==='openai'?'https://api.openai.com/v1/models':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/models':_baseProvider==='groq'?'https://api.groq.com/openai/v1/models':'https://api.deepseek.com/models',{headers:gemini?{'x-goog-api-key':key}:{Authorization:'Bearer '+key},signal:cancel.signal});
+   const response=await fetch(gemini?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000':_baseProvider==='openrouter'?'https://openrouter.ai/api/v1/models':_baseProvider==='openai'?'https://api.openai.com/v1/models':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/models':_baseProvider==='groq'?'https://api.groq.com/openai/v1/models':'https://api.deepseek.com/models',{headers:gemini?{'x-goog-api-key':key}:{Authorization:'Bearer '+key},signal:cancel.signal});
    if(!response.ok){await response.body?.cancel();return fail('Không lấy được danh sách AI: HTTP '+response.status+'.',502);}
   const result=await response.json();
-   const models=(gemini?(result.models||[]).map(x=>String(x.name||'').replace(/^models\//,'')):(result.data||[]).map(x=>x.id)).filter(x=>typeof x==='string'&&/^[A-Za-z0-9._/-]{1,160}$/.test(x)).sort();
+   const models=(gemini?(result.models||[]).map(x=>String(x.name||'').replace(/^models\//,'')):(result.data||[]).map(x=>x.id)).filter(x=>typeof x==='string'&&/^[A-Za-z0-9._/:-]{1,160}$/.test(x)).sort();
    return reply({success:true,models});
   }catch{return fail('Không lấy được danh sách AI từ dịch vụ.',503);}finally{clearTimeout(timer);}
  }
@@ -1994,13 +1994,13 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
  if(messages.some(m=>!['system','user','assistant'].includes(m.role)||!validContent(m)))return fail('Tin nhắn không hợp lệ.');
  const maxTokens=testing?1024:Math.max(64,Math.min(8192,Number(body.max_tokens)||1600));
  const temperature=Math.max(0,Math.min(1,Number(body.temperature)||0.2));
- const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',openai:env.OPENAI_MODEL||'gpt-4.1-mini',groq:env.GROQ_MODEL||'openai/gpt-oss-120b'};
+ const models={nvidia:env.NVIDIA_MODEL||'nvidia/llama-3.1-nemotron-ultra-253b-v1',deepseek:env.DEEPSEEK_MODEL||'deepseek-flash',deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',deepseek_r1:'deepseek-flash',gemini:env.GEMINI_MODEL||'gemini-2.5-flash',openai:env.OPENAI_MODEL||'gpt-4.1-mini',openrouter:env.OPENROUTER_MODEL||'openai/gpt-4.1-mini',groq:env.GROQ_MODEL||'openai/gpt-oss-120b'};
  if(models.nvidia==='meta/llama-3.3-70b-instruct')models.nvidia='nvidia/llama-3.1-nemotron-ultra-253b-v1';
  let selectedModel=testing&&body.model?String(body.model):configuredModel||models[provider];
  // Image requests use Flash vision and inherit the existing DeepSeek key.
  if(hasImage&&provider==='deepseek')selectedModel='deepseek-flash';
  if(hasImage&&!testing&&provider==='nvidia')selectedModel=env.NVIDIA_VISION_MODEL||(configuredModel&&/omni|vision/i.test(configuredModel)?configuredModel:'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning');
- if(!/^[A-Za-z0-9._/-]{1,160}$/.test(selectedModel))return fail('Mã AI không hợp lệ.');
+ if(!/^[A-Za-z0-9._/:-]{1,160}$/.test(selectedModel))return fail('Mã AI không hợp lệ.');
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),110000);
  let streaming=false;
  try{
@@ -2020,7 +2020,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    if(body.format){payload.generationConfig.responseMimeType='application/json';if(/flash/i.test(selectedModel))payload.generationConfig.thinkingConfig={thinkingBudget:0};}
    const system=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');if(system)payload.systemInstruction={parts:[{text:system}]};
   }else{
-   url=_baseProvider==='openai'?'https://api.openai.com/v1/chat/completions':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/chat/completions':_baseProvider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.deepseek.com/chat/completions';headers.Authorization='Bearer '+key;
+   url=_baseProvider==='openrouter'?'https://openrouter.ai/api/v1/chat/completions':_baseProvider==='openai'?'https://api.openai.com/v1/chat/completions':_baseProvider==='nvidia'?'https://integrate.api.nvidia.com/v1/chat/completions':_baseProvider==='groq'?'https://api.groq.com/openai/v1/chat/completions':'https://api.deepseek.com/chat/completions';headers.Authorization='Bearer '+key;
    let requestMessages=messages;
    if(provider==='nvidia'&&selectedModel==='nvidia/llama-3.1-nemotron-ultra-253b-v1'){
     const instructions=messages.filter(m=>m.role==='system').map(m=>m.content).join('\n');
@@ -2029,9 +2029,11 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    payload={model:selectedModel,messages:requestMessages,max_tokens:maxTokens,temperature:testing?0:temperature,stream:!testing&&body.stream===true};
    if(provider==='openai'&&/^(?:gpt-5|o[134](?:-|$))/.test(selectedModel)){payload.max_completion_tokens=payload.max_tokens;delete payload.max_tokens;delete payload.temperature;}
    if(payload.stream)payload.stream_options={include_usage:true};
+   // Prefer the lowest-latency OpenRouter endpoint; keep fallback during outages.
+   if(_baseProvider==='openrouter')payload.provider={sort:'latency',allow_fallbacks:true};
    // JSON mode for every OpenAI-compatible provider, not only DeepSeek/OpenAI: without it
    // NVIDIA answered planning requests with Markdown prose instead of a plan.
-   if(['deepseek','openai','nvidia','groq'].includes(_baseProvider)&&body.format)payload.response_format={type:'json_object'};
+   if(['deepseek','openai','nvidia','groq','openrouter'].includes(_baseProvider)&&body.format)payload.response_format={type:'json_object'};
    if(_baseProvider==='deepseek')payload.thinking={type:!testing&&!hasImage&&!body.format&&body.repair_response!==true&&(variants[requestedProvider]?requestedProvider!=='deepseek_flash':stored.thinking_enabled===true||body.thinking_enabled===true)?'enabled':'disabled'};
   }
   let response=await fetch(url,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
@@ -2258,6 +2260,7 @@ async function billingAPI(env,actor,path,body,request){
 async function billingProvider(env,actor,path,body){
  const actualProvider=String(body.provider||'').startsWith('ai_')?(await readProviderConfig(env,body.provider)).provider:body.provider;
  if(path==='/api/provider/model'&&actualProvider==='openai'&&!administrator(actor))return billingError('OpenAI chưa có bảng giá. Hiện dùng DeepSeek, Cloud AI hoặc NVIDIA.',402,'OPENAI_PRICING_UNSET');
+ if(path==='/api/provider/model'&&actualProvider==='openrouter'&&!administrator(actor)&&await billingEnabled(env))return billingError('OpenRouter chưa có bảng giá theo model. Quản trị viên có thể cấu hình và kiểm tra API.',402,'OPENROUTER_PRICING_UNSET');
  const enabled=await billingEnabled(env);
  if(!enabled||path!=='/api/provider/model')return providerAPI(env,path,body);
  if(administrator(actor)||actualProvider==='nvidia'||actualProvider==='cloudflare')return billingFreeProvider(env,actor,path,body);

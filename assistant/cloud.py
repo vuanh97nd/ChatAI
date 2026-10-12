@@ -16,7 +16,7 @@ DEEPSEEK_R1_MODEL = 'DeepSeek R1 Suy luận'
 GEMINI_MODEL = 'Gemini API'
 GROQ_MODEL = 'Groq API'
 OPENAI_MODEL = 'OpenAI / ChatGPT'
-REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_FLASH_MODEL:'deepseek_flash', DEEPSEEK_PRO_MODEL:'deepseek_pro', DEEPSEEK_R1_MODEL:'deepseek_r1', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', OPENAI_MODEL:'openai', CLOUD_MODEL:'cloudflare'}
+REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_FLASH_MODEL:'deepseek_flash', DEEPSEEK_PRO_MODEL:'deepseek_pro', DEEPSEEK_R1_MODEL:'deepseek_r1', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', OPENAI_MODEL:'openai', 'OpenRouter':'openrouter', CLOUD_MODEL:'cloudflare'}
 PROVIDER_NAMES = {v:k for k,v in REMOTE_MODELS.items()}
 _DEEPSEEK_VARIANT_MODELS = {'deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash'}
 CUSTOM_PROVIDER_TYPES={}
@@ -118,8 +118,9 @@ API_ENDPOINTS = {'nvidia':'https://integrate.api.nvidia.com/v1/chat/completions'
                  'deepseek':_DS_API,'deepseek_flash':_DS_API,'deepseek_pro':_DS_API,'deepseek_r1':_DS_API,
                  'gemini':'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
                  'groq':'https://api.groq.com/openai/v1/chat/completions',
-                 'openai':'https://api.openai.com/v1/chat/completions'}
-API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b','openai':'gpt-4.1-mini'}
+                 'openai':'https://api.openai.com/v1/chat/completions',
+                 'openrouter':'https://openrouter.ai/api/v1/chat/completions'}
+API_DEFAULT_MODELS = {'nvidia':'nvidia/nemotron-3-super-120b-a12b','deepseek':'deepseek-flash','deepseek_flash':'deepseek-flash','deepseek_pro':'deepseek-v4-pro','deepseek_r1':'deepseek-flash','gemini':'gemini-3.8-flash','groq':'openai/gpt-oss-120b','openai':'gpt-4.1-mini','openrouter':'openai/gpt-4.1-mini'}
 
 
 def _protect_key(value, decrypt=False):
@@ -174,6 +175,7 @@ class ApiDocumentClient:
         payload={'model':self.small_model if model=='document-small' else self.model,'messages':messages,'stream':stream,
                  'max_tokens':min(max(int(options.get('num_predict',1600)),128),8192),
                  'temperature':options.get('temperature',.2)}
+        if self.provider=='openrouter':payload['provider']={'sort':'latency','allow_fallbacks':True}
         if self.provider=='gemini':payload['reasoning_effort']='low';payload['max_tokens']+=1024
         return payload
     def _api_error(self,error):
@@ -496,7 +498,7 @@ def register_custom_ai(entries):
     accepted=[]
     for item in entries or []:
         identifier=item.get('id','');label=item.get('label','')
-        if not re.fullmatch(r'ai_[a-f0-9]{32}',identifier) or item.get('provider') not in ('nvidia','deepseek','gemini','groq','openai') or not isinstance(label,str) or not 1<=len(label)<=80:continue
+        if not re.fullmatch(r'ai_[a-f0-9]{32}',identifier) or item.get('provider') not in ('nvidia','deepseek','gemini','groq','openai','openrouter') or not isinstance(label,str) or not 1<=len(label)<=80:continue
         name=label
         if name in REMOTE_MODELS and REMOTE_MODELS[name]!=identifier and not (REMOTE_MODELS[name] in _DEEPSEEK_VARIANT_MODELS and item['provider']=='deepseek'):continue
         REMOTE_MODELS[name]=identifier;PROVIDER_NAMES[identifier]=name;CUSTOM_PROVIDER_TYPES[identifier]=item['provider']

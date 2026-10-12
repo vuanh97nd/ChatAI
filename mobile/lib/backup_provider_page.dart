@@ -15,10 +15,10 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
   final models = <String, String>{
     'nvidia': 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
     'deepseek': 'deepseek-flash', 'gemini': 'gemini-2.5-flash',
-    'groq': 'openai/gpt-oss-120b', 'openai': 'gpt-4.1-mini', 'cloudflare': '',
+    'groq': 'openai/gpt-oss-120b', 'openai': 'gpt-4.1-mini', 'cloudflare': '', 'openrouter': 'openai/gpt-4.1-mini',
   };
   static const names = {'nvidia':'NVIDIA', 'deepseek':'DeepSeek', 'gemini':'Gemini',
-    'groq':'Groq', 'openai':'OpenAI', 'cloudflare':'Cloudflare AI'};
+    'groq':'Groq', 'openai':'OpenAI', 'openrouter':'OpenRouter', 'cloudflare':'Cloudflare AI'};
   String provider = 'nvidia', message = 'Chưa kiểm tra AI.';
   bool busy = false;
   @override
@@ -31,7 +31,7 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
     setState(() { busy = true; message = 'Đang lấy model từ server dự phòng…'; });
     try {
       final result = await widget.api.post('/api/admin/providers/models', {'provider': selected, 'api_key': secret});
-      final valid = RegExp(r'^[A-Za-z0-9._/-]{1,160}$');
+      final valid = RegExp(r'^[A-Za-z0-9._/:-]{1,160}$');
       final catalog = (result['models'] as List<dynamic>? ?? []).whereType<String>()
           .where(valid.hasMatch).toSet().toList()..sort();
       if (!mounted) return;

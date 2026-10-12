@@ -4,6 +4,15 @@ from assistant.backup_provider import backup_provider_request
 
 SESSION={'endpoint':'https://backup.example','username':'backup-admin','key':'backup-token'}
 class BackupProviderTests(unittest.TestCase):
+    def test_openrouter_save_targets_backup_with_its_own_key_and_model(self):
+        with patch('assistant.backup_provider.request_account',return_value={'success':True}) as call:
+            backup_provider_request(SESSION,'save','openrouter','backup-router-key','vendor/model:free')
+            endpoint,path,body=call.call_args.args
+            self.assertEqual(endpoint,SESSION['endpoint'])
+            self.assertEqual(path,'/api/admin/providers/save')
+            self.assertEqual(body['providers'],{'openrouter':'backup-router-key'})
+            self.assertEqual(body['models'],{'openrouter':'vendor/model:free'})
+
     def test_visible_server_choices_preserve_current_and_exclude_primary(self):
         from assistant.backup_provider import backup_server_choices
         primary='https://chatai.anhvn53.workers.dev/'

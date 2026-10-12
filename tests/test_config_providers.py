@@ -9,6 +9,14 @@ from assistant.cloud import REMOTE_MODELS
 
 
 class ConfigProviderTests(unittest.TestCase):
+    def test_openrouter_selection_and_free_model_survive_restart(self):
+        cfg=dict(self.original,chat_provider='openrouter',openrouter_model='vendor/model:free')
+        config.save_config(cfg)
+        loaded=config.load_config()
+        self.assertEqual(loaded['chat_provider'],'openrouter')
+        self.assertEqual(loaded['openrouter_model'],'vendor/model:free')
+        self.assertEqual(REMOTE_MODELS['OpenRouter'],'openrouter')
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

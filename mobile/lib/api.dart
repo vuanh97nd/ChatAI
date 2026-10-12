@@ -148,7 +148,7 @@ class ChatApi {
 
   Future<Map<String, dynamic>> _primaryModelAnswer(Map<String, dynamic> payload,
       {void Function(String)? onText, bool Function()? cancelled}) async {
-    if (onText == null || !['nvidia', 'groq', 'deepseek_flash'].contains(payload['provider'])) {
+    if (onText == null || !['nvidia', 'groq', 'deepseek_flash', 'openrouter'].contains(payload['provider'])) {
       return post('/api/provider/model', payload);
     }
     if (session == null) throw ApiException('Vui lòng đăng nhập.', 401);
