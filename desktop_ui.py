@@ -459,6 +459,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.ai_identity_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.ai_identity_label.setAccessibleName('Tên model và server AI')
         outer.addWidget(self.ai_identity_label)
+        self.ai_identity_label.hide()
         self.refresh_ai_identity()
         center_row = QHBoxLayout(); center_row.addStretch(1)
         center = QWidget(); center.setMaximumWidth(820); layout = QVBoxLayout(center)
