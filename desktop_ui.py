@@ -1817,6 +1817,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(form,'Tải AI đề xuất',self.download_recommended_ai)
         self.button(form,'Trạng thái GPU / Ollama',self.check_gpu)
         self.settings_provider=QComboBox();self.settings_provider.addItems([*REMOTE_MODELS,'AI trên máy']);self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'));form.addRow('AI mặc định',self.settings_provider)
+        self.fallback_provider_combo=QComboBox();self.fallback_provider_combo.addItem('Không dùng dự phòng','');[self.fallback_provider_combo.addItem(n,REMOTE_MODELS[n]) for n in REMOTE_MODELS];self.fallback_provider_combo.setCurrentIndex(self.fallback_provider_combo.findData(self.cfg.get('fallback_provider','')));form.addRow('AI dự phòng',self.fallback_provider_combo)
         self.auto_python_check=QCheckBox('AI tự viết/chạy Python tra cứu trong Docker');self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
         form.addRow(self.auto_python_check)
         self.button(form,'Dùng công cụ AI tự động trong chat',lambda:(self.tabs.setCurrentIndex(0),self.chat_mode.setCurrentIndex(1),self.input.setFocus()))
@@ -2418,6 +2419,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         proposed['theme']=self.settings_theme.currentData()
         proposed['auto_python']=self.auto_python_check.isChecked()
         proposed['chat_provider']=REMOTE_MODELS.get(self.settings_provider.currentText(),'local')
+        proposed['fallback_provider']=self.fallback_provider_combo.currentData() or ''
         proposed['server_url']=self.settings_server.text().strip()
         proposed['whitelist']=[x.strip() for x in self.settings_roots.toPlainText().splitlines() if x.strip()]
         if hasattr(self,'windows_apps_check'):
@@ -2442,6 +2444,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.apply_theme(self.cfg.get('theme','dark'),self.cfg.get('font_size',13))
         self.auto_python_check.setChecked(self.cfg.get('auto_python',True))
         self.settings_provider.setCurrentText(PROVIDER_NAMES.get(self.cfg.get('chat_provider'),'AI trên máy'))
+        self.fallback_provider_combo.setCurrentIndex(self.fallback_provider_combo.findData(self.cfg.get('fallback_provider','')))
         self.settings_server.setText(self.cfg.get('server_url',''))
         self.settings_roots.setPlainText('\n'.join(self.cfg['whitelist']))
         if hasattr(self,'windows_apps_check'):

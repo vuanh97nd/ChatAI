@@ -206,4 +206,23 @@ class DeepSeekWebTests(unittest.TestCase):
         self.assertIn(DEEPSEEK_WEB_MODEL,REMOTE_MODELS)
         self.assertEqual(REMOTE_MODELS[DEEPSEEK_WEB_MODEL],'deepseek_web')
 
+class FallbackTests(unittest.TestCase):
+    def test_config_accepts_fallback_provider(self):
+        from assistant.config import validate_config
+        base={'ollama_host':'http://localhost:11434','default_model':'qwen2.5:3b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'max_rounds':8,'whitelist':['workspace'],'api_provider_revision':1,'chat_provider':'nvidia'}
+        with tempfile.TemporaryDirectory() as d,patch('assistant.config.ROOT',Path(d)):
+            for fb in ('','deepseek_web','cloudflare','nvidia','deepseek','gemini','groq'):
+                cfg=dict(base,fallback_provider=fb)
+                result=validate_config(cfg);self.assertEqual(result['fallback_provider'],fb)
+    def test_config_rejects_invalid_fallback(self):
+        from assistant.config import validate_config
+        base={'ollama_host':'http://localhost:11434','default_model':'qwen2.5:3b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'max_rounds':8,'whitelist':['workspace'],'api_provider_revision':1,'chat_provider':'nvidia','fallback_provider':'unknown_service'}
+        with tempfile.TemporaryDirectory() as d,patch('assistant.config.ROOT',Path(d)):
+            self.assertRaises(ValueError,validate_config,base)
+    def test_config_defaults_fallback_to_empty(self):
+        from assistant.config import validate_config
+        base={'ollama_host':'http://localhost:11434','default_model':'qwen2.5:3b','code_model':'qwen2.5-coder:7b','num_ctx':4096,'max_rounds':8,'whitelist':['workspace'],'api_provider_revision':1,'chat_provider':'nvidia'}
+        with tempfile.TemporaryDirectory() as d,patch('assistant.config.ROOT',Path(d)):
+            result=validate_config(base);self.assertEqual(result['fallback_provider'],'')
+
 if __name__=='__main__':unittest.main()

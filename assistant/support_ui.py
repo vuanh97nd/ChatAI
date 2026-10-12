@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QPlainTextEdit,
     QComboBox,QListWidget,QListWidgetItem,QTextBrowser,QMessageBox,QFileDialog,QDialog,QDialogButtonBox)
 from .accounts import request_account
-from .cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, SWITCH_MESSAGE, CloudError, cloud_events, guest_token, ApiDocumentClient, api_key, api_answer_events, ServerApiClient, DeepSeekWebClient, deepseek_web_token
+from .cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, PROVIDER_NAMES, SWITCH_MESSAGE, CloudError, cloud_events, guest_token, ApiDocumentClient, api_key, api_answer_events, ServerApiClient, DeepSeekWebClient, deepseek_web_token
 from .trial import GUEST_OWNER
 
 HELP_GUIDE='''Chọn mô hình: NVIDIA AI (mặc định), DeepSeek API và Gemini API dùng key chung do Admin cấu hình trên server; người dùng chỉ chọn AI. Cloudflare xử lý nội dung trên server. Chọn Qwen hoặc DeepSeek để chạy trên máy; model chưa có sẽ hỏi trước khi tải.
@@ -171,12 +171,34 @@ class SupportMixin:
                 body['document_context']='\n\n'.join(evidence)[:140000]
 
             body['options']={'num_predict':cfg.get('num_predict',1536),'temperature':cfg.get('temperature',.2),'num_ctx':cfg.get('num_ctx',4096)}
-            events=api_answer_events(api_client,body) if api_client else cloud_events(endpoint,body)
+            fallback_id=cfg.get('fallback_provider','')
+            def _make_events(client):
+                return api_answer_events(client,body) if client else cloud_events(endpoint,body)
+            def _build_fallback_client(fb_id):
+                if fb_id=='deepseek_web':
+                    return DeepSeekWebClient(deepseek_web_token(self.store))
+                if fb_id and fb_id!='cloudflare':
+                    return ServerApiClient(session,fb_id,on_status=lambda t:emit({'type':'status','text':t}),cancel_event=getattr(self.worker,'stop_requested',None))
+                return None  # cloudflare → None triggers cloud_events path
+            events=_make_events(api_client)
             try:first=next(events)
             except CloudError as error:
                 if error.code in ('CLOUD_LIMIT','CLOUD_BUSY','LOGIN_REQUIRED'):
                     return {'cloud_action':error.code,'message':str(error)}
-                raise
+                if fallback_id and fallback_id!=provider:
+                    fb_name=PROVIDER_NAMES.get(fallback_id,fallback_id)
+                    emit({'type':'status','text':f'AI chính lỗi ({str(error)[:60]}). Đang thử dự phòng {fb_name}…'})
+                    try:
+                        fb_client=_build_fallback_client(fallback_id)
+                        events=_make_events(fb_client)
+                        first=next(events)
+                    except CloudError as fb_error:
+                        if fb_error.code in ('CLOUD_LIMIT','CLOUD_BUSY','LOGIN_REQUIRED'):
+                            return {'cloud_action':fb_error.code,'message':str(fb_error)}
+                        raise CloudError(f'AI chính và dự phòng đều lỗi: {str(error)[:50]} → {str(fb_error)[:50]}') from None
+                    except StopIteration:raise RuntimeError('Dịch vụ dự phòng chưa trả về luồng AI.') from None
+                else:
+                    raise
             except StopIteration:raise RuntimeError('Server chưa trả về luồng AI.') from None
             state['account_username']=owner;state['model']=selected_model
             state['online_automation']=False
