@@ -1,4 +1,4 @@
-# Chat AI trong AutoCAD 2023 — bản thử 0.2
+# Chat AI trong AutoCAD 2023 — bản thử 0.3.1
 
 Plugin Windows x64/.NET Framework 4.8, bảng WinForms PaletteSet, lệnh `CHATAI`.
 Chưa biên dịch hoặc chạy AutoCAD thực trong môi trường Linux phát triển.
@@ -75,6 +75,9 @@ Cao độ mũi = cao độ đầu − chiều sâu; tọa độ hiển thị đ�
 
 ### Bố trí trong vùng polyline đang có
 
+Sau cập nhật phải đóng/mở lại AutoCAD để DLL cũ được gỡ. Tiêu đề bảng phải hiện
+**Chat AI · CAD 0.3.1**; nếu không thấy, chưa chạy đúng DLL mới.
+
 Bấm **Chọn polyline vùng CDM** hoặc gõ `CHATAIREGION`, chọn một polyline kín
 trong ModelSpace. Hỗ trợ 3–500 đỉnh, cạnh thẳng, phẳng XY cao độ 0; chưa hỗ trợ
 bulge/cung tròn, lỗ trong vùng hay polyline 3D. Chọn lại vùng sẽ xóa ngữ cảnh chat cũ.
@@ -87,6 +90,11 @@ người dùng xác nhận đơn vị tọa độ, không tự suy từ header.
 Bộ bố trí kiểm tra cọc nằm trọn bên trong, kể cả vùng lõm; giữ tọa độ WCS.
 Trước khi tạo DXF, plugin đọc lại vùng và từ chối nếu vùng đã đổi/xóa.
 Kết quả là DXF mới chứa biên vùng và cọc; chưa chèn vào DWG hay sao chép toàn bộ bản vẽ.
+
+Nếu AI vẫn trả lời sai khả năng hoặc muốn vẽ ngay không chờ API: sau khi chọn vùng,
+bấm **Nhập thông số vùng · không cần AI**, nhập đơn vị vùng, D/sx/sy (m), khoảng
+lùi mép cọc (m) và góc lưới (độ). Bấm **Xem kế hoạch**, rồi **Duyệt và vẽ JSON**.
+Luồng này không cần đăng nhập hay gọi AI; vẫn kiểm tra vùng trước khi tạo DXF.
 
 ## Giới hạn
 

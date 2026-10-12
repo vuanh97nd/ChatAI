@@ -30,7 +30,7 @@ namespace ChatAI.AutoCAD2023 {
         public void Open() {
             if (palette == null) {
                 panel = new ChatPanel();
-                palette = new PaletteSet("Chat AI", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
+                palette = new PaletteSet("Chat AI · CAD 0.3.1", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
                 palette.MinimumSize = new Size(320, 450); palette.Size = new Size(420, 650);
                 palette.Add("Chat", panel);
             }
@@ -45,6 +45,7 @@ namespace ChatAI.AutoCAD2023 {
         private readonly TextBox repository = new TextBox();
         private readonly Button browse = new Button { Text = "Chọn thư mục mã nguồn ChatAI", AutoSize = true };
         private readonly Button selectRegion = new Button { Text = "Chọn polyline vùng CDM", AutoSize = true };
+        private readonly Button boundaryPlan = new Button { Text = "Nhập thông số vùng · không cần AI", AutoSize = true };
         private Document boundaryDocument;
         private string boundaryHandle, boundarySnapshot;
         private readonly ComboBox provider = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -65,7 +66,53 @@ namespace ChatAI.AutoCAD2023 {
             foreach (var item in new Control[] { new Label { Text = "Server HTTPS", AutoSize = true }, endpoint,
                 new Label { Text = "Tài khoản", AutoSize = true }, username,
                 new Label { Text = "Mật khẩu", AutoSize = true }, password, login, provider, context,
-                repository, browse, selectRegion, question, ask, answer, apply, status }) { item.Width = 350; layout.Controls.Add(item); }
+                repository, browse, selectRegion, boundaryPlan, question, ask, answer, apply, status }) { item.Width = 350; layout.Controls.Add(item); }
+            boundaryPlan.Click += delegate {
+                if (busy) return;
+                try {
+                    var doc = Acad.DocumentManager.MdiActiveDocument;
+                    if (doc == null || boundaryDocument != doc || boundaryHandle == null)
+                        throw new InvalidOperationException("Bấm Chọn polyline vùng CDM trước.");
+                    if (ChatClient.Json.Serialize(CadTools.Boundary(doc, boundaryHandle)) != boundarySnapshot)
+                        throw new InvalidOperationException("Vùng đã thay đổi; chọn lại polyline.");
+                    using (var dialog = new Form { Text = "Thông số cọc trong vùng đã chọn", Width = 430, Height = 400,
+                        FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterScreen, MinimizeBox = false, MaximizeBox = false }) {
+                        var list = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
+                        dialog.Controls.Add(list);
+                        var units = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 380 };
+                        units.Items.AddRange(new object[] { "m", "mm", "cm", "inch" });
+                        list.Controls.Add(new Label { Text = "Đơn vị tọa độ vùng (xác nhận theo bản vẽ)", AutoSize = true }); list.Controls.Add(units);
+                        var keys = new[] { "d_pile", "spacing_x", "spacing_y", "edge_clearance", "angle_deg" };
+                        var labels = new[] { "Đường kính D (m)", "Khoảng cách tim theo X (m)", "Khoảng cách tim theo Y (m)", "Khoảng lùi mép cọc tới biên (m)", "Góc lưới (độ)" };
+                        var fields = new TextBox[5];
+                        for (int i = 0; i < 5; i++) {
+                            list.Controls.Add(new Label { Text = labels[i], AutoSize = true });
+                            fields[i] = new TextBox { Width = 380 }; list.Controls.Add(fields[i]);
+                        }
+                        var ok = new Button { Text = "Xem kế hoạch", AutoSize = true };
+                        list.Controls.Add(ok);
+                        System.Collections.Generic.Dictionary<string, object> parameters = null;
+                        ok.Click += delegate {
+                            try {
+                                if (units.SelectedIndex < 0) throw new ArgumentException("Chọn đơn vị vùng.");
+                                var p = new System.Collections.Generic.Dictionary<string, object> { { "units", units.Text } };
+                                for (int i = 0; i < 5; i++) {
+                                    double value;
+                                    if (!double.TryParse(fields[i].Text.Trim().Replace(',', '.'), System.Globalization.NumberStyles.Float,
+                                        System.Globalization.CultureInfo.InvariantCulture, out value) || double.IsNaN(value) || double.IsInfinity(value) ||
+                                        (i < 3 && value <= 0) || (i == 3 && value < 0)) throw new ArgumentException("Giá trị không hợp lệ: " + labels[i]);
+                                    p[keys[i]] = value;
+                                }
+                                parameters = p; dialog.DialogResult = DialogResult.OK;
+                            } catch (System.Exception ex) { MessageBox.Show(ex.Message, "Thông số CDM"); }
+                        };
+                        if (dialog.ShowDialog() != DialogResult.OK) return;
+                        target = doc;
+                        answer.Text = ChatClient.Json.Serialize(new { action = "cdm_boundary", parameters });
+                        apply.Enabled = true; status.Text = "Đã lập kế hoạch từ vùng thật; bấm Duyệt và vẽ JSON. Không gọi AI.";
+                    }
+                } catch (System.Exception ex) { status.Text = ex.Message; }
+            };
             selectRegion.Click += delegate {
                 if (!busy && Acad.DocumentManager.MdiActiveDocument != null)
                     Acad.DocumentManager.MdiActiveDocument.SendStringToExecute("CHATAIREGION ", true, false, false);
@@ -99,7 +146,7 @@ namespace ChatAI.AutoCAD2023 {
                             ". Dùng cdm_boundary; vùng sẽ được plugin truyền trực tiếp. Người dùng cần xác nhận đơn vị hình học.";
                     }
                     status.Text = "Đang chờ AI…";
-                    answer.Text = await client.Ask(question.Text, data, provider.Text);
+                    answer.Text = await client.Ask(question.Text, data, provider.Text, boundaryDocument == target && boundaryHandle != null);
                     apply.Enabled = answer.Text.TrimStart().StartsWith("{"); status.Text = "Đã trả lời; chưa sửa bản vẽ.";
                 } catch (System.Exception ex) { status.Text = ex.Message; }
                 finally { SetBusy(false); }
@@ -151,7 +198,7 @@ namespace ChatAI.AutoCAD2023 {
             status.Text = "Đã chọn vùng " + handle + ". Nhập D, sx, sy (m), đơn vị vùng, khoảng lùi mép và góc lưới.";
         }
         private void SetBusy(bool value) {
-            busy = value; login.Enabled = ask.Enabled = browse.Enabled = selectRegion.Enabled = !value;
+            busy = value; login.Enabled = ask.Enabled = browse.Enabled = selectRegion.Enabled = boundaryPlan.Enabled = !value;
             question.ReadOnly = answer.ReadOnly = repository.ReadOnly = value;
         }
         protected override void Dispose(bool disposing) { if (disposing) client.Dispose(); base.Dispose(disposing); }
