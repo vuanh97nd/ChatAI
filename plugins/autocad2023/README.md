@@ -73,14 +73,29 @@ Trong trắc dọc, lớp `CDM-TOP` thể hiện đầu cọc và `CDM-TOE` th�
 Cao độ mũi = cao độ đầu − chiều sâu; tọa độ hiển thị được phóng đứng theo hệ số
 đã nhập. Số liệu lý trình/cao độ không bị thay bằng tọa độ đồ họa.
 
+### Bố trí trong vùng polyline đang có
+
+Bấm **Chọn polyline vùng CDM** hoặc gõ `CHATAIREGION`, chọn một polyline kín
+trong ModelSpace. Hỗ trợ 3–500 đỉnh, cạnh thẳng, phẳng XY cao độ 0; chưa hỗ trợ
+bulge/cung tròn, lỗ trong vùng hay polyline 3D. Chọn lại vùng sẽ xóa ngữ cảnh chat cũ.
+
+Nhập: “Bố trí cọc trong vùng đã chọn. Tọa độ vùng là mm. D=0.8 m,
+sx=1.5 m, sy=1.5 m, khoảng lùi từ mép cọc tới biên 0.2 m, góc lưới 0 độ.”
+Không cần B/L/H khi chỉ vẽ mặt bằng. Đơn vị header được báo để tham khảo;
+người dùng xác nhận đơn vị tọa độ, không tự suy từ header.
+Đỉnh được đọc trực tiếp từ CAD và giữ ở máy; AI không tạo lại biên vùng.
+Bộ bố trí kiểm tra cọc nằm trọn bên trong, kể cả vùng lõm; giữ tọa độ WCS.
+Trước khi tạo DXF, plugin đọc lại vùng và từ chối nếu vùng đã đổi/xóa.
+Kết quả là DXF mới chứa biên vùng và cọc; chưa chèn vào DWG hay sao chép toàn bộ bản vẽ.
+
 ## Giới hạn
 
 Chưa đồng bộ bộ nhớ/lịch sử ChatAI. Vẽ trực tiếp chỉ thực thi JSON line/circle,
 tối đa 100 thao tác trong một transaction; lỗi làm hủy cả nhóm. Không chạy mã LISP,
 shell hoặc JSON công cụ khác. Chưa sửa/xóa đối tượng, polyline, block, dimension.
-CDM chỉ nhận 3 action được phép, đơn vị m; tối đa 10000 cọc hoặc 500 điểm trắc dọc.
-Mặt bằng hiện hỗ trợ chữ nhật; chưa chọn vùng polyline trong DWG hoặc đọc Excel
-từ bảng chat. Sơ đồ mặt cắt có ký hiệu ROAD, không dùng chiều dày ký hiệu đó làm
+CDM nhận 4 action được phép; tối đa 10000 cọc hoặc 500 điểm trắc dọc.
+Mặt bằng polyline hỗ trợ m/mm/cm/inch; các mẫu mặt cắt/trắc dọc vẫn dùng m.
+Chưa đọc Excel từ bảng chat. Sơ đồ mặt cắt có ký hiệu ROAD, không dùng chiều dày ký hiệu đó làm
 thông số thiết kế. Thông số CDM do người dùng cung cấp, chưa tính lún/ổn định/sức chịu tải.
 Giao diện chờ API bất đồng bộ, không tự thử lại thao tác vẽ. Lỗi hiện trong bảng;
 không ghi log chứa mật khẩu hoặc dữ liệu bản vẽ.

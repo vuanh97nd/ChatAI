@@ -6,6 +6,24 @@ using Autodesk.AutoCAD.Geometry;
 
 namespace ChatAI.AutoCAD2023 {
     internal static class CadTools {
+        internal static Dictionary<string, object> Boundary(Document doc, string handle) {
+            using (doc.LockDocument())
+            using (var tr = doc.Database.TransactionManager.StartTransaction()) {
+                var id = doc.Database.GetObjectId(false, new Handle(Convert.ToInt64(handle, 16)), 0);
+                var poly = tr.GetObject(id, OpenMode.ForRead) as Polyline;
+                var table = (BlockTable)tr.GetObject(doc.Database.BlockTableId, OpenMode.ForRead);
+                if (poly == null || !poly.Closed || poly.OwnerId != table[BlockTableRecord.ModelSpace] ||
+                    Math.Abs(poly.Elevation) > 1e-8 || (poly.Normal - Vector3d.ZAxis).Length > 1e-8 ||
+                    poly.NumberOfVertices < 3 || poly.NumberOfVertices > 500)
+                    throw new ArgumentException("Chọn polyline kín trong ModelSpace, phẳng XY cao độ 0, 3–500 đỉnh.");
+                var vertices = new List<double[]>();
+                for (int i = 0; i < poly.NumberOfVertices; i++) {
+                    if (Math.Abs(poly.GetBulgeAt(i)) > 1e-12) throw new ArgumentException("Chưa hỗ trợ cạnh cung tròn; chọn polyline cạnh thẳng.");
+                    var p = poly.GetPoint3dAt(i); vertices.Add(new[] { p.X, p.Y });
+                }
+                return new Dictionary<string, object> { { "handle", handle }, { "boundary", vertices }, { "units_header", doc.Database.Insunits.ToString() } };
+            }
+        }
         internal static string Inspect(Document doc) {
             using (doc.LockDocument())
             using (var tr = doc.Database.TransactionManager.StartTransaction()) {

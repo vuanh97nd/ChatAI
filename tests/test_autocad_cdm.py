@@ -91,6 +91,26 @@ class AutoCadCdmTests(unittest.TestCase):
             self.assertEqual(response['path'], str(output.resolve()))
             self.assertGreater(len(ezdxf.readfile(output).modelspace()), 0)
 
+    def test_selected_concave_boundary_keeps_units_and_excludes_cutout(self):
+        plan={'action':'cdm_boundary','parameters':dict(units='mm',
+            boundary=[[0,0],[10000,0],[10000,5000],[5000,5000],[5000,10000],[0,10000]],
+            d_pile=0.8,spacing_x=1.5,spacing_y=1.5,edge_clearance=0.2,angle_deg=0)}
+        doc,result=build(plan)
+        self.assertEqual(doc.units,4)
+        circles=list(doc.modelspace().query('CIRCLE'))
+        self.assertEqual(len(circles),result['pile_count'])
+        self.assertGreater(len(circles),0)
+        for c in circles:
+            self.assertAlmostEqual(c.dxf.radius,400)
+            self.assertFalse(c.dxf.center.x>5000 and c.dxf.center.y>5000)
+
+    def test_boundary_rejects_crossing_and_missing_selection(self):
+        p=dict(units='m',boundary=[[0,0],[10,10],[0,10],[10,0]],
+               d_pile=0.8,spacing_x=1.5,spacing_y=1.5,edge_clearance=0,angle_deg=0)
+        with self.assertRaises(ValueError):build({'action':'cdm_boundary','parameters':p})
+        del p['boundary']
+        with self.assertRaises(ValueError):build({'action':'cdm_boundary','parameters':p})
+
 
 if __name__ == '__main__':
     unittest.main()

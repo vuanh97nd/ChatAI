@@ -26,6 +26,26 @@ def build(plan: dict[str, Any]):
     action, p = plan['action'], plan['parameters']
     if not isinstance(p, dict):
         raise ValueError('parameters phải là object.')
+    if action == 'cdm_boundary':
+        import ezdxf
+        keys={'units','boundary','d_pile','spacing_x','spacing_y','edge_clearance','angle_deg'}
+        if set(p)!=keys or p['units'] not in {'m','mm','cm','inch'}:
+            raise ValueError('Cần vùng đã chọn, đơn vị và D/sx/sy/khoảng lùi/góc lưới.')
+        pts=p['boundary']
+        if not isinstance(pts,list) or not 3<=len(pts)<=500:
+            raise ValueError('Vùng phải có 3–500 đỉnh.')
+        vertices=[]
+        for pt in pts:
+            if not isinstance(pt,list) or len(pt)!=2:raise ValueError('Đỉnh phải là [x,y].')
+            vertices.append(tuple(number(v,'tọa độ') for v in pt))
+        doc=ezdxf.new('R2010')
+        doc.units={'m':6,'mm':4,'cm':5,'inch':1}[p['units']]
+        boundary=doc.modelspace().add_lwpolyline(vertices,close=True)
+        layout=layout_in_boundary(doc,boundary.dxf.handle,p['d_pile'],p['spacing_x'],p['spacing_y'],
+                                  p['units'],p['edge_clearance'],p['angle_deg'])
+        add_piles(doc,layout)
+        return doc, {'pile_count':len(layout['centers']),
+                     'note':'Mặt bằng cọc trong polyline đã chọn; tọa độ WCS và đơn vị vùng được giữ nguyên. DXF mới, không sửa DWG nguồn.'}
     if action in {'cdm_layout', 'cdm_section'}:
         keys = {'b_road', 'l_treatment', 'd_pile', 'pile_depth', 'spacing_x', 'spacing_y'}
         if set(p) != keys | {'units'} or p['units'] != 'm':
@@ -89,7 +109,7 @@ def build(plan: dict[str, Any]):
         msp.add_lwpolyline(toes, dxfattribs={'layer': 'CDM-TOE'})
         return doc, {'point_count': len(points), 'vertical_scale': scale,
                      'note': 'Cao độ đầu/mũi cọc lấy từ số liệu; trắc dọc phóng đứng theo vertical_scale.'}
-    raise ValueError('Chỉ hỗ trợ cdm_layout, cdm_section, cdm_profile.')
+    raise ValueError('Chỉ hỗ trợ cdm_boundary, cdm_layout, cdm_section, cdm_profile.')
 
 
 def render(plan: dict[str, Any], output: str) -> dict[str, Any]:
