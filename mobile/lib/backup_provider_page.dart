@@ -4,7 +4,9 @@ import 'api.dart';
 /// Always addresses the authenticated backup directly; never the failover router.
 class BackupProviderPage extends StatefulWidget {
   final ChatApi api;
-  const BackupProviderPage({super.key, required this.api});
+  final String? primaryServer;
+  final VoidCallback? onChangeServer;
+  const BackupProviderPage({super.key, required this.api, this.primaryServer, this.onChangeServer});
   @override
   State<BackupProviderPage> createState() => _BackupProviderPageState();
 }
@@ -118,6 +120,12 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
     appBar: AppBar(title: const Text('Cấu hình API dự phòng')),
     body: ListView(padding: const EdgeInsets.all(20), children: [
       Text('Server đích: ${widget.api.server.origin}'),
+      if (widget.primaryServer != null) Text('Server chính: ${widget.primaryServer}'),
+      if (widget.onChangeServer != null) TextButton(onPressed: busy ? null : () {
+        final change = widget.onChangeServer!;
+        Navigator.pop(context);
+        Future<void>.delayed(const Duration(milliseconds: 300), change);
+      }, child: const Text('Chọn / đổi server dự phòng')),
       const SizedBox(height:12),
       const Text('Lưu khóa cần tài khoản Admin của server dự phòng. Để trống để giữ khóa đã lưu.'),
       DropdownButtonFormField<String>(initialValue:provider, decoration:const InputDecoration(labelText:'Nhà cung cấp'),
@@ -128,7 +136,7 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
       TextField(controller:keyInput, obscureText:true, autocorrect:false, enableSuggestions:false,
         enabled:!busy && provider!='cloudflare', maxLength:4096, decoration:const InputDecoration(labelText:'Khóa API dự phòng')),
       TextField(controller:modelInput, enabled:!busy && provider!='cloudflare', maxLength:160,
-        decoration:const InputDecoration(labelText:'Model')),
+        decoration:const InputDecoration(labelText:'Model của server dự phòng')),
       Text(message),
       TextButton(onPressed: busy || provider == 'cloudflare' ? null : chooseModels,
         child: const Text('Chọn / nhập thêm model')),

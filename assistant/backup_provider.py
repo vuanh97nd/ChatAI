@@ -4,6 +4,18 @@ from .accounts import request_account
 
 PROVIDERS={'nvidia','deepseek','gemini','groq','openai','cloudflare'}
 
+def backup_server_choices(primary,current=''):
+    from urllib.parse import urlparse
+    candidates=[current,'https://chatai-backup.vuanh97nd1.workers.dev','https://chatai.anhvn53.workers.dev']
+    result=[]
+    for value in candidates:
+        if not value:continue
+        value=value.rstrip('/')
+        parsed=urlparse(value)
+        if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:continue
+        if value!=primary.rstrip('/') and value not in result:result.append(value)
+    return result
+
 def backup_provider_request(session, action, provider, api_key='', model=''):
     if action not in {'status','save','test','models'} or provider not in PROVIDERS:
         raise ValueError('Thao tác hoặc nhà cung cấp không hợp lệ.')

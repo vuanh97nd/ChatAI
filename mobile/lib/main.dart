@@ -304,16 +304,22 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> openBackupProviders() async {
     final target = api.backup;
     if (target == null) { changed(() => error = 'Kết nối tài khoản dự phòng trước.'); return; }
-    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => BackupProviderPage(api: target)));
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => BackupProviderPage(api: target,
+      primaryServer: api.server.origin, onChangeServer: () { if (mounted) unawaited(connectBackup()); })));
   }
   Future<void> connectBackup() async {
     if (api.session == null) { await openLogin(); return; }
-    final endpoint = TextEditingController(text: defaultBackupServer);
-    final name = TextEditingController(), password = TextEditingController();
+    final endpoint = TextEditingController(text: api.backup?.server.origin ?? defaultBackupServer);
+    final name = TextEditingController(text: api.backup?.session?.username ?? ''), password = TextEditingController();
     final accepted = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: const Text('Kết nối AI dự phòng'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('Đăng nhập riêng. Chỉ chuyển yêu cầu AI; không đồng bộ lịch sử hay thanh toán.'),
+        Text('Server chính: ${api.server.origin}'),
+        DropdownButton<String>(value: null, hint: const Text('Chọn server dự phòng'), isExpanded: true,
+          items: [for (final url in {defaultBackupServer, defaultServer}.where((url) => Uri.parse(url).origin != api.server.origin))
+            DropdownMenuItem(value: url, child: Text(url))],
+          onChanged: (value) { if (value != null) endpoint.text = value; }),
         TextField(controller: endpoint, decoration: const InputDecoration(labelText: 'Server HTTPS')),
         TextField(controller: name, decoration: const InputDecoration(labelText: 'Tài khoản dự phòng')),
         TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Mật khẩu')),

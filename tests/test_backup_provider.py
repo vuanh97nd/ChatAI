@@ -4,6 +4,14 @@ from assistant.backup_provider import backup_provider_request
 
 SESSION={'endpoint':'https://backup.example','username':'backup-admin','key':'backup-token'}
 class BackupProviderTests(unittest.TestCase):
+    def test_visible_server_choices_preserve_current_and_exclude_primary(self):
+        from assistant.backup_provider import backup_server_choices
+        primary='https://chatai.anhvn53.workers.dev/'
+        result=backup_server_choices(primary,'https://custom-backup.example/')
+        self.assertEqual(result[0],'https://custom-backup.example')
+        self.assertIn('https://chatai-backup.vuanh97nd1.workers.dev',result)
+        self.assertNotIn(primary.rstrip('/'),result)
+        self.assertNotIn('https://user:secret@example.org',backup_server_choices(primary,'https://user:secret@example.org'))
     def test_models_catalog_only_addresses_backup_and_reuses_stored_provider_key(self):
         with patch('assistant.backup_provider.request_account',return_value={'success':True,'models':['nvidia/model-a','nvidia/model-b']}) as call:
             result=backup_provider_request(SESSION,'models','nvidia')

@@ -2725,12 +2725,18 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if self.busy():return
         if not self.server_session:
             QMessageBox.information(self,'AI dự phòng','Đăng nhập tài khoản chính trước.');return
-        from assistant.failover import DEFAULT_BACKUP,save_backup
+        from assistant.failover import save_backup,load_backup
+        from assistant.backup_provider import backup_server_choices
+        primary={k:self.server_session[k] for k in ('endpoint','username')}
+        saved=load_backup(primary) or {}
         dialog=QDialog(self);dialog.setWindowTitle('AI dự phòng — đăng nhập riêng')
-        form=QFormLayout(dialog);endpoint=QLineEdit(DEFAULT_BACKUP);username=QLineEdit();password=QLineEdit()
+        form=QFormLayout(dialog);endpoint=QComboBox();endpoint.setEditable(True)
+        endpoint.addItems(backup_server_choices(primary['endpoint'],saved.get('endpoint','')))
+        username=QLineEdit(saved.get('username',''));password=QLineEdit()
         password.setEchoMode(QLineEdit.EchoMode.Password)
+        main_server=QLabel(primary['endpoint']);main_server.setWordWrap(True);form.addRow('Server chính hiện tại:',main_server)
         form.addRow(QLabel('Chỉ chuyển yêu cầu AI. Không đồng bộ lịch sử hay thanh toán.'))
-        form.addRow('Server HTTPS:',endpoint);form.addRow('Tài khoản dự phòng:',username);form.addRow('Mật khẩu:',password)
+        form.addRow('Chọn / nhập server dự phòng:',endpoint);form.addRow('Tài khoản dự phòng:',username);form.addRow('Mật khẩu:',password)
         configure=QPushButton('Cấu hình API dự phòng / Kiểm tra AI')
         configure.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_provider_dialog)))
         form.addRow(configure)
@@ -2738,7 +2744,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
         if dialog.exec()!=QDialog.DialogCode.Accepted:return
         primary={k:self.server_session[k] for k in ('endpoint','username')}
-        target=endpoint.text().strip().rstrip('/');name=username.text().strip();secret=password.text()
+        target=endpoint.currentText().strip().rstrip('/');name=username.text().strip();secret=password.text()
         if target==primary['endpoint']:
             QMessageBox.warning(self,'AI dự phòng','Chọn server khác server chính.');return
         def task(emit):
@@ -2758,12 +2764,16 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             QMessageBox.information(self,'API dự phòng','Kết nối tài khoản dự phòng trước. Dùng tài khoản quản trị dự phòng để lưu API.');return
         dialog=QDialog(self);dialog.setWindowTitle('Cấu hình API dự phòng');dialog.resize(560,360)
         form=QFormLayout(dialog);target=QLabel(session['endpoint']);target.setWordWrap(True);form.addRow('Server đích:',target)
+        main_server=QLabel(primary['endpoint']);main_server.setWordWrap(True);form.addRow('Server chính:',main_server)
+        change_server=QPushButton('Chọn / đổi server dự phòng')
+        change_server.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_login_dialog)))
+        form.addRow(change_server)
         form.addRow(QLabel('Lưu khóa cần quyền Admin trên server dự phòng. Để trống để giữ khóa cũ.'))
         provider=QComboBox();models={'nvidia':self.cfg.get('nvidia_model',''),'deepseek':self.cfg.get('deepseek_model',''),'gemini':self.cfg.get('gemini_model',''),'groq':'openai/gpt-oss-120b','openai':self.cfg.get('openai_model',''),'cloudflare':''}
         for name in models:provider.addItem(PROVIDER_NAMES.get(name,name),name)
         key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password);key.setMaxLength(4096)
         model=QLineEdit();model.setMaxLength(160);message=QLabel('Chưa kiểm tra AI.');message.setWordWrap(True)
-        form.addRow('Nhà cung cấp:',provider);form.addRow('Khóa API:',key);form.addRow('Model:',model);form.addRow(message)
+        form.addRow('Nhà cung cấp:',provider);form.addRow('Khóa API:',key);form.addRow('Model của server dự phòng:',model);form.addRow(message)
         controls=QHBoxLayout();buttons=[]
         def refresh():
             name=provider.currentData();model.setText(models[name]);key.clear()
@@ -2781,6 +2791,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 message.setText('Nhập khóa API hoặc model để lưu.');return
             for button in buttons:button.setEnabled(False)
             provider.setEnabled(False);key.setEnabled(False);model.setEnabled(False)
+            change_server.setEnabled(False)
             message.setText('Đang '+('kiểm tra AI (có thể tính phí API)…' if action=='test' else 'kết nối server dự phòng…'))
             def task(emit):
                 from assistant.backup_provider import backup_provider_request
@@ -2790,6 +2801,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 if not dialog.isVisible():return
                 for button in buttons:button.setEnabled(True)
                 provider.setEnabled(True);key.setEnabled(name!='cloudflare');model.setEnabled(name!='cloudflare')
+                change_server.setEnabled(True)
                 if result.get('error'):message.setText('Chưa thành công: '+result['error']);return
                 value=result['value']
                 if action=='models':
@@ -2814,6 +2826,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             button=QPushButton(label);button.clicked.connect(lambda checked=False,a=action:request(a));controls.addWidget(button);buttons.append(button)
         form.addRow(controls)
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
+        QTimer.singleShot(0,lambda:request('status') if dialog.isVisible() else None)
         dialog.exec()
 
     def login_dialog(self):
