@@ -341,6 +341,8 @@ STAGE_INSTRUCTION = (
     '{source,region:{x:[min,max],y:[min,max]},objects:{Soil_1_1:false,...}}]. '
     'objects phải đúng toàn bộ g.Soils và trạng thái đã đọc, không tự đoán. Wrapper xác minh nhóm, '
     'chỉ bật khối False ở InitialPhase rồi đọc lại một lần; không inspect/tabulate lại cả nhóm từng khối. '
+    'Khi nhiệm vụ hiện tại là bật đất InitialPhase, không tra Active của neo hoặc Phase_1/Phase_2 trước bước này. '
+    'Nếu bảng đất và vùng đã đủ, gọi initialize_soils ngay; chỉ đọc mục có dữ kiện thiếu hoặc mâu thuẫn. '
     '\nInitialPhase không có phase cha: inspect_stage vẫn đọc được. Để bật đất ở InitialPhase, '
     'verify_stage dùng kind=soil, after=true, parent_phase=null, parent_active=null; '
     'before là Active thật, region/source đúng vùng đã đọc. Chỉ set khối còn False rồi đọc lại; '

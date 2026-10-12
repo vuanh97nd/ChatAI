@@ -907,10 +907,11 @@ def execute_commands(server,g,rows,on_status=None,session=None):
 _SNAPSHOT=('Boreholes','Soillayers','Soils','Materials','Points','Lines','Polygons','Plates','Interfaces',
            'LineLoads','PointLoads','LineDisplacements','PointDisplacements','NodeToNodeAnchors','FixedEndAnchors','EmbeddedBeams','Phases')
 _MODEL_TYPES={0:'Plane strain',1:'Axisymmetric'}
-_CHANGES_READONLY={'ensure_new_material','plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage','inspect_progress','plan_resume'}
+_CHANGES_READONLY={'ensure_new_material','plan_excavation','read','info','signature','summarize','verify_model','verify_stage','inspect_stage','inspect_progress','plan_resume',
+                  'gotosoil','gotostructures','gotomesh','gotostages','gotoflow','gotowater','commands','tabulate','echo'}
 
 
-def model_snapshot(g,limit=2400,session=None,version=None):
+def model_snapshot(g,limit=2400,session=None,version=None,include_stage_states=True):
     """Compact view of what the open PLAXIS model already holds, so the model can see
     duplicates and what a failed batch left behind without guessing."""
     lines=[]
@@ -932,7 +933,9 @@ def model_snapshot(g,limit=2400,session=None,version=None):
             if attr=='Soils':label+=_cluster_box(item)
             names.append(label)
         lines.append(f"{attr}: {len(items)} ({', '.join(names)}{', …' if len(items)>len(shown) else ''})")
-    changes=phase_changes(g,session) if any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
+    changes=phase_changes(g,session) if include_stage_states and any(l.startswith('Phases:') and not l.startswith('Phases: 1 ') for l in lines) else []
+    if not include_stage_states:
+        lines.append('Chỉ inventory/hình học; chưa đọc Active giữa các phase. Không suy ra phase trống. Đọc đúng phase khi bước hiện tại cần.')
     for row in changes:
         parts=[]
         if row['on']:parts.append('bật '+', '.join(row['on'][:6]))
@@ -998,9 +1001,10 @@ def run_batch(server,g,rows,on_status=None,port=None,version=None):
         result['model_state_note']='Chỉ xác minh nhóm đất ở InitialPhase; chưa đọc kết cấu/tải hoặc các phase đào. Không quét lại toàn mô hình sau phép đọc xác nhận nhóm.'
     elif first or not result.get('ok') or any(r['command'] not in _CHANGES_READONLY for r in rows):
         try:
-            result['model_state']=model_snapshot(g,session=session,version=version)
-            result['model_state_note']=('model_state là trạng thái thật của PLAXIS sau lệnh này. Trước khi tạo borehole, lớp đất, '
-                                        'vật liệu hay hình học, kiểm tra ở đây và dùng lại đối tượng đã có; không tạo trùng.')
+            result['model_state']=model_snapshot(g,session=session,version=version,include_stage_states=False)
+            result['model_state_note']=('Inventory/hình học đang mở; không tự quét Active của mọi phase/neo. '
+                                        'Giữ đối tượng đã có; chỉ đọc đúng đối tượng và phase cần cho bước kế tiếp. '
+                                        'Đây không phải verify_stage hoặc verify_model.')
         except Exception as exc:result['model_state']='Chưa đọc được trạng thái mô hình: '+str(exc)[:200]
     names=sorted(session['aliases'])
     if names:result['names']=('Tên dùng lại được ở lệnh sau: '+', '.join(names))[:600]
