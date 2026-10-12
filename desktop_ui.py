@@ -1415,6 +1415,10 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.button(btn_grid, '📝 Viết thuyết minh', lambda: self._quick_action('thuyet_minh'))
         self.button(btn_grid, '📐 Vẽ mặt cắt CAD', lambda: self._quick_action('mat_cat_cad'))
         pb.addLayout(btn_grid)
+        btn_grid_cad = QHBoxLayout()
+        self.button(btn_grid_cad, '📏 Vẽ trắc dọc', lambda: self._quick_action('tracdoc_cad'))
+        self.button(btn_grid_cad, '🔵 Vẽ CDM layout', lambda: self._quick_action('cdm_cad'))
+        pb.addLayout(btn_grid_cad)
         btn_grid2 = QHBoxLayout()
         self.button(btn_grid2, '📊 Bảng tính Excel', lambda: self._quick_action('bang_tinh'))
         self.button(btn_grid2, '📋 Báo cáo Word', lambda: self._quick_action('bao_cao_word'))
@@ -1547,6 +1551,16 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             'mat_cat_cad': (
                 f'Vẽ mặt cắt {kind.lower()}{project_ctx} bằng AutoCAD, tỉ lệ {scale}. '
                 f'Hỏi tôi thông số lớp đất, kích thước kết cấu và cao độ nền.'
+            ),
+            'tracdoc_cad': (
+                f'Vẽ trắc dọc{project_ctx} bằng AutoCAD. '
+                f'Hỏi tôi dữ liệu lý trình, cao độ tự nhiên và cao độ thiết kế từng cọc, '
+                f'tên dự án và tỷ lệ bản vẽ.'
+            ),
+            'cdm_cad': (
+                f'Vẽ sơ đồ bố trí cọc CDM{project_ctx}. '
+                f'Hỏi tôi chiều rộng nền đường, chiều dài đoạn xử lý, đường kính cọc, '
+                f'chiều sâu xử lý và khoảng cách bố trí.'
             ),
             'bang_tinh': (
                 f'Tạo bảng tính Excel{project_ctx} cho {kind.lower()}. '
@@ -1853,6 +1867,26 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if (self.model.currentText() not in REMOTE_MODELS or media_mode) and not self.server_session and self.trial.remaining()==0:
             self.login_dialog();return
         prompt = self.input.toPlainText().strip()
+        # Slash-command expansion: /cdm, /tracdoc, /mcn, /tru, /xldy, /cad
+        try:
+            from assistant.cad_templates import expand_slash
+            expanded = expand_slash(prompt)
+            if expanded:
+                self.input.setPlainText(expanded)
+                self.input.setFocus()
+                # Move cursor to first placeholder
+                cursor = self.input.textCursor()
+                text = self.input.toPlainText()
+                bracket = text.find('[')
+                if bracket >= 0:
+                    cursor.setPosition(bracket)
+                    end = text.find(']', bracket)
+                    if end >= 0:
+                        cursor.setPosition(end + 1, cursor.MoveMode.KeepAnchor)
+                    self.input.setTextCursor(cursor)
+                return
+        except Exception:
+            pass
         if not prompt and self.pending_image:prompt='Hãy phân tích hình ảnh này bằng tiếng Việt.'
         if not prompt and self.pending_documents:prompt='Hãy tóm tắt tài liệu đính kèm bằng tiếng Việt.'
         if self.pending_documents and self.chat_mode.currentIndex() not in (3,4,5):self.chat_mode.setCurrentIndex(0)

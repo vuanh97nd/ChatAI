@@ -325,7 +325,11 @@ class CdmLayoutApp:
         source=self.files.path(plan['source'])
         if fingerprint(source)!=plan['source_sha256']:raise PermissionError('DXF nguồn đã đổi; cần đọc/duyệt lại vùng.')
         doc=ezdxf.readfile(source)
-        if plan['action']=='cad_cdm_regions':return list_regions(doc,plan['start'])
+        if plan['action']=='cad_cdm_regions':
+            result=list_regions(doc,plan['start'])
+            from .cdm_boundary import format_regions_table
+            result['formatted_table']=format_regions_table(result)
+            return result
         app=self.windows.allowed_path(plan['app'])
         if fingerprint(app)!=plan['sha256']:raise PermissionError('EXE AutoCAD đã đổi.')
         result=layout_in_boundary(doc,**plan['values'])

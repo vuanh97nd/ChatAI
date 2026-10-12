@@ -50,7 +50,39 @@ def list_regions(doc, start=0, limit=40):
         except ValueError as error:row.update(supported=False,reason=str(error))
         rows.append(row)
     return {'regions':rows[start:start+limit],'total':len(rows),'next_start':start+limit if start+limit<len(rows) else None,
-            'units_header':doc.units,'note':'Chọn handle theo vùng người dùng chỉ định; không tự chọn polyline lớn nhất hoặc khung Defpoints. Xác nhận đơn vị hình học, header DXF có thể sai.'}
+            'units_header':doc.units,'note':'Chọn handle theo vùng người dùng chỉ định; không tự chọn polyline lớn nhất hoặc khung Defpoints. Xác nhận đơn vị hình học, header DXF có thể sai.',
+            'next_step':'Hiển thị bảng vùng cho người dùng, hỏi họ muốn điền CDM vào vùng nào (STT hoặc handle), rồi gọi cad_cdm_fill_boundary.'}
+
+
+def format_regions_table(result: dict) -> str:
+    """Format list_regions result as a Vietnamese markdown table for display."""
+    regions = result.get('regions', [])
+    total = result.get('total', len(regions))
+    if not regions:
+        return 'Không tìm thấy LWPOLYLINE khép kín nào trong bản vẽ.'
+    lines = [
+        f'Tìm thấy **{total}** vùng LWPOLYLINE khép kín:\n',
+        '| STT | Handle | Layer | Diện tích | Kích thước (W×H) | Hỗ trợ |',
+        '|-----|--------|-------|-----------|-----------------|---------|',
+    ]
+    for i, r in enumerate(regions, 1):
+        handle = r.get('handle', '?')
+        layer = r.get('layer', '?')
+        area = r.get('area_drawing_units_squared')
+        bounds = r.get('bounds')
+        supported = '✅' if r.get('supported') else f'❌ {r.get("reason","")[:40]}'
+        area_str = f'{area:.2f}' if area is not None else '–'
+        if bounds:
+            w = bounds[2] - bounds[0]
+            h = bounds[3] - bounds[1]
+            size_str = f'{w:.2f}×{h:.2f}'
+        else:
+            size_str = '–'
+        lines.append(f'| {i} | `{handle}` | {layer} | {area_str} | {size_str} | {supported} |')
+    if result.get('next_start') is not None:
+        lines.append(f'\n_Còn thêm vùng. Gọi lại với start={result["next_start"]} để xem tiếp._')
+    lines.append('\n**Bạn muốn điền cọc CDM vào vùng số mấy?** (Nhập STT hoặc handle)')
+    return '\n'.join(lines)
 
 
 def layout_in_boundary(doc, handle, diameter_m, spacing_x_m, spacing_y_m, drawing_units, edge_clearance_m=0, angle_deg=0, grid_origin=None):

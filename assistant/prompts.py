@@ -49,6 +49,22 @@ FAST_SYSTEM += CONTINUITY
 SYSTEM += CONTINUITY
 SYSTEM_PROMPT += CONTINUITY
 
+CAD_DRAWING_POLICY = (
+    '\nAutoCAD/DXF: khi yêu cầu vẽ bản vẽ kỹ thuật, ưu tiên gọi công cụ phù hợp '
+    'theo thứ tự: cad_tracdoc_stations (trắc dọc đường), cad_cdm_layout (CDM), '
+    'cad_tracdoc_xldy / cad_mcn_xldy (XLDY), borehole_dxf (trụ địa chất), '
+    'cad_create_open (bản vẽ 2D tự do). Không tạo DXF bằng code Python thủ công khi '
+    'đã có tool chuyên dụng. Với CDM boundary: gọi cad_cdm_regions trước để liệt kê '
+    'vùng, hỏi người dùng chọn handle, rồi gọi cad_cdm_fill_boundary. '
+    'Đơn vị mặc định là mét trừ khi người dùng chỉ định khác. '
+    'Slash-command: /cdm → sơ đồ CDM, /tracdoc → trắc dọc, /mcn → mặt cắt ngang XLDY, '
+    '/tru → trụ địa chất, /xldy → phân tích XLDY đầy đủ, /cad → bản vẽ 2D tự do. '
+    'Sau khi xuất file DXF, nêu tên file và đường dẫn để người dùng mở ngay.'
+)
+FAST_SYSTEM += CAD_DRAWING_POLICY
+SYSTEM += CAD_DRAWING_POLICY
+SYSTEM_PROMPT += CAD_DRAWING_POLICY
+
 PLAXIS_MANUAL_POLICY = (
     '\nPLAXIS: trước khi dựng mô hình, xác định đúng tên bài và case trong manual; lập kế hoạch '
     'gồm ModelType, đơn vị, mốc tọa độ/mặt đất, lớp đất, vật liệu, vai trò từng hình học, '
