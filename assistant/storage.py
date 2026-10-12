@@ -148,6 +148,9 @@ class Store:
             memory=DocumentMemory(self);memory.seed(owner,state)
             state['document_memory']=memory.export(owner);state['document_memory_version']=1
             # Auto-summarize completed turn into PersonalMemory (Fix 4).
+            from .case_memory import CaseMemory
+            cases=CaseMemory(self);cases.seed(owner,state)
+            state['case_memory']=cases.export(owner);state['case_memory_version']=1
             if not state.get('running'):
                 try:
                     from .session_summarizer import auto_save_session

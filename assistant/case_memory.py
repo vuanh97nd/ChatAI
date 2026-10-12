@@ -394,7 +394,7 @@ class CaseMemory:
                     soil_params = json.dumps(soil_params, ensure_ascii=False)
                 if not isinstance(results, str):
                     results = json.dumps(results, ensure_ascii=False)
-                updated = str(r.get('updated', now()))[:50]
+                updated = str(r.get('updated') or datetime.now(timezone.utc).isoformat())[:50]
                 connection.execute(
                     'INSERT INTO case_memory(owner,id,problem_type,software,summary,'
                     'soil_params,results,vector,embedding_model,updated) '

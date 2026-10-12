@@ -771,7 +771,9 @@ class BatchRobustnessTests(unittest.TestCase):
         g = Mock(); g.set.side_effect = RuntimeError('Unsuccessful command:\nInvalid parameters.')
         g.commands.return_value = "set\n  PlxObject'"
         result = self.run_rows(g, [{'command': 'set', 'args': [{'ref': 'g.Plates', 'index': 0}, {'ref': 'g.InitialPhase'}, True]}])
-        self.assertIn('.Active', result['activation_hint'])
+        self.assertFalse(result['ok'])
+        self.assertIn('.Active', result['error'])
+        g.set.assert_not_called()
 
     def test_large_batches_are_accepted(self):
         from assistant.plaxis_commands import commands_from_json

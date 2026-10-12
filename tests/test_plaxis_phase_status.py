@@ -13,7 +13,7 @@ class PhaseStatusTests(unittest.TestCase):
         self.assertEqual(rows,[{'name':'Safety','status':2,'log':'Soil body collapses'}])
     def test_red_phase_is_not_reported_as_success(self):
         phase=SimpleNamespace(Identification='Phase_1',CalculationResult=2,LogInfo='Reached step 30; calculation failed')
-        g=SimpleNamespace(Phases=[phase]);server=SimpleNamespace(new=lambda:None)
+        g=SimpleNamespace(Phases=[phase],Boreholes=[],Soillayers=[],Materials=[],Points=[],Soils=[]);server=SimpleNamespace(new=lambda:None)
         with patch('assistant.plaxis_remote._connect',return_value=(server,g)),patch('assistant.plaxis_remote._exec_script_on_server',return_value='returned without exception'):
             result=run_plaxis_problem('# script','2d','slope_stability')
         self.assertFalse(result['executed'])

@@ -248,6 +248,7 @@ class ProcedureMemory:
         observations=[]
         if rows:
             for row in observed:
+                if not isinstance(row,dict):continue
                 step=row.get('step');source=rows[step-1] if isinstance(step,int) and 1<=step<=len(rows) else None
                 if not isinstance(source,dict):continue
                 observations.append(({'commands':json.dumps([source],ensure_ascii=False)},not row.get('error'),row.get('error',''),row,False))

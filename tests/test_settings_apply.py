@@ -49,7 +49,7 @@ class SettingsTest(unittest.TestCase):
         cfg=config.validate_config(cfg)
         source=ast.parse((Path(__file__).parents[1]/'desktop_ui.py').read_text())
         window=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Window')
-        methods=[n for n in window.body if isinstance(n,ast.FunctionDef) and n.name in ('apply_machine_choices','proposed_settings','settings_dirty','discard_settings','save_settings','preview_appearance','apply_theme','apply_font')]
+        methods=[n for n in window.body if isinstance(n,ast.FunctionDef) and n.name in ('apply_machine_choices','proposed_settings','settings_dirty','discard_settings','save_settings','preview_appearance','apply_theme','apply_font','refresh_ai_identity')]
         klass=ast.ClassDef(name='TestWindow',bases=[],keywords=[],body=methods,decorator_list=[])
         namespace={'PROVIDER_NAMES':PROVIDER_NAMES,'REMOTE_MODELS':REMOTE_MODELS,'admin_session':admin_session,'re':re,'style_sheet':style_sheet,'recolor':recolor,'QWidget':Text,'QComboBox':Combo,'CLOUD_MODEL':'Cloudflare AI','QMessageBox':SimpleNamespace(information=lambda *args:None)}
         exec(compile(ast.fix_missing_locations(ast.Module(body=[klass],type_ignores=[])),'settings','exec'),namespace)

@@ -1,16 +1,22 @@
 import io
 import unittest
+from unittest.mock import patch
 from assistant.online_documents import online_pdf_reader
 from assistant.documents import read_bytes
 from pypdf import PdfWriter
 
 class OnlineDocumentsTests(unittest.TestCase):
+    def setUp(self):
+        # Cold deterministic OCR; persistent-cache tests use their own fixtures.
+        cache=patch('assistant.online_documents.optional_cache',return_value=None)
+        cache.start();self.addCleanup(cache.stop)
+
     def test_both_permissions_required(self):
         def forbidden(*a,**kw):raise AssertionError('API called without consent')
         for cfg in ({},{'online_tools_enabled':True},{'online_document_upload':True}):
             self.assertIsNone(online_pdf_reader(cfg,{},client_factory=forbidden))
 
-    def test_scan_is_bounded_cached_and_labeled(self):
+    def test_scan_is_unbounded_cached_and_labeled(self):
         calls=[];providers=[]
         class Client:
             def __init__(self,session,provider,**kw):providers.append(provider)
@@ -22,12 +28,12 @@ class OnlineDocumentsTests(unittest.TestCase):
         reader=online_pdf_reader({'online_tools_enabled':True,'online_document_upload':True,'online_document_pages':1},{'username':'test'},client_factory=Client)
         result=read_bytes(raw,name='scan.pdf',pdf_ocr=reader)
         self.assertEqual(providers,['deepseek_flash'])
-        self.assertEqual(len(calls),1)
-        self.assertFalse(result['full_text'])
-        self.assertIn('giới hạn đọc ảnh PDF 1 trang',' '.join(result['issues']))
+        self.assertEqual(len(calls),2)
+        self.assertTrue(result['full_text'])
+        self.assertNotIn('giới hạn đọc ảnh PDF',' '.join(result['issues']))
         self.assertNotIn('không nhận được chữ',' '.join(result['issues']))
         self.assertEqual(reader(raw,0),'Nội dung trang đã đọc')
-        self.assertEqual(len(calls),1)
+        self.assertEqual(len(calls),2)
         message=calls[0]['messages'][1]
         self.assertNotIn('images',message)
         self.assertTrue(message['content'][1]['image_url']['url'].startswith('data:image/jpeg;base64,'))

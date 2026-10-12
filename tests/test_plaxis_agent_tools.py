@@ -53,7 +53,9 @@ class SafeToolsTests(unittest.TestCase):
         validate_call('plaxis_safe_calculate',args,registry)
         with self.assertRaises(ValidationError):validate_call('plaxis_safe_calculate',{**args,'checks':[]},registry)
         self.assertEqual(method_for('plaxis_safe_material'),'application_api')
-        self.assertEqual(len(schemas()),5)
+        self.assertEqual({s['function']['name'] for s in schemas()},
+            {'plaxis_safe_geo_calculate','plaxis_safe_inspect','plaxis_safe_material',
+             'plaxis_safe_layer','plaxis_safe_calculate','plaxis_safe_contour'})
 
     def test_failure_is_not_retried(self):
         remote=Mock();remote.commit.side_effect=RuntimeError('native connection lost')

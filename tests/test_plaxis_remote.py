@@ -172,7 +172,7 @@ class TestScriptGeneration(unittest.TestCase):
 
     def test_water_table_in_excavation_script(self):
         script = self._get_script(EXCAVATION_PROBLEM)
-        self.assertIn('setwaterlevel', script)
+        self.assertIn('bh.Head = -1.50', script)
 
     def test_script_is_valid_python_syntax(self):
         import ast

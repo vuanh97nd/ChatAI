@@ -30,10 +30,14 @@ def dialogue(state, store=None):
             'procedure_environment':str(state.get('procedure_environment') or 'unknown')[:160],
             'plaxis_active_problem':active_problem(state)}
     # Include case_memory in sync payload so it survives across devices.
-    if owner and store is not None:
-        result['case_memory'] = _export_case_memory(owner, store)
-    elif state.get('case_memory'):
+    if isinstance(state.get('case_memory'),list):
+        # Hash the same snapshot sent over the wire, including an empty list.
+        # Injecting this device's database into remote hashes creates false conflicts.
         result['case_memory'] = state['case_memory']
+    elif owner and store is not None:
+        result['case_memory'] = _export_case_memory(owner, store)
+    else:
+        result['case_memory'] = []
     return result
 
 
@@ -81,11 +85,8 @@ class HistorySync:
             ProcedureMemory(self.store).import_records(self.owner,state.get('procedure_memory',[]),db=db)
             # Sync case_memory from server to local.
             if state.get('case_memory'):
-                try:
-                    from .case_memory import CaseMemory
-                    CaseMemory(self.store).import_records(self.owner,state['case_memory'],db=db)
-                except Exception:
-                    pass
+                from .case_memory import CaseMemory
+                CaseMemory(self.store).import_records(self.owner,state['case_memory'],db=db)
             state['procedure_memory_version']=1
             state['document_memory_version']=1
             if remote['deleted']:

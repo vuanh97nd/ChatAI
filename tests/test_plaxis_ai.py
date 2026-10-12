@@ -7,7 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 def _make_files(tmp_dir):
@@ -182,7 +182,8 @@ class PlaxisRetainingWallTest(unittest.TestCase):
         self.assertIn("g.platemat()", self.script)
 
     def test_surcharge_in_script(self):
-        self.assertIn("uniformload", self.script)
+        self.assertIn("lineload", self.script)
+        self.assertNotIn("uniformload", self.script)
 
     def test_wall_soil_in_script(self):
         self.assertIn("Cat", self.script)
@@ -227,7 +228,8 @@ class PlaxisExcavationPitTest(unittest.TestCase):
         self.assertIn('DeformCalcType = "Safety"', self.script)
 
     def test_script_has_surcharge(self):
-        self.assertIn("uniformload", self.script)
+        self.assertIn("lineload", self.script)
+        self.assertNotIn("uniformload", self.script)
 
     def test_soil_names_in_script(self):
         self.assertIn("Cat pha", self.script)
@@ -365,10 +367,7 @@ class PlaxisAutoRunSkippedTest(unittest.TestCase):
         # Thêm mock plxscripting để đảm bảo import không fail nếu có
         plx_mock = Mock()
         plx_mock.easy.new_server = Mock(side_effect=RuntimeError("Should not be called"))
-        sys.modules.setdefault("plxscripting", plx_mock)
-        sys.modules.setdefault("plxscripting.easy", plx_mock.easy)
-
-        with tempfile.TemporaryDirectory() as tmp:
+        with patch.dict(sys.modules,{"plxscripting":plx_mock,"plxscripting.easy":plx_mock.easy}), tempfile.TemporaryDirectory() as tmp:
             result, _ = _run(tmp, FOUNDATION_PROBLEM)
         self.assertFalse(result["executed"])
         # new_server không nên bị gọi
@@ -447,7 +446,7 @@ class PlaxisExcavationV2Test(unittest.TestCase):
 
     def test_water_level_in_script(self):
         """Script phải khai báo mực nước ngầm tại -3 m."""
-        self.assertIn("setwaterlevel", self.script)
+        self.assertIn("bh.Head = -3.00", self.script)
         self.assertIn("-3.00", self.script)
 
     def test_surcharge_75kpa(self):

@@ -53,6 +53,18 @@ class HistorySyncTests(unittest.TestCase):
         self.sa.cycle();self.sb.cycle();self.sb.cycle()
         texts=[self.b.load(c)['messages'][-1]['content'] for c,_ in self.b.list()]
         self.assertCountEqual(texts,['Bản A','Bản B'])
+
+    def test_case_memory_is_synced_and_does_not_create_false_conflicts(self):
+        from assistant.case_memory import CaseMemory
+        CaseMemory(self.a).save('alice','slope_stability','PLAXIS 2D','Bài 4',results={'fs':1.45})
+        cid=self.conversation(self.a)
+        self.sa.cycle();self.sb.cycle()
+        self.assertEqual(len(CaseMemory(self.b).export('alice')),1)
+        self.assertEqual(CaseMemory(self.b).export('bob'),[])
+        for _ in range(3):self.sa.cycle();self.sb.cycle()
+        self.assertEqual(len(self.a.list('alice')),1)
+        self.assertEqual(len(self.b.list('alice')),1)
+        self.assertEqual(self.backend.rows[('alice',cid)]['revision'],1)
     def test_delete_and_undo_do_not_resurrect_from_cloud(self):
         cid=self.conversation(self.a);self.sa.cycle();self.sb.cycle()
         backup=self.a.delete(cid,Path(self.tmp.name)/'backup');self.sa.cycle();self.sb.cycle()

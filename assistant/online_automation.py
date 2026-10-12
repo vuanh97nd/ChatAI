@@ -1246,7 +1246,7 @@ class OnlineAutomation:
         from .communication import require_method
         policy=self.cfg
         path=getattr(self.windows,'policy_path',None)
-        if path is not None and Path(path).is_file():policy=json.loads(Path(path).read_text(encoding='utf-8'))
+        if isinstance(path,(str,Path)) and Path(path).is_file():policy=json.loads(Path(path).read_text(encoding='utf-8'))
         require_method(policy,name)
         from .application_transport import TOOL_NAMES as TRANSPORT_TOOLS
         from .application_macros import TOOL_NAMES as MACRO_TOOLS

@@ -13,7 +13,7 @@ class BillingUITests(unittest.TestCase):
         try:
             from unittest.mock import Mock
             pending=Mock();pending.isRunning.return_value=False
-            dialog.worker=pending
+            dialog.worker=pending;dialog.worker_is_write=True
             self.assertFalse(dialog.send('/api/billing/status'))
             finished=[];dialog.finished.connect(finished.append)
             dialog.reject();self.assertEqual(finished,[])
