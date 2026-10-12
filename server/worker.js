@@ -2233,7 +2233,7 @@ async function billingAPI(env,actor,path,body,request){
   const monthly=await db.prepare(`SELECT strftime('%Y-%m',created/1000,'unixepoch','+7 hours') AS month,
    COALESCE(SUM(tokens),0) AS tokens,COALESCE(SUM(charged),0)/1000.0 AS fee_vnd,
    SUM(CASE WHEN tokens IS NULL AND state<>'released' THEN 1 ELSE 0 END) AS unknown_requests
-   FROM billing_usage WHERE owner=? GROUP BY month ORDER BY month DESC`).bind(target).all();
+   FROM billing_usage WHERE owner=? AND created>=? GROUP BY month ORDER BY month DESC`).bind(target,Date.now()-13*30*24*3600000).all();
   const current_month=new Date(Date.now()+7*3600000).toISOString().slice(0,7);
   return reply({success:true,enabled:config.enabled===true,wallet,monthly_usage:monthly.results||[],current_month,usage_updated_at:Date.now(),orders:orders.results||[],usage:usage.results||[],price_per_million:billingTokenPrice(config),service_fee:billingServiceFee(config),trial_days:30,denominations:BILLING_DENOMINATIONS});
  }
@@ -2479,7 +2479,8 @@ async function notificationAPI(env,actor,path,body){
  const db=env.DB;
  await db.batch([
  db.prepare('CREATE TABLE IF NOT EXISTS app_notifications(id TEXT PRIMARY KEY,title TEXT NOT NULL,text TEXT NOT NULL,target TEXT NOT NULL,created INTEGER NOT NULL)'),
- db.prepare('CREATE TABLE IF NOT EXISTS app_notification_reads(owner TEXT NOT NULL,id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(owner,id))')]);
+ db.prepare('CREATE TABLE IF NOT EXISTS app_notification_reads(owner TEXT NOT NULL,id TEXT NOT NULL,read_at INTEGER NOT NULL,PRIMARY KEY(owner,id))'),
+ db.prepare('CREATE INDEX IF NOT EXISTS app_notifications_target ON app_notifications(target,created)')]);
  if(path==='/api/notifications/list'){
   const rows=await db.prepare("SELECT n.*,r.read_at FROM app_notifications n LEFT JOIN app_notification_reads r ON r.id=n.id AND r.owner=? WHERE n.target='*' OR n.target=? ORDER BY n.created DESC LIMIT 200").bind(actor.username,actor.username).all();
   const unread=await db.prepare("SELECT COUNT(*) AS total FROM app_notifications n WHERE (n.target='*' OR n.target=?) AND NOT EXISTS(SELECT 1 FROM app_notification_reads r WHERE r.id=n.id AND r.owner=?)").bind(actor.username,actor.username).first();
