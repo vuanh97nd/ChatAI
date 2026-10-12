@@ -54,6 +54,8 @@ class Store:
                 );
                 CREATE TABLE IF NOT EXISTS document_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
                 CREATE TABLE IF NOT EXISTS procedure_memory(owner TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
+                CREATE TABLE IF NOT EXISTS case_memory(owner TEXT NOT NULL,id TEXT NOT NULL,problem_type TEXT NOT NULL,software TEXT NOT NULL,summary TEXT NOT NULL,soil_params TEXT NOT NULL,results TEXT NOT NULL,vector TEXT,embedding_model TEXT,updated TEXT NOT NULL,PRIMARY KEY(owner,id));
+                CREATE INDEX IF NOT EXISTS case_memory_owner_updated ON case_memory(owner,updated DESC);
                 CREATE INDEX IF NOT EXISTS procedure_memory_owner_updated ON procedure_memory(owner,updated DESC);
                 CREATE INDEX IF NOT EXISTS procedure_memory_owner_tool ON procedure_memory(owner,json_extract(data,'$.tool'));
                 CREATE TABLE IF NOT EXISTS procedure_accounts(owner TEXT PRIMARY KEY,server TEXT NOT NULL);
@@ -128,6 +130,11 @@ class Store:
             memory=DocumentMemory(self);memory.seed(owner,state)
             state['document_memory']=memory.export(owner);state['document_memory_version']=1
             with self.connection() as db:db.execute('UPDATE conversations SET state=? WHERE id=?',(dumps(state),cid))
+        if owner and state.get('case_memory_version')!=1:
+            from .case_memory import CaseMemory
+            cm=CaseMemory(self);cm.seed(owner,state)
+            state['case_memory']=cm.export(owner);state['case_memory_version']=1
+            with self.connection() as db:db.execute('UPDATE conversations SET state=? WHERE id=?',(dumps(state),cid))
         return state
 
     def save(self, cid, state):
@@ -140,6 +147,20 @@ class Store:
             from .document_memory import DocumentMemory
             memory=DocumentMemory(self);memory.seed(owner,state)
             state['document_memory']=memory.export(owner);state['document_memory_version']=1
+            # Auto-summarize completed turn into PersonalMemory (Fix 4).
+            if not state.get('running'):
+                try:
+                    from .session_summarizer import auto_save_session
+                    auto_save_session(self,state)
+                except Exception:
+                    pass
+            # Update user preference profile from recent messages (Fix 5).
+            if not state.get('running'):
+                try:
+                    from .memory import UserPreferenceProfile
+                    UserPreferenceProfile(self,owner).update_from_messages(state.get('messages',[]))
+                except Exception:
+                    pass
         title = next((m["content"][:60] for m in state["messages"] if m["role"] == "user"),
                      "Cuộc trò chuyện mới")
         title=state.get('custom_title') or title

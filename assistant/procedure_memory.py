@@ -1,8 +1,29 @@
 """Persistent, account-scoped lessons and admin training; never executable queues."""
 import hashlib
 import json
+import math
 import re
 from datetime import datetime, timezone
+
+EMBED_MODEL = 'bge-m3'
+
+
+def _cosine(a, b):
+    if len(a) != len(b) or not a:
+        return -1.0
+    denom = math.sqrt(sum(x * x for x in a) * sum(y * y for y in b))
+    return sum(x * y for x, y in zip(a, b)) / denom if denom else -1.0
+
+
+def _embed_client(store):
+    """Return (client, enabled) from store config if embedding is configured."""
+    try:
+        cfg = getattr(store, '_embed_cfg', None)
+        if cfg:
+            return cfg
+    except Exception:
+        pass
+    return None, False
 
 READS={'read','tabulate','info','commands','signature','echo','getsoillayerlevel','getmetadata',
        'getsoillayerporepressure','summarize','getresults','getsingleresult','getcurveresults','verify_model',
@@ -297,18 +318,71 @@ class ProcedureMemory:
         server=row[0] if row else ''
         return '@shared:'+hashlib.sha256(server.encode()).hexdigest() if server else ''
 
-    def relevant(self,owner,query,tool=None,limit=12):
-        words=query_terms(query)[:12]
-        if not owner or not words and not tool:return []
-        owners=[owner];shared=self.shared_owner(owner)
-        if shared:owners.append(shared)
-        clauses=[];values=list(owners)
-        if tool:clauses.append("json_extract(data,'$.tool')=?");values.append(tool)
+    def relevant(self, owner, query, tool=None, limit=12, client=None, embedding_enabled=False):
+        words = query_terms(query)[:12]
+        if not owner or (not words and not tool):
+            return []
+        owners = [owner]
+        shared = self.shared_owner(owner)
+        if shared:
+            owners.append(shared)
+        # Candidate fetch: use keyword filter when words are available, else fetch recent.
         if words:
-            clauses.append('('+' OR '.join('LOWER(data) LIKE ?' for _ in words)+')');values.extend('%'+w+'%' for w in words)
-        with self.store.connection() as db:
-            rows=db.execute('SELECT data FROM procedure_memory WHERE owner IN ('+','.join('?' for _ in owners)+') AND '+' AND '.join(clauses)+' ORDER BY updated DESC LIMIT ?',values+[limit]).fetchall()
-        return [json.loads(row[0]) for row in rows]
+            clauses = []
+            values = list(owners)
+            if tool:
+                clauses.append("json_extract(data,'$.tool')=?")
+                values.append(tool)
+            clauses.append('(' + ' OR '.join('LOWER(data) LIKE ?' for _ in words) + ')')
+            values.extend('%' + w + '%' for w in words)
+            with self.store.connection() as db:
+                rows = db.execute(
+                    'SELECT data FROM procedure_memory WHERE owner IN (' +
+                    ','.join('?' for _ in owners) + ') AND ' + ' AND '.join(clauses) +
+                    ' ORDER BY updated DESC LIMIT ?',
+                    values + [max(limit * 4, 48)],
+                ).fetchall()
+        else:
+            # tool-only lookup; no keyword filter needed.
+            with self.store.connection() as db:
+                rows = db.execute(
+                    "SELECT data FROM procedure_memory WHERE owner IN (" +
+                    ','.join('?' for _ in owners) + ") AND json_extract(data,'$.tool')=? "
+                    'ORDER BY updated DESC LIMIT ?',
+                    owners + [tool, max(limit * 4, 48)],
+                ).fetchall()
+        candidates = [json.loads(row[0]) for row in rows]
+        if not candidates:
+            return []
+        # Re-rank with semantic similarity when embedding is available.
+        if embedding_enabled and client and len(candidates) > limit:
+            try:
+                from .memory import embed as _embed
+                texts = [query[:1600]] + [
+                    (r.get('task', '') + ' ' + r.get('tool', ''))[:800]
+                    for r in candidates[:32]
+                ]
+                vectors = _embed(client, texts)
+                q_vec = vectors[0]
+                ranked = []
+                for record, vec in zip(candidates[:32], vectors[1:]):
+                    score = _cosine(q_vec, vec)
+                    if score > 0.2:
+                        ranked.append((score, record))
+                ranked.sort(key=lambda x: x[0], reverse=True)
+                semantic = [r for _, r in ranked[:limit]]
+                # Include keyword hits that semantic missed (different wording).
+                seen = {r['id'] for r in semantic}
+                for r in candidates:
+                    if len(semantic) >= limit:
+                        break
+                    if r['id'] not in seen:
+                        semantic.append(r)
+                        seen.add(r['id'])
+                return semantic[:limit]
+            except Exception:
+                pass
+        return candidates[:limit]
 
     def matching_calls(self,owner,tool,targets):
         owners=[owner];shared=self.shared_owner(owner)
@@ -354,9 +428,10 @@ class ProcedureMemory:
                 return 'Bộ nhớ đã gặp lỗi này trong cùng phiên bản. Tra lại trạng thái và dùng cách sửa đã kiểm chứng: '+json.dumps(fixes[:2],ensure_ascii=False)[:3000]
         return None
 
-    def context(self,owner,query,limit=12000,state=None):
-        if state and re.fullmatch(r'\s*(ok|tiếp tục|thử lại|có|làm nhé)[.!]?\s*',query,re.I):query=state.get('procedure_progress',{}).get('task') or query
-        records=self.relevant(owner,query)
+    def context(self, owner, query, limit=12000, state=None, client=None, embedding_enabled=False):
+        if state and re.fullmatch(r'\s*(ok|tiếp tục|thử lại|có|làm nhé)[.!]?\s*', query, re.I):
+            query = state.get('procedure_progress', {}).get('task') or query
+        records = self.relevant(owner, query, client=client, embedding_enabled=embedding_enabled)
         if state:
             records+=state.get('procedure_advice',[])
         selected={r['id']:r for r in records}

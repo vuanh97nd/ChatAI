@@ -150,6 +150,13 @@ class Agent:
     def tool_result(self, state, call, result):
         from .procedure_memory import ProcedureMemory
         ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
+        # Fix 1: auto-capture engineering calculation results into case_memory.
+        try:
+            from .case_memory import CaseMemory
+            CaseMemory(self.store,self.client,getattr(self,'embedding_enabled',False)).capture(
+                state.get('account_username',''),state,call,result)
+        except Exception:
+            pass
         if call['function']['name'] in {'image_generate', 'video_generate','image_resize','video_from_images'} and (result.get('ok') or result.get('denied')):
             state['media_done'] = True
         plan=state.get('collaboration')
@@ -571,8 +578,26 @@ class Agent:
                 workflow=task_record(state)
                 from .procedure_memory import ProcedureMemory
                 procedure_query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
-                instruction+=ProcedureMemory(self.store).context(state.get('account_username',''),procedure_query,state=state)
+                # Fix 2: pass client for semantic search in ProcedureMemory.
+                instruction+=ProcedureMemory(self.store).context(
+                    state.get('account_username',''),procedure_query,state=state,
+                    client=self.client,embedding_enabled=getattr(self,'embedding_enabled',False))
                 instruction+=self.workflow_memory.context(state,self.cfg,self.cid)
+                # Fix 3+1: inject case memory for engineering calculation recall.
+                owner=state.get('account_username','')
+                if owner and procedure_query:
+                    try:
+                        from .case_memory import CaseMemory
+                        instruction+=CaseMemory(self.store,self.client,getattr(self,'embedding_enabled',False)).context(owner,procedure_query)
+                    except Exception:
+                        pass
+                # Fix 5: inject user preference profile.
+                if owner:
+                    try:
+                        from .memory import UserPreferenceProfile
+                        instruction+=UserPreferenceProfile(self.store,owner).context()
+                    except Exception:
+                        pass
                 state["task_progress"]=workflow
                 experience_query='\n'.join(
                     m.get('content','') for m in state['messages'][-12:]
