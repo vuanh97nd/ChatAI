@@ -3,13 +3,14 @@ import json
 import hashlib
 from typing import Any
 from pydantic import BaseModel, ValidationError
-from .schemas import Inspect, Material, Layer, Calculate, GeoCalculation
+from .schemas import Inspect, Material, Layer, Calculate, GeoCalculation, Contour
 from .utils import logger
 
 MODELS: dict[str, type[BaseModel]] = {
     'plaxis_safe_geo_calculate': GeoCalculation,
     'plaxis_safe_inspect': Inspect, 'plaxis_safe_material': Material,
     'plaxis_safe_layer': Layer, 'plaxis_safe_calculate': Calculate,
+    'plaxis_safe_contour': Contour,
 }
 DESCRIPTIONS = {
     'plaxis_safe_geo_calculate': 'Tính Python xác định: settlement(H,e0,Cc,sigma0,delta_sigma), bearing_capacity(c,phi,gamma,B,Df), earth_pressure(gamma,H,phi), mohr_coulomb(c,phi,sigma_n). SI m/kN/kPa/độ; slope chỉ sơ bộ. Không thao tác PLAXIS.',
@@ -17,6 +18,7 @@ DESCRIPTIONS = {
     'plaxis_safe_material': 'Tạo vật liệu Mohr-Coulomb theo số liệu có nguồn, SI kN/m/kPa; dùng kết quả tên API thật để đọc lại. Không dùng cho HS hay Undrained B.',
     'plaxis_safe_layer': 'Thêm một lớp đất 2D có bề dày xác định vào borehole đã có; chưa gán vật liệu. Không tự tạo borehole.',
     'plaxis_safe_calculate': 'Đối chiếu các thuộc tính kỳ vọng rồi calculate cùng một lô. Các checks chỉ xác minh phần liệt kê; chưa chứng minh toàn bộ bài đúng manual.',
+    'plaxis_safe_contour': 'Tạo soil contour hoặc polygon 2D từ danh sách đỉnh (x,y). shape=rectangle dùng soilcontour xmin ymin xmax ymax (đúng 4 đỉnh trục XY). shape=polygon dùng lệnh PLAXIS polygon với các đỉnh theo thứ tự (3+ đỉnh, không trùng). Không dùng polycurve waypoints.',
 }
 
 
@@ -71,6 +73,28 @@ def execute(remote: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]
                     {'ref':'g.Boreholes','expected':1,'kind':'count'}])]},
                     {'command': 'soillayer', 'args': [data['thickness']]},
                     {'command': 'read', 'args': [{'ref': 'g.Soillayers'}]}]
+        elif name == 'plaxis_safe_contour':
+            vertices = [(v['x'], v['y']) for v in data['vertices']]
+            if data['shape'] == 'rectangle':
+                xs = sorted({round(x, 6) for x, _ in vertices})
+                ys = sorted({round(y, 6) for _, y in vertices})
+                rows = [{'command': 'gotostructures'},
+                        {'command': 'verify_model', 'args': [json.dumps([
+                            {'ref':'g.Project.UnitLength','expected':'m'}])]},
+                        {'command': 'soilcontour', 'args': [xs[0], ys[0], xs[1], ys[1]]},
+                        {'command': 'read', 'args': [{'ref': 'g.SoilContour'}]}]
+            else:
+                # Reject duplicate consecutive vertices to avoid PLAXIS parser rejecting zero-length segments.
+                seen = []
+                for v in vertices:
+                    if seen and seen[-1] == v:
+                        raise ValueError('polygon có đỉnh trùng liên tiếp.')
+                    seen.append(v)
+                rows = [{'command': 'gotostructures'},
+                        {'command': 'verify_model', 'args': [json.dumps([
+                            {'ref':'g.Project.UnitLength','expected':'m'}])]},
+                        {'command': 'polygon', 'args': [list(v) for v in seen]},
+                        {'command': 'read', 'args': [{'ref': 'g.Polygons'}]}]
         else:
             rows = [{'command': 'gotostages'},
                     {'command': 'verify_model', 'args': [json.dumps(data['checks'])]},

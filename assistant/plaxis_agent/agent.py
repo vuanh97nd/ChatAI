@@ -56,7 +56,7 @@ def build_graph(model: Any, runtime: Any, version: str, max_steps: int,
                 result = {'ok': False, 'not_executed': True, 'error': 'Tool khác sản phẩm PLAXIS của công việc.'}
             elif name not in {'plaxis_safe_inspect', 'plaxis_safe_geo_calculate'} and not inspected:
                 result = {'ok': False, 'not_executed': True, 'error': 'Cần inspect thành công trước khi ghi.'}
-            elif name in {'plaxis_safe_material', 'plaxis_safe_layer', 'plaxis_safe_calculate'} and any(e.get('tool') == name and e.get('arguments') == arguments for e in events):
+            elif name in {'plaxis_safe_material', 'plaxis_safe_layer', 'plaxis_safe_calculate', 'plaxis_safe_contour'} and any(e.get('tool') == name and e.get('arguments') == arguments for e in events):
                 result = {'ok': False, 'not_executed': True, 'error': 'Không lặp thao tác ghi đã thực hiện.'}
             else:
                 result = await runtime.call(name, arguments)

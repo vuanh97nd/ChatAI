@@ -595,4 +595,4 @@ EXTRA_TOOLS.append(('plaxis_remote',schema('plaxis_tutorial_guide',
 
 from .plaxis_agent.tools import schemas as _plaxis_safe_schemas
 EXTRA_TOOLS.extend(('plaxis_remote',spec) for spec in _plaxis_safe_schemas())
-WRITES.update({'plaxis_safe_material','plaxis_safe_layer','plaxis_safe_calculate'})
+WRITES.update({'plaxis_safe_material','plaxis_safe_layer','plaxis_safe_calculate','plaxis_safe_contour'})

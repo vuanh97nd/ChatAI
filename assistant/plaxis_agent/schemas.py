@@ -37,6 +37,29 @@ class Layer(Input):
     source: str = Field(min_length=1, max_length=500)
 
 
+class Vertex(Input):
+    x: float = Field(ge=-1e4, le=1e4, description='Toạ độ X, m')
+    y: float = Field(ge=-1e4, le=1e4, description='Toạ độ Y (2D) hoặc Z (3D), m')
+
+
+class Contour(Input):
+    version: Literal['2d']
+    shape: Literal['rectangle', 'polygon'] = Field(description='rectangle = soilcontour xmin ymin xmax ymax (4 đỉnh trục XY); polygon = PLAXIS polygon lệnh với 3+ đỉnh thứ tự')
+    vertices: list[Vertex] = Field(min_length=3, max_length=64, description='Danh sách đỉnh theo thứ tự. rectangle cần đúng 4 đỉnh tạo chữ nhật trục XY.')
+    source: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode='after')
+    def check_shape(self) -> 'Contour':
+        if self.shape == 'rectangle':
+            if len(self.vertices) != 4:
+                raise ValueError('rectangle cần đúng 4 đỉnh.')
+            xs = sorted({round(v.x, 6) for v in self.vertices})
+            ys = sorted({round(v.y, 6) for v in self.vertices})
+            if len(xs) != 2 or len(ys) != 2:
+                raise ValueError('rectangle: 4 đỉnh phải thẳng trục XY, chỉ có 2 giá trị X và 2 giá trị Y khác nhau.')
+        return self
+
+
 class Check(Input):
     ref: str = Field(pattern=r'^g\.(?:Project\.(?:ModelType|UnitLength|UnitForce)|[A-Za-z][A-Za-z0-9_]*\.(?:Head|ERef|gammaUnsat|gammaSat|nu|cRef|phi|psi))$')
     expected: float | str
