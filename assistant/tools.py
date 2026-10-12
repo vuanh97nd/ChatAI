@@ -133,8 +133,16 @@ def validate_call(name, args, schemas=None):
         prepare(name,args)
         return
     params = spec["parameters"]
-    if set(args) - set(params["properties"]) or set(params["required"]) - set(args):
-        raise ValueError("Thiếu tham số hoặc có tham số không được phép.")
+    extra=set(args)-set(params["properties"])
+    missing=set(params["required"])-set(args)
+    if extra or missing:
+        # Report names only: argument values can contain credentials or files.
+        names=lambda fields:', '.join(repr(str(key)[:80]) for key in sorted(fields,key=str))
+        details=[]
+        if missing:details.append('Thiếu: '+names(missing))
+        if extra:details.append('Không được phép: '+names(extra))
+        raise ValueError('Công cụ '+name+': '+ '; '.join(details)+
+                         '. Tham số hợp lệ: '+names(params['properties'])+'. Chưa thực hiện thao tác.')
     for key, value in args.items():
         if params['properties'].get(key,{}).get('type')=='boolean':
             if type(value) is not bool:raise ValueError(f"{key} phải là giá trị true hoặc false.")

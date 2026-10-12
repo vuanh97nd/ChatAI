@@ -8,6 +8,17 @@ from assistant.tools import EXTRA_TOOLS
 class PlanRecoveryTests(unittest.TestCase):
     def setUp(self):self.schemas=[spec for _,spec in EXTRA_TOOLS]
 
+    def test_parameter_error_names_tool_and_fields_without_exposing_values(self):
+        from assistant.tools import validate_call
+        with self.assertRaises(ValueError) as error:
+            validate_call('windows_open',{'file':'PRIVATE_SECRET_VALUE'},self.schemas)
+        message=str(error.exception)
+        self.assertIn('windows_open',message)
+        self.assertIn("Thiếu: 'path'",message)
+        self.assertIn("Không được phép: 'file'",message)
+        self.assertNotIn('PRIVATE_SECRET_VALUE',message)
+        validate_call('windows_open',{'path':'C:/Apps/example.exe'},self.schemas)
+
     def test_nested_argument_repair_uses_native_objects_without_salvaging_truncation(self):
         from assistant.online_automation import plan_repair_instruction
         broken=json.dumps({'tool':'plaxis_commands','arguments':'{"commands": [{"command": "read"'})
