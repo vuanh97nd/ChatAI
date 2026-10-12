@@ -272,13 +272,18 @@ def check_confirmation(output,state,cfg):
         output['answer']=('⚠ Chưa kiểm chứng mô hình với manual bằng verify_model; các khẳng định "đúng manual" dưới đây chưa được xác nhận.\n\n'+answer)
     if not (cfg.get('windows_apps_auto_execute') or task_tools_authorized(cfg)):return
     # Reject procedural permission loops, not questions about engineering inputs.
-    permission=re.search(r'bạn[^\n?]{0,40}(?:xác nhận|đồng ý|cho phép)[^\n?]{0,100}(?:bắt đầu|thực hiện|tra|đọc|mở|thử lại)|bạn\s+(?:có\s+)?muốn\s+tôi[^\n?]{0,100}(?:tra|đọc|kiểm tra|mở\s+(?:trang|URL|liên kết|bản raw))',answer,re.I)
+    permission=re.search(r'bạn[^\n?]{0,40}(?:xác nhận|đồng ý|cho phép)[^\n?]{0,100}(?:bắt đầu|thực hiện|tra|đọc|mở|thử lại|tiếp tục|dựng|vẽ)|bạn\s+(?:có\s+)?muốn\s+tôi[^\n?]{0,100}(?:tra|đọc|kiểm tra|dựng|vẽ|mở\s+(?:trang|URL|liên kết|bản raw))',answer,re.I)
     delegated_lookup=re.search(r'bạn\s+cho\s+tôi\s+biết[^\n?]{0,160}(?:cú pháp|chữ ký|đối tượng gốc|path[^\n?]{0,15}browser_search)',answer,re.I)
     query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
     approved=re.fullmatch(r'\s*(?:ok|có|đồng ý|làm(?:\s+nhé|\s+đi)?)\s*[.!]?\s*',query,re.I)
     repeated_choice=approved and re.search(r'bạn\s+chọn\s+hướng\s+nào',answer,re.I)
     if permission or delegated_lookup or repeated_choice:
         raise ValueError('Phản hồi kế hoạch hỏi lại quyền hoặc đẩy việc tra cứu cho người dùng. Quyền tự thực hiện đã có: tự tra bằng công cụ, kiểm tra kết quả và sửa bước lỗi; chỉ hỏi dữ kiện kỹ thuật không thể tự xác minh hoặc cần đăng nhập.')
+    # A promise is not a tool action. Do not end delegated execution merely
+    # because the model narrated its next step; genuine questions/errors remain allowed.
+    if '?' not in answer and re.search(r'(?:tôi|mình)\s+sẽ\s+(?:dựng|vẽ|tính|kích hoạt|gọi công cụ|tra cứu|đọc|tiếp tục)',answer,re.I) and not re.search(
+            r'bị chặn|không kết nối|lỗi|thiếu dữ|cần đăng nhập|không có công cụ',answer,re.I):
+        raise ValueError('Đã giao quyền thực hiện: lời hứa chưa phải thao tác. Gọi công cụ cho bước còn thiếu, hoặc báo dữ kiện/điểm chặn cụ thể; không kết thúc chỉ bằng phân tích.')
     # A manual is already open: look the number up there before asking the user for it.
     # Only an answer that asks the USER to supply data; an answer that lists the manual's
     # numbers (and ends with "Bạn muốn tôi dựng mô hình?") must pass.
@@ -1296,7 +1301,22 @@ class OnlineAutomation:
             try:
                 component=self.component(name);key=component.cache_key(pending['plan']) if component is self.office_tools else None
                 cache=state.setdefault('tool_read_cache',{})
-                if key and key in cache:result=dict(cache[key],cached=True)
+                if name=='pdf_read' and component is self.pdf_source:
+                    plan=pending['plan']
+                    from .windows_apps import fingerprint
+                    pdf_path=component.files.path(plan['path'])
+                    if fingerprint(pdf_path)!=plan['sha256']:raise PermissionError('PDF đã đổi; cần đọc bản mới.')
+                    pdf_key=json.dumps({k:plan.get(k) for k in ('path','sha256','start','page','query')},sort_keys=True)
+                    pdf_cache=state.setdefault('pdf_read_cache',{})
+                    if pdf_key in pdf_cache:
+                        result=dict(pdf_cache[pdf_key],cached=True)
+                        result['note']='Dùng lại đúng nội dung PDF có cùng fingerprint và phạm vi; không OCR/đọc lại file. '+str(result.get('note',''))
+                    else:
+                        result=component.commit(plan)
+                        if result.get('ok') and result.get('found') is not False and result.get('content') and len(json.dumps(result,default=str))<60000:
+                            if len(pdf_cache)>=6:pdf_cache.pop(next(iter(pdf_cache)))
+                            pdf_cache[pdf_key]=dict(result)
+                elif key and key in cache:result=dict(cache[key],cached=True)
                 else:
                     result=component.commit(pending['plan'])
                     if key and result.get('ok') and len(json.dumps(result,default=str))<60000:
