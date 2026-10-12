@@ -14,6 +14,7 @@
     {"name":"calculate","kind":"tool","role":"calculation","tool":"calculate","mission":"Tính bằng công cụ, không tự nhẩm","when":{"need_calculation":true}},
     {"name":"sandbox","kind":"tool","role":"sandbox","tool":"python_run","mission":"Chạy Python không mạng trong Docker, theo quyền và xác nhận","when":{"need_code":true}},
     {"name":"image","kind":"tool","role":"image","tool":"image_generate","mission":"Model ảnh đang chọn (SD-Turbo nhanh hoặc SDXL-Turbo chất lượng cao) tạo ảnh từ prompt đã cải thiện, có xác nhận","when":{"need_image":true}},
-    {"name":"video","kind":"tool","role":"video","tool":"video_generate","mission":"MP4 chuyển động từ ảnh, không nhận là video diffusion","when":{"need_video":true}}
+    {"name":"video","kind":"tool","role":"video","tool":"video_generate","mission":"MP4 chuyển động từ ảnh, không nhận là video diffusion","when":{"need_video":true}},
+    {"name":"cad","kind":"tool","role":"cad","tool":"cad_create_open","mission":"Gọi tool vẽ DXF phù hợp: cad_tracdoc_stations (trắc dọc), cad_cdm_layout (CDM), cad_tracdoc_xldy/cad_mcn_xldy (XLDY), borehole_dxf (trụ địa chất), cad_create_open (2D tự do). Liệt kê region trước khi fill CDM boundary.","when":{"need_cad":true}}
   ]
 }
