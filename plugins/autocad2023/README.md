@@ -46,6 +46,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\plugins\autocad2023\instal
 ```
 
 Script setup tạo/dùng `.venv` riêng và cài ezdxf; không cài vào Python hệ thống.
+Nếu `.venv` cũ trỏ đến Python đã gỡ, script tìm Python còn chạy được, giữ thư mục
+cũ dưới tên `.venv-backup-...` rồi tạo lại. Nếu không tìm được Python 3.10+,
+cài Python hoặc chạy setup với `-PythonPath 'C:\duong-dan\python.exe'`.
 Mở AutoCAD, gõ `CHATAI`, đăng nhập, bấm **Chọn thư mục mã nguồn ChatAI**
 và chọn thư mục chứa `assistant` cùng `.venv` (không chọn thư mục bundle).
 

@@ -85,7 +85,7 @@ namespace ChatAI.AutoCAD2023 {
                     var plan = ChatClient.Json.Deserialize<System.Collections.Generic.Dictionary<string, object>>(answer.Text);
                     if (plan.ContainsKey("action")) {
                         var json = answer.Text;
-                        using (var dialog = new SaveFileDialog { Filter = "DXF (*.dxf)|*.dxf", FileName = "CDM-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dxf", OverwritePrompt = true }) {
+                        using (var dialog = new System.Windows.Forms.SaveFileDialog { Filter = "DXF (*.dxf)|*.dxf", FileName = "CDM-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dxf", OverwritePrompt = true }) {
                             if (dialog.ShowDialog() != DialogResult.OK) return;
                             if (System.IO.File.Exists(dialog.FileName)) throw new InvalidOperationException("Chọn tên file mới; không ghi đè bản vẽ.");
                             if (MessageBox.Show("Tạo DXF mới theo JSON đang hiển thị và mở bản vẽ kết quả?", "CDM", MessageBoxButtons.OKCancel) != DialogResult.OK) return;
