@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 namespace ChatAI.AutoCAD2023 {
-    // Credentials stay in memory; no password or drawing is written to disk.
+    // Saved credentials are protected separately by Windows CurrentUser DPAPI.
     internal sealed class ChatClient : IDisposable {
         internal static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 1024 * 1024 };
         private readonly HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(150) };
@@ -14,10 +14,32 @@ namespace ChatAI.AutoCAD2023 {
         private string username, token;
         private readonly List<Dictionary<string, string>> history = new List<Dictionary<string, string>>();
         internal void ClearHistory() { history.Clear(); }
+        private static Uri Endpoint(string endpoint) {
+            Uri candidate;
+            if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out candidate) || candidate.Scheme != "https" ||
+                candidate.AbsolutePath != "/" || candidate.UserInfo != "" || candidate.Query != "" || candidate.Fragment != "")
+                throw new ArgumentException("Server phải là địa chỉ gốc HTTPS.");
+            return candidate;
+        }
+        internal Dictionary<string, string> ExportSession() {
+            if (string.IsNullOrEmpty(token)) throw new InvalidOperationException("Chưa đăng nhập.");
+            return new Dictionary<string, string> { { "server", server.AbsoluteUri }, { "username", username }, { "token", token } };
+        }
+        internal void RestoreSession(Dictionary<string, string> saved) {
+            var endpoint = Endpoint(saved["server"]);
+            if (string.IsNullOrWhiteSpace(saved["username"]) || string.IsNullOrEmpty(saved["token"])) throw new ArgumentException("Phiên đã lưu không hợp lệ.");
+            server = endpoint; username = saved["username"]; token = saved["token"]; history.Clear();
+        }
+        internal void SignOut() { username = token = null; history.Clear(); }
         private async Task<Dictionary<string, object>> Post(string path, object body) {
             using (var content = new StringContent(Json.Serialize(body), Encoding.UTF8, "application/json"))
             using (var response = await http.PostAsync(new Uri(server, path), content)) {
                 var data = Json.Deserialize<Dictionary<string, object>>(await response.Content.ReadAsStringAsync());
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
+                    SignOut();
+                    try { SessionStore.Delete(); } catch (System.IO.IOException) { }
+                    throw new InvalidOperationException("Phiên hết hạn hoặc không hợp lệ. Đăng nhập lại.");
+                }
                 if (!response.IsSuccessStatusCode || !data.ContainsKey("success") || !Equals(data["success"], true))
                     throw new InvalidOperationException(data.ContainsKey("message") ? Convert.ToString(data["message"]) : "Server từ chối yêu cầu.");
                 return data;
@@ -26,11 +48,7 @@ namespace ChatAI.AutoCAD2023 {
         internal async Task Login(string endpoint, string name, string password) {
             username = token = null;
             history.Clear();
-            Uri candidate;
-            if (!Uri.TryCreate(endpoint.Trim(), UriKind.Absolute, out candidate) || candidate.Scheme != "https" ||
-                candidate.AbsolutePath != "/" || candidate.UserInfo != "" || candidate.Query != "" || candidate.Fragment != "")
-                throw new ArgumentException("Server phải là địa chỉ gốc HTTPS.");
-            server = candidate;
+            server = Endpoint(endpoint);
             var data = await Post("/api/login", new { username = name.Trim(), key = password,
                 device_id = "autocad2023-" + Environment.MachineName, client_type = "android_companion" });
             var user = (Dictionary<string, object>)data["user"];

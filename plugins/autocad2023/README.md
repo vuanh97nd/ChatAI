@@ -1,4 +1,4 @@
-# Chat AI trong AutoCAD 2023 — bản thử 0.3.2
+# Chat AI trong AutoCAD 2023 — bản thử 0.3.3
 
 Plugin Windows x64/.NET Framework 4.8, bảng WinForms PaletteSet, lệnh `CHATAI`.
 Chưa biên dịch hoặc chạy AutoCAD thực trong môi trường Linux phát triển.
@@ -23,7 +23,15 @@ DLL được biên dịch vào `build`; bundle cài tại
    Nếu AutoCAD hỏi tin cậy, kiểm tra đúng DLL vừa tạo rồi duyệt theo chính sách máy;
    không tắt SECURELOAD. Không hỗ trợ AutoCAD LT 2023.
 4. Đăng nhập server mặc định dự phòng hoặc nhập địa chỉ server HTTPS khác.
-   Plugin dùng phiên companion của API hiện có, không lưu mật khẩu/token ra file.
+   Plugin dùng phiên companion của API hiện có. Ô **Nhớ tài khoản và phiên đăng nhập**
+   mặc định bật; sau đăng nhập thành công, lưu server/tài khoản/token bằng Windows
+   DPAPI CurrentUser tại `%LOCALAPPDATA%\ChatAI\AutoCAD2023\session.dat`.
+   Tài khoản thường lưu token, không lưu mật khẩu; admin theo API hiện tại dùng
+   khóa admin nên khóa này cũng được mã hóa DPAPI, không ghi dạng văn bản.
+   Mở lại CAD sẽ khôi phục phiên, không cần nhập lại; server vẫn kiểm tra quyền/hạn
+   phiên khi gửi yêu cầu. Nếu hết hạn/401 thì đăng nhập lại. Không có yêu cầu mạng
+   chỉ để mở bảng chat. Bỏ chọn ô nhớ sẽ xóa phiên lưu; **Đăng xuất trên CAD** xóa
+   phiên ở máy và trong plugin, không đăng xuất tài khoản trên thiết bị khác.
 
 ## Thử trên bản vẽ mới
 
@@ -76,7 +84,7 @@ Cao độ mũi = cao độ đầu − chiều sâu; tọa độ hiển thị đ�
 ### Bố trí trong vùng polyline đang có
 
 Sau cập nhật phải đóng/mở lại AutoCAD để DLL cũ được gỡ. Tiêu đề bảng phải hiện
-**Chat AI · CAD 0.3.2**; nếu không thấy, chưa chạy đúng DLL mới.
+**Chat AI · CAD 0.3.3**; nếu không thấy, chưa chạy đúng DLL mới.
 
 Bấm **Chọn polyline vùng CDM** hoặc gõ `CHATAIREGION`, chọn một polyline kín
 trong ModelSpace. Hỗ trợ 3–500 đỉnh, cạnh thẳng, phẳng XY cao độ 0; chưa hỗ trợ

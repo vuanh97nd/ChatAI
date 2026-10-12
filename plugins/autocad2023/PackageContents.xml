@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="Chat AI 2023" AppVersion="0.3.2" ProductCode="{A94C1CCA-52F2-4F43-A07B-664791704A22}" Description="Chat AI thử nghiệm cho AutoCAD 2023">
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="Chat AI 2023" AppVersion="0.3.3" ProductCode="{A94C1CCA-52F2-4F43-A07B-664791704A22}" Description="Chat AI thử nghiệm cho AutoCAD 2023">
   <CompanyDetails Name="ChatAI" />
   <Components>
     <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R24.2" SeriesMax="R24.2" />

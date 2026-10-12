@@ -47,7 +47,7 @@ namespace ChatAI.AutoCAD2023 {
         public void Open() {
             if (palette == null) {
                 panel = new ChatPanel();
-                palette = new PaletteSet("Chat AI · CAD 0.3.2", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
+                palette = new PaletteSet("Chat AI · CAD 0.3.3", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
                 palette.MinimumSize = new Size(320, 450); palette.Size = new Size(420, 650);
                 palette.Add("Chat", panel);
             }
@@ -71,6 +71,8 @@ namespace ChatAI.AutoCAD2023 {
         private readonly Label status = new Label { AutoSize = true, Text = "Chưa đăng nhập" };
         private readonly CheckBox context = new CheckBox { Text = "Gửi thông tin đối tượng đang chọn", AutoSize = true };
         private readonly Button login = new Button { Text = "Đăng nhập", AutoSize = true };
+        private readonly CheckBox remember = new CheckBox { Text = "Nhớ tài khoản và phiên đăng nhập", Checked = true, AutoSize = true };
+        private readonly Button logout = new Button { Text = "Đăng xuất trên CAD", AutoSize = true };
         private readonly Button ask = new Button { Text = "Gửi", AutoSize = true };
         private readonly Button apply = new Button { Text = "Duyệt và vẽ JSON", AutoSize = true, Enabled = false };
         private Document target;
@@ -82,7 +84,7 @@ namespace ChatAI.AutoCAD2023 {
             provider.Items.AddRange(new object[] { "nvidia", "deepseek_flash" }); provider.SelectedIndex = 0;
             foreach (var item in new Control[] { new Label { Text = "Server HTTPS", AutoSize = true }, endpoint,
                 new Label { Text = "Tài khoản", AutoSize = true }, username,
-                new Label { Text = "Mật khẩu", AutoSize = true }, password, login, provider, context,
+                new Label { Text = "Mật khẩu", AutoSize = true }, password, remember, login, logout, provider, context,
                 repository, browse, selectRegion, boundaryPlan, question, ask, answer, apply, status }) { item.Width = 350; layout.Controls.Add(item); }
             boundaryPlan.Click += delegate {
                 if (busy) return;
@@ -142,10 +144,35 @@ namespace ChatAI.AutoCAD2023 {
             };
             login.Click += async delegate {
                 if (busy) return; SetBusy(true); apply.Enabled = false;
-                try { await client.Login(endpoint.Text, username.Text, password.Text); password.Clear(); status.Text = "Đã đăng nhập"; }
+                try {
+                    await client.Login(endpoint.Text, username.Text, password.Text); password.Clear();
+                    username.Text = client.ExportSession()["username"];
+                    status.Text = "Đã đăng nhập";
+                    try {
+                        if (remember.Checked) SessionStore.Save(client.ExportSession()); else SessionStore.Delete();
+                    } catch (System.Exception) { status.Text = "Đã đăng nhập, nhưng chưa lưu được phiên trên máy."; }
+                }
                 catch (System.Exception ex) { status.Text = ex.Message; }
                 finally { SetBusy(false); }
             };
+            logout.Click += delegate {
+                if (busy) return;
+                client.SignOut(); password.Clear(); apply.Enabled = false;
+                try { SessionStore.Delete(); status.Text = "Đã đăng xuất và xóa phiên lưu trên CAD."; }
+                catch (System.Exception) { status.Text = "Đã đăng xuất; chưa xóa được file phiên. Kiểm tra quyền thư mục ChatAI/AutoCAD2023."; }
+            };
+            remember.CheckedChanged += delegate {
+                if (!remember.Checked) {
+                    try { SessionStore.Delete(); } catch (System.Exception) { status.Text = "Không xóa được phiên đã lưu trên máy."; }
+                }
+            };
+            try {
+                var saved = SessionStore.Load();
+                if (saved != null) {
+                    client.RestoreSession(saved); endpoint.Text = saved["server"]; username.Text = saved["username"];
+                    status.Text = "Đã khôi phục phiên " + username.Text + ". Server sẽ kiểm tra khi gửi yêu cầu.";
+                }
+            } catch (System.Exception) { status.Text = "Không đọc được phiên đã lưu. Đăng nhập lại để lưu phiên mới."; }
             ask.Click += async delegate {
                 if (busy || string.IsNullOrWhiteSpace(question.Text)) return;
                 SetBusy(true); apply.Enabled = false;
@@ -221,7 +248,7 @@ namespace ChatAI.AutoCAD2023 {
             status.Text = "Thay dấu … bằng số liệu rồi bấm Gửi. Chưa thực hiện thao tác vẽ.";
         }
         private void SetBusy(bool value) {
-            busy = value; login.Enabled = ask.Enabled = browse.Enabled = selectRegion.Enabled = boundaryPlan.Enabled = !value;
+            busy = value; login.Enabled = logout.Enabled = remember.Enabled = ask.Enabled = browse.Enabled = selectRegion.Enabled = boundaryPlan.Enabled = !value;
             question.ReadOnly = answer.ReadOnly = repository.ReadOnly = value;
         }
         protected override void Dispose(bool disposing) { if (disposing) client.Dispose(); base.Dispose(disposing); }
