@@ -51,6 +51,23 @@ class CaseMemoryTests(unittest.TestCase):
         self.cm.capture('alice', state, call, {'ok': False, 'error': 'lỗi'})
         self.assertEqual(self.cm.search('alice', 'plaxis'), [])
 
+    def test_successful_read_is_not_a_completed_calculation(self):
+        state={'account_username':'alice','messages':[{'role':'user','content':'Bài 4 PLAXIS'}]}
+        call={'function':{'name':'plaxis_commands','arguments':{'commands':[{'command':'read','args':[]}]}}}
+        self.cm.capture('alice',state,call,{'ok':True,'value':'model inventory'})
+        self.assertEqual(self.cm.export('alice'),[])
+
+    def test_native_results_keep_units_and_skip_uncertain_results(self):
+        state={'account_username':'alice','messages':[{'role':'user','content':'Tính mái dốc PLAXIS'}]}
+        call={'function':{'name':'plaxis_commands','arguments':{'version':'2d'}}}
+        result={'ok':True,'results':{'safety_factor':1.45,'max_settlement_mm':12}}
+        self.cm.capture('alice',state,call,{**result,'uncertain':True})
+        self.assertEqual(self.cm.export('alice'),[])
+        self.cm.capture('alice',state,call,result)
+        records=self.cm.export('alice')
+        self.assertEqual(len(records),1)
+        self.assertEqual(json.loads(records[0]['results']),{'safety_factor':1.45,'max_settlement_mm':12})
+
     def test_capture_skips_non_calculation_tool(self):
         state = {'account_username': 'alice', 'messages': []}
         call = {'function': {'name': 'word_create_open', 'arguments': {}}}

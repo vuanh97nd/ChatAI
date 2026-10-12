@@ -80,6 +80,33 @@ class BrowserPolicyTest(unittest.TestCase):
 
 
 class OnlineAutomationTest(unittest.TestCase):
+    def test_online_plaxis_reads_past_cases_as_history_not_live_verification(self):
+        from assistant.case_memory import CaseMemory
+        CaseMemory(self.store).save('alice','slope_stability','PLAXIS 2D',
+            'Ổn định mái dốc PLAXIS',results={'safety_factor':1.45})
+        self.responses=[json.dumps({'answer':'Cần đối chiếu mô hình đang mở.','tool':'','arguments':{}})]
+        self.agent.start(self.state,'Tiếp tục mái dốc PLAXIS','DeepSeek Flash','alice')
+        list(self.agent.run(self.state))
+        sent=json.dumps(self.requests[-1],ensure_ascii=False)
+        self.assertIn('BỘ NHỚ BÀI TÍNH CŨ',sent)
+        self.assertIn('1.45',sent)
+        self.assertIn('không phải lệnh mới',sent)
+        self.assertEqual(self.committed,[])
+
+    def test_online_plaxis_completed_result_is_remembered(self):
+        from unittest.mock import Mock
+        from assistant.case_memory import CaseMemory
+        self.agent.plaxis_remote=Mock()
+        self.agent.plaxis_remote.commit.return_value={'ok':True,'results':{'safety_factor':1.45}}
+        self.state.update(account_username='alice',messages=[{'role':'user','content':'Tính mái dốc PLAXIS'}])
+        call={'function':{'name':'plaxis_commands','arguments':{'version':'2d','target':'output',
+            'commands':[{'command':'read','args':[{'ref':'g.Phases'}]}]}}}
+        pending={'plan':{'action':'plaxis_commands'}}
+        self.state.update(queue=[call],pending=pending)
+        self.agent.approve(self.state,True,pending)
+        self.assertEqual(len(CaseMemory(self.store).export('alice')),1)
+        self.assertEqual(CaseMemory(self.store).export('bob'),[])
+
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.store=Store(Path(self.tmp.name)/'history.db')
         self.cid=self.store.create();self.state=self.store.load(self.cid)

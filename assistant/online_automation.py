@@ -1338,6 +1338,12 @@ class OnlineAutomation:
             if off_manual:result['geometry_warning']=off_manual
         from .procedure_memory import ProcedureMemory
         ProcedureMemory(self.store).remember(state.get('account_username',''),state,call,result,training=self.cfg.get('procedure_training_enabled',False))
+        try:
+            from .case_memory import CaseMemory
+            CaseMemory(self.store).capture(state.get('account_username',''),state,call,result)
+        except Exception as error:
+            # Never turn a completed native write into a failed/repeated action.
+            self.store.audit(self.cid,'case_memory_capture_failed',{'type':type(error).__name__})
         self.store.audit(self.cid,'online_automation_result',{'name':name,'ok':result.get('ok',False)})
         if result.get('_screenshot'):
             for previous in state['messages']:
@@ -1577,6 +1583,10 @@ class OnlineAutomation:
                 volatile+=('\n\nCÁCH ĐÃ THÀNH CÔNG TRONG PHIÊN NÀY (sau khi các cách khác lỗi; dùng lại, không tra lại):\n- '+learned)
             from .procedure_memory import ProcedureMemory
             if not research:volatile+=ProcedureMemory(self.store).context(state.get('account_username',''),question,state=state,limit=3000 if compact_plaxis else 12000)
+            if compact_plaxis:
+                from .case_memory import CaseMemory
+                memory_query=(tutorial or {}).get('title') or state.get('procedure_progress',{}).get('task') or question
+                volatile+=CaseMemory(self.store).context(state.get('account_username',''),memory_query,limit=2000)
             if not research:volatile+=self.workflow_memory.context(state,self.cfg,self.cid)
             if state.get('plaxis_general_mode') and not research:
                 volatile+='\nĐã chuyển bài đang làm sang API tổng quát. Dùng plaxis_commands và kết quả API vừa nhận để tiếp tục; không gọi lại mẫu cố định hoặc yêu cầu chọn lại cách làm. Chỉ hỏi dữ kiện kỹ thuật thực sự thiếu. Dữ kiện đã giữ: '+json.dumps(state.get('plaxis_active_problem',{}),ensure_ascii=False)
