@@ -44,6 +44,34 @@ class ConfigProviderTests(unittest.TestCase):
         cfg.pop('api_provider_revision')
         self.assertEqual(config.validate_config(cfg)['chat_provider'], 'nvidia')
 
+    def test_startup_skips_unavailable_folder_without_granting_replacement(self):
+        cfg = dict(self.original, whitelist=['missing-desktop'])
+        (self.root/'config.json').write_text(json.dumps(cfg), encoding='utf-8')
+        original_mkdir = Path.mkdir
+        bad = self.root/'missing-desktop'
+        def mkdir(path, *args, **kwargs):
+            if path == bad: raise FileNotFoundError('Desktop target missing')
+            return original_mkdir(path, *args, **kwargs)
+        with patch.object(Path, 'mkdir', mkdir):
+            loaded = config.load_config()
+            self.assertEqual(loaded['roots'], [])
+            self.assertEqual(loaded['whitelist'], ['missing-desktop'])
+            with self.assertRaises(FileNotFoundError): config.save_config(cfg)
+        persisted=json.loads((self.root/'config.json').read_text(encoding='utf-8'))
+        self.assertEqual(persisted['whitelist'], ['missing-desktop'])
+
+    def test_startup_keeps_accessible_folders_and_still_rejects_project_root(self):
+        cfg=dict(self.original, whitelist=['blocked','workspace'])
+        original_mkdir=Path.mkdir
+        def mkdir(path,*args,**kwargs):
+            if path==self.root/'blocked':raise PermissionError('blocked')
+            return original_mkdir(path,*args,**kwargs)
+        with patch.object(Path,'mkdir',mkdir):
+            loaded=config.validate_config(cfg,allow_unavailable_roots=True)
+        self.assertEqual(loaded['roots'], [self.root/'workspace'])
+        with self.assertRaises(ValueError):
+            config.validate_config(dict(self.original,whitelist=['.']),allow_unavailable_roots=True)
+
     def test_legacy_revision_preserves_existing_provider_choice(self):
         for provider in ('local', 'deepseek_flash', 'groq', 'nvidia'):
             with self.subTest(provider=provider):

@@ -22,11 +22,11 @@ def load_config():
         cfg['font_size']=13
         cfg['chat_font_revision']=2
         migrated=True
-    if migrated:return save_config(cfg)
-    return validate_config(cfg)
+    if migrated:return save_config(cfg,allow_unavailable_roots=True)
+    return validate_config(cfg,allow_unavailable_roots=True)
 
 
-def validate_config(cfg):
+def validate_config(cfg, *, allow_unavailable_roots=False):
     cfg = dict(cfg)
     from .communication import validate_methods
     validate_methods(cfg)
@@ -116,20 +116,32 @@ def validate_config(cfg):
     roots = [(ROOT / p).resolve() for p in cfg["whitelist"]]
     if not roots:
         raise ValueError("Whitelist không được rỗng.")
+    available=[]
     for path in roots:
         if (path == ROOT or path in ROOT.parents or path == Path(path.anchor)
                 or path.is_relative_to(ROOT / "data")):
             raise ValueError("Không whitelist thư mục gốc, dự án, data hoặc thư mục cha.")
-        path.mkdir(parents=True, exist_ok=True)
-    cfg["roots"] = roots
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            if not allow_unavailable_roots:
+                raise
+            # A moved Desktop, disconnected drive or denied folder must not
+            # prevent login/chat. Keep the configured grant, but do not expose
+            # the unavailable folder to tools or silently grant another folder.
+            import logging
+            logging.getLogger(__name__).warning('Thư mục công việc chưa truy cập được: %s (%s). Chọn lại trong Cài đặt.',path,error)
+            continue
+        available.append(path)
+    cfg["roots"] = available
     (ROOT / "data" / "backups").mkdir(parents=True, exist_ok=True)
     return cfg
 
 
-def save_config(cfg):
+def save_config(cfg, *, allow_unavailable_roots=False):
     import shutil
     from datetime import datetime
-    checked = validate_config(dict(cfg,chat_font_revision=2))
+    checked = validate_config(dict(cfg,chat_font_revision=2),allow_unavailable_roots=allow_unavailable_roots)
     path = ROOT / 'config.json'
     backup = ROOT / 'data/backups' / ('config-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.json')
     shutil.copy2(path,backup)
