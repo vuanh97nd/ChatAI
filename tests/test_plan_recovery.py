@@ -8,6 +8,18 @@ from assistant.tools import EXTRA_TOOLS
 class PlanRecoveryTests(unittest.TestCase):
     def setUp(self):self.schemas=[spec for _,spec in EXTRA_TOOLS]
 
+    def test_nested_argument_repair_uses_native_objects_without_salvaging_truncation(self):
+        from assistant.online_automation import plan_repair_instruction
+        broken=json.dumps({'tool':'plaxis_commands','arguments':'{"commands": [{"command": "read"'})
+        with self.assertRaisesRegex(ValueError,'arguments không phải JSON hoàn chỉnh') as error:
+            parse_plan(broken,self.schemas)
+        hint=plan_repair_instruction(error.exception)
+        self.assertIn('arguments phải là OBJECT',hint)
+        self.assertIn('tối đa 3 lệnh',hint)
+        repaired=parse_plan(json.dumps({'tool':'plaxis_commands','arguments':{'version':'2d',
+            'commands':[{'command':'read','args':[{'ref':'g.Project.ModelType'}]}]}}),self.schemas)
+        self.assertEqual(json.loads(repaired['arguments']['commands'])[0]['args'][0]['ref'],'g.Project.ModelType')
+
     def test_bom_and_explanatory_fence_preserve_validated_call(self):
         plan={'answer':'','tool':'windows_open','arguments':{'path':'C:/Apps/word.exe'}}
         for raw in ('\ufeff'+json.dumps(plan), 'Kế hoạch:\n```json\n'+json.dumps(plan)+'\n```'):

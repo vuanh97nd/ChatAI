@@ -129,6 +129,17 @@ def plan_json(raw, label):
         raise ValueError(label+' không phải JSON hoàn chỉnh (dòng '+str(error.lineno)+', cột '+str(error.colno)+').') from None
 
 
+def plan_repair_instruction(error):
+    return ('Kế hoạch chưa hợp lệ: '+str(error)[:250]+'. Chưa có công cụ nào được chạy từ kế hoạch lỗi này. '
+        'Giữ bước đang dở và dữ kiện đã có; chỉ trả lại MỘT kế hoạch ngắn cho bước kế tiếp, không tra lại manual. '
+        'Trả JSON hoàn chỉnh {"answer":"...","tool":"tên công cụ hoặc chuỗi rỗng","arguments":{}}. '
+        'arguments phải là OBJECT, không phải chuỗi JSON có dấu escape. '
+        'Với plaxis_commands, commands dùng MẢNG object trực tiếp, tối đa 3 lệnh trong lượt sửa; '
+        'với problem dùng object trực tiếp. Không gói cả kế hoạch/tham số thành chuỗi. '
+        'Giữ nguyên số liệu và các tham số bắt buộc; không tự đóng ngoặc cho phần nội dung đã bị cắt. '
+        'Nếu thiếu dữ kiện, hỏi trong answer và để tool rỗng. Chỉ dùng công cụ đã khai báo. Không Markdown. JSON:')
+
+
 def discussion_response(raw):
     """Recover a plain-language clarification only; never turn prose into a tool call."""
     if not isinstance(raw,str):return None
@@ -1618,12 +1629,14 @@ class OnlineAutomation:
                 except (ValueError,KeyError,TypeError) as error:
                     output=None
                     last_plan_error=str(error)[:300]
-                    self.store.audit(self.cid,'automation_plan_invalid',{'error':last_plan_error,'response':response.get('message',{}).get('content','')[:4000]})
+                    self.store.audit(self.cid,'automation_plan_invalid',{'error':last_plan_error,'response':response.get('message',{}).get('content','')[:4000],
+                        'response_chars':len(last_raw),'truncated':response.get('truncated') is True})
                     if attempt==0:
                         if response.get('truncated'):planning_tokens=min(8192,planning_tokens*2)
                         yield {'type':'status','text':'AI đang sửa định dạng kế hoạch; chưa chạy thao tác mới…'}
-                        if last_raw:messages.append({'role':'assistant','content':last_raw[:4000]})
-                        messages.append({'role':'user','content':'Kế hoạch chưa hợp lệ: '+str(error)[:250]+'. Trả lại đúng một JSON {"answer":"...","tool":"tên công cụ hoặc chuỗi rỗng","arguments":{}}. Nếu cần trợ giúp, hỏi rõ trong answer và để tool rỗng. Chỉ dùng công cụ và tham số trong danh sách. Không Markdown. JSON:'})
+                        # Do not feed a sliced, malformed JSON fragment back as an
+                        # assistant example: that encourages copying its escaping error.
+                        messages.append({'role':'user','content':plan_repair_instruction(error)})
             if output is None:
                 clarification=discussion_response(last_raw)
                 if clarification:
