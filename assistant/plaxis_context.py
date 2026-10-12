@@ -21,7 +21,9 @@ def compact_schemas(schemas: list) -> list:
         if fn.get('name') == 'plaxis_commands':
             fn['description'] = (
                 'Thực thi PLAXIS qua wrapper kiểm chứng. Bắt buộc truyền commands, target, version '
-                'đúng schema; commands là mảng object, ref là object {"ref":"g.Tên"}. '
+                'đúng schema; commands là mảng object, mỗi lệnh có args là mảng, '
+                'ví dụ {"command":"read","args":[{"ref":"g.Project"}]}; '
+                'ref là object {"ref":"g.Tên"}. '
                 'Tra signature/info đúng mode khi chưa có cú pháp. inspect_progress đọc tiến độ; '
                 'inspect_stage/verify_stage kiểm chứng vùng X/Y, phase và Active trước khi đổi. '
                 'verify_model đối chiếu manual trước calculate/báo hoàn tất. '

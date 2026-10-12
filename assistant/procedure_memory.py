@@ -275,8 +275,16 @@ class ProcedureMemory:
             outcome='success' if ok else 'failed'
             error_key=hashlib.sha256(re.sub(r'\s+',' ',message.casefold()).encode()).hexdigest() if message else ''
             identifier=hashlib.sha256((tool+'\n'+raw+'\n'+outcome+'\n'+environment+'\n'+error_key).encode()).hexdigest()
-            batch=command_rows(step_args);command=batch[0].get('command','') if batch else tool
-            first=(batch[0].get('args') or [None])[0] if batch else args.get('target') or args.get('path')
+            batch=command_rows(step_args)
+            first_command=batch[0] if batch and isinstance(batch[0],dict) else None
+            command=first_command.get('command','') if first_command else tool
+            if first_command:
+                values=first_command.get('args')
+                # Preparation failures can contain malformed arguments. Recording
+                # a failure must not index a dict (KeyError: 0) or change the call.
+                first=values[0] if isinstance(values,list) and values else None
+            else:
+                first=args.get('target') or args.get('path')
             target=first.get('ref','') if isinstance(first,dict) else first if isinstance(first,str) else ''
             identity=tool+':'+command+':'+target
             if ok and command=='new_project':

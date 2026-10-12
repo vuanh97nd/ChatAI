@@ -141,7 +141,9 @@ class Worker(QThread):
         except ChatCancelled:
             self.cancelled=True
         except Exception as exc:
-            self.failure = str(exc)
+            detail=str(exc).strip()
+            self.failure=(f'Lỗi nội bộ {type(exc).__name__}. Xem data/startup.log để xác định vị trí lỗi.'
+                if not detail or detail.isdigit() else detail)
             with (ROOT / 'data/startup.log').open('a', encoding='utf-8') as log:
                 log.write(traceback.format_exc())
 
