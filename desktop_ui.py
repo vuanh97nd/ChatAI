@@ -453,6 +453,13 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         refresh.clicked.connect(self.refresh_models); row.addWidget(refresh)
         gpu = QPushButton('Cấu hình máy'); gpu.clicked.connect(lambda:self.open_settings_section('Cấu hình máy và AI')); row.addWidget(gpu)
         outer.addLayout(row)
+        self.ai_identity_label=QLabel()
+        self.ai_identity_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.ai_identity_label.setWordWrap(True)
+        self.ai_identity_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.ai_identity_label.setAccessibleName('Tên model và server AI')
+        outer.addWidget(self.ai_identity_label)
+        self.refresh_ai_identity()
         center_row = QHBoxLayout(); center_row.addStretch(1)
         center = QWidget(); center.setMaximumWidth(820); layout = QVBoxLayout(center)
         layout.setContentsMargins(6, 4, 6, 4); layout.setSpacing(12)
@@ -784,6 +791,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
+        if event.get('type')=='status' and 'server dự phòng' in event.get('text',''):
+            self.refresh_ai_identity()
         self.remote_progress(event)
         if event['type']=='app_countdown':
             seconds=event['seconds'];self.cancel_countdown_button.setVisible(seconds>0)
@@ -1678,6 +1687,18 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         elif self.model.currentText()!=name:
             self.model.setCurrentText(name)
 
+    def refresh_ai_identity(self):
+        if not hasattr(self,'ai_identity_label'):return
+        from assistant.model_identity import model_identity_text
+        from assistant.failover import active_backup
+        session=getattr(self,'server_session',None) or {}
+        backup=active_backup(session) if session else None
+        endpoint=(backup or session).get('endpoint') or self.cfg.get('server_url','')
+        states=getattr(self,'ai_server_models',{}).get(endpoint,{})
+        name=self.model.currentText()
+        self.ai_identity_label.setText(model_identity_text(name,REMOTE_MODELS.get(name,'local'),
+            self.cfg,endpoint,bool(backup),states))
+
     def model_changed(self,name):
         provider=REMOTE_MODELS.get(name,'local')
         if hasattr(self,'quick_provider'):
@@ -1689,6 +1710,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if hasattr(self,'settings_provider'):self.settings_provider.setCurrentText(name if name in REMOTE_MODELS else 'AI trên máy')
         self.cfg['chat_provider']=provider
         if name in CHAT_MODELS:self.cfg['default_model']=name
+        self.refresh_ai_identity()
         from assistant.model_preferences import save_model
         save_model(self.store,getattr(self,'server_session',None),name)
         if name in REMOTE_MODELS:self.model.setToolTip('AI trực tuyến dùng key chung trên server.');return
@@ -2815,10 +2837,17 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                         message.setText('Đã lấy '+str(len(catalog))+' model từ server dự phòng. Chọn mới chưa được lưu: bấm Kiểm tra AI rồi Lưu API dự phòng.')
                 elif action=='status':
                     states=value.get('providers',{})
+                    if not hasattr(self,'ai_server_models'):self.ai_server_models={}
+                    self.ai_server_models[session['endpoint']]={k:v.get('model','') for k,v in states.items()}
+                    self.refresh_ai_identity()
                     for ident,item in states.items():
                         if ident in models and item.get('model'):models[ident]=item['model']
                     model.setText(models[name]);message.setText('Khóa trên server dự phòng: '+('đã có' if states.get(name,{}).get('configured') else 'chưa có')+'. Chưa kiểm tra phản hồi AI.')
-                elif action=='save':key.clear();message.setText('Đã lưu API trên server dự phòng. Bấm Kiểm tra AI để xác minh.');models[name]=selected
+                elif action=='save':
+                    key.clear();message.setText('Đã lưu API trên server dự phòng. Bấm Kiểm tra AI để xác minh.');models[name]=selected
+                    if not hasattr(self,'ai_server_models'):self.ai_server_models={}
+                    self.ai_server_models.setdefault(session['endpoint'],{})[name]=selected
+                    self.refresh_ai_identity()
                 elif not str(value.get('answer') or '').strip():message.setText(value.get('message') or 'API phản hồi nhưng chưa có nội dung AI. Chưa xác nhận dự phòng hoạt động.')
                 else:message.setText('AI dự phòng đã trả lời thành công tại '+session['endpoint']+'. Nếu vừa thay đổi khóa/model, bấm Lưu API để áp dụng.')
             self.work(task,done)
@@ -3202,6 +3231,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         session=dict(self.server_session)
         def done(value):
             states=value.get('providers',{})
+            if not hasattr(self,'ai_server_models'):self.ai_server_models={}
+            self.ai_server_models[session['endpoint']]={k:v.get('model','') for k,v in states.items()}
+            self.refresh_ai_identity()
             lines=[]
             for provider,label in [('nvidia','NVIDIA'),('deepseek','DeepSeek'),('gemini','Gemini'),('groq','Groq'),('openai','OpenAI / ChatGPT')]:
                 item=states.get(provider,{})
@@ -3470,6 +3502,9 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             return cfg
         def done(cfg):
             self.cfg=cfg
+            if provider_models and admin_session(session_snapshot) and old_endpoint==cfg.get('server_url'):
+                if not hasattr(self,'ai_server_models'):self.ai_server_models={}
+                self.ai_server_models.setdefault(session_snapshot['endpoint'],{}).update(provider_models)
             if hasattr(self,'windows_stop_button'):self.windows_stop_button.setVisible(cfg.get('windows_apps_enabled',False))
             if hasattr(self,'windows_readiness_label'):
                 from assistant.windows_apps import readiness
@@ -3479,6 +3514,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 from assistant.accounts import forget_login
                 forget_login();self.cid=self.store.create(persist=False)
             self.select_ai(PROVIDER_NAMES.get(cfg['chat_provider'],cfg['default_model']))
+            self.refresh_ai_identity()
             for f in self.api_key_fields.values():f.clear()
             self.apply_theme(cfg['theme'],cfg['font_size']);self.html_cache.clear();self.render();self.status.setText('Đã lưu cài đặt.');self.account_settings_changed()
             QMessageBox.information(self,'Chat AI','Đã lưu cài đặt.')

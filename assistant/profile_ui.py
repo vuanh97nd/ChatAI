@@ -33,6 +33,7 @@ def paint_avatar(label,data,name,size,theme):
 
 class ProfileMixin:
     def refresh_account_ui(self):
+        if hasattr(self,'refresh_ai_identity'):self.refresh_ai_identity()
         session=self.server_session or {};logged=bool(session)
         self.chat_login.setText('Tài khoản: '+session['username'] if logged else 'Đăng nhập')
         self.chat_register.setVisible(not logged)
