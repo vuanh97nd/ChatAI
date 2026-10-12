@@ -86,6 +86,23 @@ class ConfigProviderTests(unittest.TestCase):
         self.assertTrue(restored['procedure_training_enabled'])
         self.assertTrue(list((self.root/'data/backups').glob('config-*.json')))
 
+    def test_ai_preferences_preserve_unavailable_grants_but_new_folder_stays_strict(self):
+        current=dict(self.original,whitelist=['old-desktop','workspace'])
+        original_mkdir=Path.mkdir
+        def mkdir(path,*args,**kwargs):
+            if path in {self.root/'old-desktop',self.root/'new-denied'}:raise PermissionError('Access denied')
+            return original_mkdir(path,*args,**kwargs)
+        with patch.object(Path,'mkdir',mkdir):
+            saved=config.save_preferences(dict(current,nvidia_model='nvidia/new-model'),current)
+            self.assertEqual(saved['nvidia_model'],'nvidia/new-model')
+            self.assertEqual(saved['roots'],[self.root/'workspace'])
+            persisted=(self.root/'config.json').read_bytes()
+            with self.assertRaises(PermissionError):
+                config.save_preferences(dict(current,whitelist=['workspace','new-denied']),current)
+            self.assertEqual((self.root/'config.json').read_bytes(),persisted)
+            with self.assertRaises(PermissionError):
+                config.save_preferences(dict(current,task_user_folders_enabled=True),current)
+
     def test_legacy_revision_preserves_existing_provider_choice(self):
         for provider in ('local', 'deepseek_flash', 'groq', 'nvidia'):
             with self.subTest(provider=provider):

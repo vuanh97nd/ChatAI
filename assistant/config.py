@@ -152,6 +152,17 @@ def save_config(cfg, *, allow_unavailable_roots=False):
     return checked
 
 
+def save_preferences(cfg,current):
+    """Saving AI/UI preferences must not recreate an unavailable, unchanged grant.
+
+    New or changed folder grants still require normal strict validation.
+    """
+    unchanged=(cfg.get('whitelist')==current.get('whitelist')
+               and cfg.get('task_extra_folders',[])==current.get('task_extra_folders',[])
+               and cfg.get('task_user_folders_enabled',False)==current.get('task_user_folders_enabled',False))
+    return save_config(cfg,allow_unavailable_roots=unchanged)
+
+
 def remember_app_permission():
     """Persist only the app execution grant, preserving the saved configuration."""
     cfg=load_config()

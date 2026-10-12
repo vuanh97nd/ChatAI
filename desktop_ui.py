@@ -3430,9 +3430,10 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         keys={k:f.text().strip() for k,f in self.api_key_fields.items() if f.text().strip()}
         provider_models={k:f.text().strip() for k,f in self.api_model_fields.items() if f.text().strip() and f.text().strip()!=self.cfg.get(k+'_model','')}
         session_snapshot=dict(self.server_session) if self.server_session else None
+        config_snapshot=dict(self.cfg)
         def task(emit):
-            from assistant.config import save_config
-            cfg=save_config(proposed)
+            from assistant.config import save_preferences
+            cfg=save_preferences(proposed,config_snapshot)
             session=session_snapshot
             if session and old_endpoint==cfg.get('server_url'):
                 from assistant.model_preferences import save_model
