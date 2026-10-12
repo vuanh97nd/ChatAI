@@ -781,7 +781,10 @@ def compress_numbers(numbers):
     return ', '.join(parts) or 'chưa rõ'
 
 
-def planning_messages(state,instruction):
+def planning_messages(state,instruction,provider=''):
+    if provider=='nvidia':
+        from .nvidia_planning import messages_for_nvidia
+        return messages_for_nvidia(state,instruction)
     # Cut history in blocks of 20, not one message per call: a sliding window changes the
     # prompt prefix on every step and the provider cache fell from ~44k to ~10k tokens.
     cut=(max(0,len(state['messages'])-40)//20)*20
@@ -1487,6 +1490,10 @@ class OnlineAutomation:
             if plaxis_context and not _OTHER_APP_REQUEST.search(question):
                 # ~49k characters of Word/CAD/CDM/GeoStudio schemas were sent on every PLAXIS step.
                 planning_schemas=[s for s in planning_schemas if s['function']['name'] in _PLAXIS_TOOLSET]
+            nvidia_planning=getattr(self.client,'provider','')=='nvidia' and not research
+            if nvidia_planning:
+                from .nvidia_planning import schemas_for_nvidia
+                planning_schemas=schemas_for_nvidia(planning_schemas)
             instruction=('Trả lời đúng yêu cầu người dùng mới nhất. Không nhắc kết quả cũ nếu câu hỏi không liên quan; kết quả công cụ lịch sử không chứng minh vừa thực hiện thao tác trong lượt này. Bạn là trợ lý điều khiển ứng dụng trên máy Windows của người dùng. Trả JSON: '
                          '{"answer":"...","tool":"","arguments":"{}"}. Nếu cần thực hiện, tool phải là tên trong danh sách và arguments là chuỗi JSON tham số. '
                          'Khi đã đủ kết quả hoặc bị từ chối, tool rỗng và answer trả lời tiếng Việt. Người dùng trả lời ok/đồng ý là chấp thuận đề xuất gần nhất trong hội thoại; dùng thông số đã chốt và gọi công cụ, không hỏi xác nhận lại. Khi người dùng báo sai bài toán, đọc lại bộ nhớ tài liệu và sửa đúng loại bài toán, không lặp mẫu cũ. '
@@ -1522,7 +1529,7 @@ class OnlineAutomation:
             last_user=max((i for i,m in enumerate(state['messages']) if m.get('role')=='user'),default=-1)
             turn_tools=[m.get('tool_name','') for m in state['messages'][last_user+1:] if m.get('role')=='tool']
             reading=not any(t=='plaxis_commands' for t in turn_tools) or (bool(turn_tools) and turn_tools[-1] in _READING_TOOLS)
-            volatile+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'],limit=30000 if reading else 6000)
+            volatile+=DocumentMemory(self.store).context(state.get('account_username',''),question,messages=state['messages'],limit=6000 if nvidia_planning else (30000 if reading else 6000))
             volatile+=pdf_read_map(state['messages'])
             tutorial=DocumentMemory(self.store).tutorial(state.get('account_username',''),state['messages'])
             from .document_memory import requested_product,requested_tutorial
@@ -1577,7 +1584,9 @@ class OnlineAutomation:
                 from .prompts import PLAXIS_MANUAL_POLICY
                 instruction+=TUNNEL_REFERENCE+STAGE_INSTRUCTION+PLAXIS_MANUAL_POLICY
                 instruction+='\nPLAXIS quy trình ngắn: '+RULES+' Khi chưa chọn bài, dùng plaxis_tutorial_guide chapter=0; sau đó chỉ đọc hướng dẫn chương liên quan, không đọc lại cả danh mục mỗi lượt.'
-            messages=planning_messages(state,instruction)
+            if nvidia_planning:
+                instruction=instruction.replace('"arguments":"{}"','"arguments":{}').replace('arguments là chuỗi JSON tham số','arguments là object JSON tham số')
+            messages=planning_messages(state,instruction,provider='nvidia' if nvidia_planning else '')
             if research:
                 messages.append({'role':'system','content':'Lượt hiện tại chỉ đọc/tra tài liệu tại URL được gửi. Không tiếp tục dựng mô hình hoặc lặp báo cáo bài cũ. Gọi browser_run navigate/read, đọc các liên kết API/Python liên quan; trả nội dung nguồn đã đọc, nêu rõ lỗi truy cập hoặc phạm vi chưa đọc. inspect_stage/verify_stage là wrapper nội bộ Chat AI, không phải phương thức g của PLAXIS.'})
             if volatile.strip():
@@ -1598,6 +1607,11 @@ class OnlineAutomation:
             plan_format={'type':'object','properties':{
                 'answer':{'type':'string'},'tool':{'type':'string'},'arguments':{'type':'object'}},
                 'required':['answer','tool','arguments']}
+            if nvidia_planning:
+                text_chars=sum(len(m['content']) if isinstance(m.get('content'),str) else
+                    sum(len(p.get('text','')) for p in m.get('content',[]) if isinstance(p,dict)) for m in messages)
+                self.store.audit(self.cid,'automation_nvidia_context',{'text_chars':text_chars,'messages':len(messages),
+                    'original_history_messages':len(state['messages']),'profile':'nvidia-compact-1'})
             planning_tokens=max(2048,min(4096,int(self.cfg.get('api_num_predict',4096))))
             for attempt in range(2):
                 try:
