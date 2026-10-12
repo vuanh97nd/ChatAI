@@ -72,6 +72,20 @@ class ConfigProviderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate_config(dict(self.original,whitelist=['.']),allow_unavailable_roots=True)
 
+    def test_account_settings_can_be_saved_with_old_inaccessible_desktop(self):
+        cfg=dict(self.original,whitelist=['old-desktop','workspace'],custom_ai=[],procedure_training_enabled=True)
+        original_mkdir=Path.mkdir
+        def mkdir(path,*args,**kwargs):
+            if path==self.root/'old-desktop':raise PermissionError('Access denied')
+            return original_mkdir(path,*args,**kwargs)
+        with patch.object(Path,'mkdir',mkdir):
+            saved=config.save_config(cfg,allow_unavailable_roots=True)
+            restored=config.load_config()
+        self.assertEqual(saved['roots'],[self.root/'workspace'])
+        self.assertEqual(restored['whitelist'],['old-desktop','workspace'])
+        self.assertTrue(restored['procedure_training_enabled'])
+        self.assertTrue(list((self.root/'data/backups').glob('config-*.json')))
+
     def test_legacy_revision_preserves_existing_provider_choice(self):
         for provider in ('local', 'deepseek_flash', 'groq', 'nvidia'):
             with self.subTest(provider=provider):

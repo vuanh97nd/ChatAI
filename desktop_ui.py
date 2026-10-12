@@ -2561,7 +2561,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if not admin_session(self.server_session):return
         self.cfg['procedure_training_enabled']=bool(enabled)
         from assistant.config import save_config
-        self.cfg=save_config(self.cfg)
+        self.cfg=save_config(self.cfg,allow_unavailable_roots=True)
         self.status.setText('Đào tạo dùng chung: bật. Bài học mới sẽ được lọc thông tin riêng và lưu lên server.' if enabled else 'Đào tạo dùng chung: tắt. Bài học mới được giữ riêng.')
 
     def sync_history(self):
@@ -3102,7 +3102,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             if self.model.findText(name)<0:self.model.addItem(name)
             if self.settings_provider.findText(name)<0:self.settings_provider.addItem(name)
         from assistant.config import save_config
-        self.cfg=save_config(self.cfg)
+        self.cfg=save_config(self.cfg,allow_unavailable_roots=True)
 
     def configure_deepseek_presets(self):
         if not admin_session(self.server_session) or self.busy():return
