@@ -1,4 +1,4 @@
-# Chat AI trong AutoCAD 2023 — bản thử 0.3.1
+# Chat AI trong AutoCAD 2023 — bản thử 0.3.2
 
 Plugin Windows x64/.NET Framework 4.8, bảng WinForms PaletteSet, lệnh `CHATAI`.
 Chưa biên dịch hoặc chạy AutoCAD thực trong môi trường Linux phát triển.
@@ -76,7 +76,7 @@ Cao độ mũi = cao độ đầu − chiều sâu; tọa độ hiển thị đ�
 ### Bố trí trong vùng polyline đang có
 
 Sau cập nhật phải đóng/mở lại AutoCAD để DLL cũ được gỡ. Tiêu đề bảng phải hiện
-**Chat AI · CAD 0.3.1**; nếu không thấy, chưa chạy đúng DLL mới.
+**Chat AI · CAD 0.3.2**; nếu không thấy, chưa chạy đúng DLL mới.
 
 Bấm **Chọn polyline vùng CDM** hoặc gõ `CHATAIREGION`, chọn một polyline kín
 trong ModelSpace. Hỗ trợ 3–500 đỉnh, cạnh thẳng, phẳng XY cao độ 0; chưa hỗ trợ
@@ -95,6 +95,23 @@ Nếu AI vẫn trả lời sai khả năng hoặc muốn vẽ ngay không chờ 
 bấm **Nhập thông số vùng · không cần AI**, nhập đơn vị vùng, D/sx/sy (m), khoảng
 lùi mép cọc (m) và góc lưới (độ). Bấm **Xem kế hoạch**, rồi **Duyệt và vẽ JSON**.
 Luồng này không cần đăng nhập hay gọi AI; vẫn kiểm tra vùng trước khi tạo DXF.
+
+### Lệnh tắt
+
+Không cần mở ứng dụng ChatAI desktop riêng. Plugin chat gọi API trực tiếp;
+tạo DXF cần `.venv` đã setup. Lệnh mặt bằng không cần đăng nhập/API:
+
+| Lệnh | Thao tác |
+|---|---|
+| `CDM` | Chọn polyline rồi mở bảng thông số mặt bằng, không gọi AI |
+| `CDMVUNG` | Chỉ chọn/đổi vùng CDM |
+| `CDMMB` | Nhập thông số cho vùng đã chọn, không gọi AI |
+| `CDMMCN` | Mở sẵn yêu cầu mặt cắt; điền số liệu thay dấu … và bấm Gửi |
+| `CDMTD` | Mở sẵn yêu cầu trắc dọc; điền số liệu và bấm Gửi |
+| `CHATAI` | Mở bảng chat |
+
+Mặt cắt/trắc dọc qua chat vẫn cần đăng nhập và mạng. Các lệnh không tự vẽ hoặc
+đoán số liệu: xem kế hoạch rồi duyệt xuất DXF. Chưa phải công cụ chèn vào DWG.
 
 ## Giới hạn
 

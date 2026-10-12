@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="Chat AI 2023" AppVersion="0.3.1" ProductCode="{A94C1CCA-52F2-4F43-A07B-664791704A22}" Description="Chat AI thử nghiệm cho AutoCAD 2023">
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="Chat AI 2023" AppVersion="0.3.2" ProductCode="{A94C1CCA-52F2-4F43-A07B-664791704A22}" Description="Chat AI thử nghiệm cho AutoCAD 2023">
   <CompanyDetails Name="ChatAI" />
   <Components>
     <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R24.2" SeriesMax="R24.2" />
     <ComponentEntry AppName="ChatAI2023" ModuleName="./Contents/ChatAI.AutoCAD2023.dll" AppDescription="Chat AI" LoadOnCommandInvocation="True">
-      <Commands GroupName="CHATAI2023"><Command Global="CHATAI" Local="CHATAI" /><Command Global="CHATAIREGION" Local="CHATAIREGION" /></Commands>
+      <Commands GroupName="CHATAI2023">
+        <Command Global="CHATAI" Local="CHATAI" />
+        <Command Global="CHATAIREGION" Local="CHATAIREGION" />
+        <Command Global="CDM" Local="CDM" />
+        <Command Global="CDMVUNG" Local="CDMVUNG" />
+        <Command Global="CDMMB" Local="CDMMB" />
+        <Command Global="CDMMCN" Local="CDMMCN" />
+        <Command Global="CDMTD" Local="CDMTD" />
+      </Commands>
     </ComponentEntry>
   </Components>
 </ApplicationPackage>

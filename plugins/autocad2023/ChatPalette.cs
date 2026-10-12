@@ -12,25 +12,42 @@ namespace ChatAI.AutoCAD2023 {
         private static ChatPanel panel;
         public void Initialize() { }
         [CommandMethod("CHATAIREGION")]
-        public void SelectRegion() {
+        public void SelectRegion() { PickRegion(); }
+        [CommandMethod("CDMVUNG")]
+        public void CdmRegion() { PickRegion(); }
+        [CommandMethod("CDM")]
+        public void Cdm() { if (PickRegion()) panel.EditBoundary(); }
+        [CommandMethod("CDMMB")]
+        public void CdmPlan() { Open(); panel.EditBoundary(); }
+        [CommandMethod("CDMMCN", CommandFlags.Session)]
+        public void CdmSection() {
+            Open(); panel.Preset("Vẽ mặt cắt sơ đồ CDM, xuất kèm mặt bằng. Đơn vị m. B=… m, L=… m, D=… m, H=… m, sx=… m, sy=… m. Hỏi số liệu còn thiếu, không đoán.");
+        }
+        [CommandMethod("CDMTD", CommandFlags.Session)]
+        public void CdmProfile() {
+            Open(); panel.Preset("Vẽ trắc dọc CDM. Đơn vị m, hệ số phóng đứng=…. Các điểm: lý trình=…, cao độ TN=…, cao độ TK=…, cao độ đầu cọc=…, chiều sâu cọc=…. Hỏi số liệu còn thiếu, không đoán.");
+        }
+        private bool PickRegion() {
             if (panel == null) { Open(); }
             var doc = Acad.DocumentManager.MdiActiveDocument;
-            if (doc == null) return;
+            if (doc == null) return false;
             try {
                 var options = new Autodesk.AutoCAD.EditorInput.PromptEntityOptions("\nChọn polyline kín vùng CDM: ");
                 options.SetRejectMessage("\nCần polyline 2D.");
                 options.AddAllowedClass(typeof(Autodesk.AutoCAD.DatabaseServices.Polyline), true);
                 var selection = doc.Editor.GetEntity(options);
-                if (selection.Status != Autodesk.AutoCAD.EditorInput.PromptStatus.OK) return;
+                if (selection.Status != Autodesk.AutoCAD.EditorInput.PromptStatus.OK) return false;
                 panel.SetBoundary(doc, selection.ObjectId.Handle.ToString());
+                return true;
             } catch (System.Exception ex) { doc.Editor.WriteMessage("\n" + ex.Message); }
+            return false;
         }
         public void Terminate() { if (panel != null) panel.Dispose(); }
         [CommandMethod("CHATAI", CommandFlags.Session)]
         public void Open() {
             if (palette == null) {
                 panel = new ChatPanel();
-                palette = new PaletteSet("Chat AI · CAD 0.3.1", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
+                palette = new PaletteSet("Chat AI · CAD 0.3.2", new Guid("A94C1CCA-52F2-4F43-A07B-664791704A22"));
                 palette.MinimumSize = new Size(320, 450); palette.Size = new Size(420, 650);
                 palette.Add("Chat", panel);
             }
@@ -196,6 +213,12 @@ namespace ChatAI.AutoCAD2023 {
             boundaryDocument = doc; boundaryHandle = handle; boundarySnapshot = ChatClient.Json.Serialize(region);
             client.ClearHistory(); apply.Enabled = false;
             status.Text = "Đã chọn vùng " + handle + ". Nhập D, sx, sy (m), đơn vị vùng, khoảng lùi mép và góc lưới.";
+        }
+        internal void EditBoundary() { if (!busy) boundaryPlan.PerformClick(); }
+        internal void Preset(string text) {
+            if (busy) return;
+            client.ClearHistory(); question.Text = text; answer.Clear(); apply.Enabled = false;
+            status.Text = "Thay dấu … bằng số liệu rồi bấm Gửi. Chưa thực hiện thao tác vẽ.";
         }
         private void SetBusy(bool value) {
             busy = value; login.Enabled = ask.Enabled = browse.Enabled = selectRegion.Enabled = boundaryPlan.Enabled = !value;
