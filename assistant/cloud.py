@@ -8,12 +8,21 @@ from urllib.parse import urlparse
 CLOUD_MODEL = 'Cloudflare AI'
 NVIDIA_MODEL = 'NVIDIA AI'
 DEEPSEEK_MODEL = 'DeepSeek API'
+DEEPSEEK_WEB_MODEL = 'DeepSeek Web (Miễn phí)'
 GEMINI_MODEL = 'Gemini API'
 GROQ_MODEL = 'Groq API'
-REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_MODEL:'deepseek', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
+REMOTE_MODELS = {NVIDIA_MODEL:'nvidia', DEEPSEEK_MODEL:'deepseek', DEEPSEEK_WEB_MODEL:'deepseek_web', GEMINI_MODEL:'gemini', GROQ_MODEL:'groq', CLOUD_MODEL:'cloudflare'}
 PROVIDER_NAMES = {v:k for k,v in REMOTE_MODELS.items()}
 CUSTOM_PROVIDER_TYPES={}
 SWITCH_MESSAGE = 'Chọn AI phù hợp với tác vụ bạn muốn thực hiện.'
+
+DEEPSEEK_WEB_WARNING = (
+    '⚠️ DeepSeek Web dùng cookie tài khoản chat.deepseek.com — '
+    'vi phạm điều khoản dịch vụ DeepSeek, có thể bị ban tài khoản bất cứ lúc nào. '
+    'Chỉ dùng cho mục đích thử nghiệm, không sản xuất.'
+)
+_DEEPSEEK_WEB_ENDPOINT = 'https://chat.deepseek.com/api/v0/chat/completions'
+_DEEPSEEK_WEB_DEFAULT_MODEL = 'deepseek-chat'
 
 
 class CloudError(RuntimeError):
@@ -127,6 +136,114 @@ def api_key(store,provider):
     return os.environ.get(provider.upper()+'_API_KEY','').strip()
 
 
+def save_deepseek_web_token(store,token):
+    """Save DeepSeek web session token encrypted locally."""
+    import base64
+    encrypted=base64.b64encode(_protect_key(token.strip().encode())).decode() if token.strip() else ''
+    with store.connection() as db:
+        db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',('deepseek_web_token',encrypted))
+
+
+def deepseek_web_token(store):
+    """Load DeepSeek web session token from local storage or env var."""
+    import os,base64
+    with store.connection() as db:
+        db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+        row=db.execute('SELECT value FROM settings WHERE key=?',('deepseek_web_token',)).fetchone()
+    if row and row[0]:
+        try:return _protect_key(base64.b64decode(row[0]),True).decode()
+        except CloudError:pass
+    return os.environ.get('DEEPSEEK_WEB_TOKEN','').strip()
+
+
+class DeepSeekWebClient:
+    """Direct caller of chat.deepseek.com internal API using a web session token.
+
+    WARNING: This uses an unofficial, reverse-engineered endpoint and violates
+    DeepSeek's Terms of Service. Use only for personal testing.
+    """
+    provider='deepseek_web'
+
+    def __init__(self,token,model=_DEEPSEEK_WEB_DEFAULT_MODEL,opener=urlopen):
+        if not token:raise CloudError(
+            'Chưa có token DeepSeek Web. Vào Cài đặt → DeepSeek Web để nhập token từ chat.deepseek.com.')
+        self.token=token;self.model=model;self.opener=opener
+
+    def list(self):return {'models':[{'model':self.model}]}
+
+    def _build_payload(self,model,messages,options,stream):
+        return {'model':model,'messages':messages,'stream':stream,
+                'max_tokens':min(max(int(options.get('num_predict',2048)),128),4096),
+                'temperature':options.get('temperature',.2)}
+
+    def _handle_http_error(self,error):
+        if error.code==401:
+            raise CloudError(
+                'Token DeepSeek Web hết hạn hoặc không hợp lệ. '
+                'Đăng nhập lại chat.deepseek.com, lấy token mới và cập nhật trong Cài đặt.',
+                'DEEPSEEK_WEB_EXPIRED') from None
+        if error.code==403:
+            raise CloudError(
+                'DeepSeek Web từ chối yêu cầu. Token có thể đã bị thu hồi. '
+                'Đăng nhập lại chat.deepseek.com để lấy token mới.') from None
+        if error.code==429:
+            raise CloudError(
+                'DeepSeek Web vượt quá giới hạn yêu cầu. Đợi vài phút rồi thử lại.') from None
+        raise CloudError('DeepSeek Web HTTP '+str(error.code)+': Dịch vụ chưa xử lý được yêu cầu.') from None
+
+    def stream_answer(self,model,messages,**kwargs):
+        """Yield (kind, text) chunks via SSE streaming. kind is 'text' or 'reasoning'."""
+        options=kwargs.get('options',{})
+        payload=self._build_payload(model,messages,options,stream=True)
+        request=Request(_DEEPSEEK_WEB_ENDPOINT,data=json.dumps(payload).encode(),
+            headers={'Content-Type':'application/json',
+                     'Authorization':'Bearer '+self.token,
+                     'Accept':'text/event-stream',
+                     'User-Agent':'Mozilla/5.0 ChatAI-Desktop'})
+        try:
+            with self.opener(request,timeout=120) as response:
+                for raw in response:
+                    line=raw.decode('utf-8').rstrip('\r\n') if isinstance(raw,bytes) else raw.rstrip('\r\n')
+                    if not line.startswith('data:'):continue
+                    chunk=line[5:].strip()
+                    if chunk=='[DONE]':break
+                    try:
+                        value=json.loads(chunk)
+                        delta=value['choices'][0].get('delta',{})
+                        reasoning=delta.get('reasoning_content','')
+                        if reasoning:yield 'reasoning',reasoning
+                        content=delta.get('content','')
+                        if content:yield 'text',content
+                    except (ValueError,KeyError,IndexError,TypeError):continue
+        except HTTPError as error:self._handle_http_error(error)
+        except (URLError,TimeoutError):raise CloudError('Không kết nối được DeepSeek Web (chat.deepseek.com).') from None
+
+    def chat(self,model,messages,**kwargs):
+        options=kwargs.get('options',{})
+        if kwargs.get('format'):
+            messages=[{'role':'system','content':'Trả về một đối tượng JSON hợp lệ, không Markdown. Schema: '+json.dumps(kwargs['format'],ensure_ascii=False)},*messages]
+        payload=self._build_payload(model,messages,options,stream=False)
+        if kwargs.get('format'):payload['response_format']={'type':'json_object'}
+        request=Request(_DEEPSEEK_WEB_ENDPOINT,data=json.dumps(payload).encode(),
+            headers={'Content-Type':'application/json',
+                     'Authorization':'Bearer '+self.token,
+                     'User-Agent':'Mozilla/5.0 ChatAI-Desktop'})
+        try:
+            with self.opener(request,timeout=120) as response:
+                data=response.read(4000001)
+                if len(data)>4000000:raise CloudError('Phản hồi DeepSeek Web quá lớn.')
+                value=json.loads(data)
+            content=value['choices'][0]['message'].get('content')
+            if not isinstance(content,str) or not content.strip():
+                raise CloudError('DeepSeek Web chưa trả nội dung; kiểm tra token hoặc thử lại.')
+            truncated=value['choices'][0].get('finish_reason')=='length'
+            return {'message':{'role':'assistant','content':content},'truncated':truncated}
+        except HTTPError as error:self._handle_http_error(error)
+        except (URLError,TimeoutError):raise CloudError('Không kết nối được DeepSeek Web (chat.deepseek.com).') from None
+        except (ValueError,KeyError,IndexError,TypeError):raise CloudError('Phản hồi DeepSeek Web không đúng định dạng.') from None
+
+
 class ApiDocumentClient:
     """OpenAI-compatible adapter, used for intent, full-text map-reduce and final answer."""
     def __init__(self,provider,key,model,opener=urlopen):
@@ -185,6 +302,25 @@ def api_answer_events(client,body):
             {'type':'image_url','image_url':{'url':'data:'+image['mime']+';base64,'+image['data']}}]
     messages.append(user_message)
     yield 'meta',{'provider':client.provider}
+    if hasattr(client,'stream_answer') and not body.get('deep_analysis'):
+        chunks=[];reason_len=0;reason_mark=0
+        for kind,chunk in client.stream_answer(client.model,messages,options=body.get('options',{})):
+            if kind=='reasoning':
+                if not chunks:
+                    reason_len+=len(chunk)
+                    if reason_len-reason_mark>=200 or reason_mark==0:
+                        reason_mark=reason_len
+                        yield 'status',{'text':'🤔 AI đang suy luận… ('+str(reason_len)+' ký tự)'}
+                continue
+            chunks.append(chunk)
+            yield 'delta',{'text':chunk}
+        answer=''.join(chunks)
+        if not answer.strip():raise CloudError('API chưa trả nội dung; kiểm tra token hoặc model.')
+        answer,_=guard_answer(answer,{'messages':messages,'document_result':result},body.get('web_search',False))
+        footer=document_footer(result,answer) if result else ''
+        if footer:yield 'delta',{'text':footer}
+        yield 'done',{'success':True,'switch_required':False}
+        return
     response=client.chat(client.model,messages,options=body.get('options',{}))
     answer=response['message']['content']
     if response.get('truncated'):answer+='\n\nPhản hồi bị giới hạn token; có thể yêu cầu tiếp tục.'

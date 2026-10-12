@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QLabel,QLineEdit,QPlainTextEdit,
     QComboBox,QListWidget,QListWidgetItem,QTextBrowser,QMessageBox,QFileDialog,QDialog,QDialogButtonBox)
 from .accounts import request_account
-from .cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, SWITCH_MESSAGE, CloudError, cloud_events, guest_token, ApiDocumentClient, api_key, api_answer_events, ServerApiClient
+from .cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, SWITCH_MESSAGE, CloudError, cloud_events, guest_token, ApiDocumentClient, api_key, api_answer_events, ServerApiClient, DeepSeekWebClient, deepseek_web_token
 from .trial import GUEST_OWNER
 
 HELP_GUIDE='''Chọn mô hình: NVIDIA AI (mặc định), DeepSeek API và Gemini API dùng key chung do Admin cấu hình trên server; người dùng chỉ chọn AI. Cloudflare xử lý nội dung trên server. Chọn Qwen hoặc DeepSeek để chạy trên máy; model chưa có sẽ hỏi trước khi tải.
@@ -113,7 +113,13 @@ class SupportMixin:
             if use_web:
                 body['search_query']=' '.join(prompt.split()[:70])[:500].strip()
             if session:body.update(username=session['username'],key=session['key'])
-            api_client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=getattr(self.worker,'stop_requested',None)) if provider!='cloudflare' else None
+            if provider=='deepseek_web':
+                token=deepseek_web_token(self.store)
+                api_client=DeepSeekWebClient(token)
+            elif provider!='cloudflare':
+                api_client=ServerApiClient(session,provider,on_status=lambda text:emit({'type':'status','text':text}),cancel_event=getattr(self.worker,'stop_requested',None))
+            else:
+                api_client=None
             import re
             document_request=bool(attached_paths or use_web or re.search(r'(?i)(tài liệu|file|pdf|docx|xlsx|pptx|dxf|tiêu chuẩn|nghị định|thông tư|báo cáo|điều khoản|số liệu|bài báo|quy chuẩn)',prompt))
             if api_client and document_request:

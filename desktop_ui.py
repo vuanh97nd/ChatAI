@@ -246,7 +246,8 @@ def prepare_context(progress=print):
 
 
 from assistant.support_ui import SupportMixin
-from assistant.cloud import CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, PROVIDER_NAMES, SWITCH_MESSAGE
+from assistant.cloud import (CLOUD_MODEL, NVIDIA_MODEL, REMOTE_MODELS, PROVIDER_NAMES, SWITCH_MESSAGE,
+    DEEPSEEK_WEB_MODEL, DEEPSEEK_WEB_WARNING)
 from assistant.themes import style_sheet, recolor, chat_style, bubble_color
 from assistant.settings_icon import SettingsButton
 from assistant.profile_ui import ProfileMixin
@@ -1272,6 +1273,7 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         if name in CHAT_MODELS:self.cfg['default_model']=name
         from assistant.model_preferences import save_model
         save_model(self.store,getattr(self,'server_session',None),name)
+        if name==DEEPSEEK_WEB_MODEL:self.model.setToolTip('DeepSeek Web dùng token tài khoản web miễn phí. ⚠️ Không chính thức, có thể bị ban.');return
         if name in REMOTE_MODELS:self.model.setToolTip('AI trực tuyến dùng key chung trên server.');return
         if name in CHAT_MODELS:self.model.setToolTip(CHAT_MODELS[name]['label'])
 
@@ -1503,8 +1505,8 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         state=self.store.load(self.cid)
         model=self.model.currentText() if prompt is not None else state['model']
         provider=REMOTE_MODELS.get(model)
-        if provider=='cloudflare' or not provider:
-            QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare chưa hỗ trợ lập kế hoạch điều khiển app.');return
+        if provider in ('cloudflare','deepseek_web') or not provider:
+            QMessageBox.information(self,'Điều khiển ứng dụng','Chọn DeepSeek API, NVIDIA hoặc Gemini. Cloudflare và DeepSeek Web chưa hỗ trợ lập kế hoạch điều khiển app.');return
         if prompt is not None and len(prompt)>6000:
             QMessageBox.information(self,'Tin nhắn quá dài','Tin nhắn tối đa 6000 ký tự.');return
         session=dict(self.server_session);cid=self.cid;cfg=dict(self.cfg)
@@ -1840,6 +1842,15 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
         self.button(api_form,'Lưu key API',self.save_settings)
         self.button(api_form,'Xem trạng thái key trên server',self.provider_key_status)
         self.api_key_group.setVisible(admin_session(self.server_session));layout.addWidget(self.api_key_group)
+        # DeepSeek Web token — visible to all users
+        dsw_group=QGroupBox('DeepSeek Web (Miễn phí — Dùng tài khoản web)');dsw_form=QFormLayout(dsw_group)
+        warn=QLabel(DEEPSEEK_WEB_WARNING);warn.setWordWrap(True);warn.setStyleSheet('color:#e6a040;font-size:11px;');dsw_form.addRow(warn)
+        dsw_form.addRow(QLabel('Token: vào chat.deepseek.com → F12 → Application → Local Storage → chép giá trị userToken'))
+        self.deepseek_web_token_field=QLineEdit();self.deepseek_web_token_field.setEchoMode(QLineEdit.EchoMode.Password);self.deepseek_web_token_field.setPlaceholderText('Dán userToken tại đây')
+        dsw_form.addRow('Token',self.deepseek_web_token_field)
+        self.button(dsw_form,'Lưu token DeepSeek Web',self.save_deepseek_web_token)
+        self.button(dsw_form,'Xoá token',lambda:self.save_deepseek_web_token(clear=True))
+        layout.addWidget(dsw_group)
         self.machine_profile.currentIndexChanged.connect(self.refresh_machine_choices)
         self.machine_auto.toggled.connect(self.refresh_machine_choices)
         self.refresh_machine_choices()
@@ -2496,6 +2507,17 @@ class Window(QMainWindow, SupportMixin, ProfileMixin, CodeMixin, AdminMixin):
             if target_index is not None:
                 self.settings_navigation_guard=True;self.tabs.setCurrentIndex(target_index);self.settings_navigation_guard=False;self.settings_last_tab=target_index
         self.work(task,done)
+
+    def save_deepseek_web_token(self,checked=False,clear=False):
+        from assistant.cloud import save_deepseek_web_token as _save_token
+        token='' if clear else self.deepseek_web_token_field.text().strip()
+        def task(emit):_save_token(self.store,token)
+        def done(_):
+            self.deepseek_web_token_field.clear()
+            self.status.setText('Token DeepSeek Web đã xoá.' if clear else 'Token DeepSeek Web đã lưu.')
+            QMessageBox.information(self,'DeepSeek Web','Token đã xoá.' if clear else 'Token đã lưu thành công.')
+        try:self.work(task,done)
+        except Exception as error:QMessageBox.warning(self,'DeepSeek Web','Không lưu được token: '+str(error))
 
     def poll(self):
         active_now = self.manager.busy
