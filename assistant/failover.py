@@ -25,6 +25,8 @@ def load_backup(primary):
 def eligible(error):
     if isinstance(error,AccountAPIError):
         # App billing, invalid credentials, and permission errors are not outages.
+        # UNUSUAL_ACTIVITY (ChatGPT blocking the connection) is treated as a transient outage.
+        if error.code=='UNUSUAL_ACTIVITY':return True
         return error.code!='QUOTA_EXHAUSTED' and error.status in (429,500,502,503,504,530)
     return str(error).startswith(('Không kết nối được server Chat AI.','Kết nối tới server Chat AI bị ngắt'))
 

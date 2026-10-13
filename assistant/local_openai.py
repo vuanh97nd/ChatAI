@@ -97,10 +97,12 @@ def _chat_once(url: str, key: str, payload: bytes, timeout: float) -> tuple[int,
 
 
 def chat(messages: list[dict], url: str, key: str, model: str,
-         timeout: float = 60.0, cancel_event=None) -> str:
+         timeout: float = 60.0, cancel_event=None,
+         _session=None, _on_status=None) -> str:
     """Gọi /v1/chat/completions và trả về nội dung text của AI.
 
     Tự thử lại một lần nếu server trả 502/503/504.
+    Khi gặp 403 "Unusual activity", tự chuyển sang custom backup API nếu đã bật.
     Ném RuntimeError với thông báo cụ thể để hiển thị trong UI.
     """
     endpoint = url.rstrip('/') + '/v1/chat/completions'
@@ -127,7 +129,49 @@ def chat(messages: list[dict], url: str, key: str, model: str,
         if status not in _RETRY_STATUSES or attempt == _MAX_RETRIES:
             break
 
+    # Auto-fallback to custom backup API on "Unusual activity" 403
+    if status == 403:
+        text = body.decode('utf-8', errors='replace') if body else ''
+        code = ''
+        msg = ''
+        try:
+            obj = json.loads(text)
+            code = (obj.get('error') or {}).get('code', '')
+            msg = (
+                (obj.get('error') or {}).get('message', '')
+                or obj.get('detail', '')
+            )
+        except Exception:
+            pass
+        if code == 'UNUSUAL_ACTIVITY' or 'unusual activity' in msg.lower():
+            result = _try_custom_fallback(messages, _session, _on_status, timeout)
+            if result is not None:
+                return result
+
     return _parse_response(status, body, url, model)
+
+
+def _try_custom_fallback(messages, session, on_status, timeout):
+    """Thử gọi custom backup API; trả None nếu không cấu hình hoặc thất bại."""
+    cfg = load_config()
+    if not cfg or not cfg.get('use_as_fallback'):
+        return None
+    try:
+        from .custom_backup_api import fallback as _backup_fallback
+        if on_status:
+            on_status('ChatGPT bị chặn; đang dùng API tùy chỉnh dự phòng.')
+        if session is not None:
+            result = _backup_fallback(session, messages, timeout=timeout, on_status=on_status)
+        else:
+            result = _backup_fallback(
+                {'endpoint': cfg.get('url', ''), 'username': ''},
+                messages, timeout=timeout, on_status=on_status,
+            )
+        if result and isinstance(result.get('answer'), str):
+            return result['answer']
+    except Exception:
+        pass
+    return None
 
 
 def _raise_connection_error(url: str, exc: OSError) -> None:
@@ -145,12 +189,15 @@ def _parse_response(status: int, body: bytes, url: str, model: str) -> str:
 
     # Try to extract a JSON error message for nicer UX
     upstream_msg = ''
+    upstream_code = ''
     try:
         obj = json.loads(text)
         upstream_msg = (
             (obj.get('error') or {}).get('message', '')
             or obj.get('message', '')
+            or obj.get('detail', '')
         )
+        upstream_code = (obj.get('error') or {}).get('code', '')
     except Exception:
         pass
 
@@ -170,6 +217,11 @@ def _parse_response(status: int, body: bytes, url: str, model: str) -> str:
             + ('Chi tiết: ' + upstream_msg if upstream_msg else 'Kiểm tra AUTH_KEY trong .env và ứng dụng.')
         )
     if status == 403:
+        if upstream_code == 'UNUSUAL_ACTIVITY' or 'unusual activity' in upstream_msg.lower():
+            raise RuntimeError(
+                'ChatGPT đã chặn kết nối do phát hiện hoạt động bất thường. '
+                'Thử đổi mạng hoặc đăng nhập lại tài khoản OpenAI rồi thử lại.'
+            )
         raise RuntimeError(f'Không có quyền (HTTP 403). {upstream_msg or "Kiểm tra cấu hình proxy."}')
     if status == 404:
         raise RuntimeError(
