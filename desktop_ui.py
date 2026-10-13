@@ -2862,8 +2862,14 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
 
     def custom_local_api_dialog(self):
         """Dialog cấu hình API tùy chỉnh dự phòng (OpenAI compatible, gọi trực tiếp từ máy)."""
+        try:
+            self._custom_local_api_dialog_impl()
+        except Exception as e:
+            QMessageBox.critical(self,'API tùy chỉnh — Lỗi',str(e))
+
+    def _custom_local_api_dialog_impl(self):
         from assistant.local_openai import load_config,save_config,test_chat
-        dialog=QDialog(self);dialog.setWindowTitle('API tùy chỉnh dự phòng — OpenAI compatible');dialog.resize(600,0)
+        dialog=QDialog(self);dialog.setWindowTitle('API tùy chỉnh dự phòng — OpenAI compatible');dialog.resize(600,420)
         form=QFormLayout(dialog)
         form.addRow(QLabel('Gọi trực tiếp từ máy này. Nhập khóa xác thực server Node.js (.env), không nhập token phiên ChatGPT.\nKhóa lưu bằng DPAPI theo tài khoản Windows.'))
         url_edit=QLineEdit();url_edit.setPlaceholderText('http://127.0.0.1:3040');url_edit.setMaxLength(200)
