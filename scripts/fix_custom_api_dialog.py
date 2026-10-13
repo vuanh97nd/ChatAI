@@ -14,12 +14,14 @@ def fix(text):
         if not match:
             continue
         body = match[2]
+        body = body.replace(
+            "        if self.busy():\n"
+            "            QMessageBox.information(self,'API tùy chỉnh','Ứng dụng đang thực hiện công việc. Dừng hoặc chờ xong rồi mở cấu hình API.');return\n", '')
         if '# API dialog visibility fix' in body:
+            text = text[:match.start(2)] + body + text[match.end(2):]
             count += 1
             continue
         body = body.replace('        if self.busy() or not self.server_session:return\n',
-            "        if self.busy():\n"
-            "            QMessageBox.information(self,'API tùy chỉnh','Ứng dụng đang thực hiện công việc. Dừng hoặc chờ xong rồi mở cấu hình API.');return\n"
             "        if not self.server_session:\n"
             "            QMessageBox.information(self,'API tùy chỉnh','Đăng nhập Chat AI trước khi cấu hình API cho tài khoản.');return\n")
         body = body.replace('dialog=QDialog(self);', 'dialog=QDialog(QApplication.activeModalWidget() or self);')
