@@ -17,6 +17,16 @@ Tính năng dành cho Desktop đang đăng nhập; không triển khai lại Wor
 * Bật dự phòng: cho các lời gọi model/stream khi dịch vụ hiện tại lỗi mạng
   hoặc quá tải, trước khi đã nhận nội dung. Không dùng để vượt lỗi tài khoản,
   quyền, quota tính phí; không chuyển API lưu hội thoại sang server tùy chỉnh.
+* **Dùng API này ngay**: gửi các yêu cầu chat/planning của ServerApiClient
+  trực tiếp sang Node.js, không chờ Worker/NVIDIA báo quá tải. Bật và Lưu,
+  sau đó bắt đầu yêu cầu mới. Chế độ này dùng model đã nhập trong cấu hình
+  API tùy chỉnh, kể cả khi tên AI trong thanh chọn vẫn là nhà cung cấp cũ.
+  Thanh trạng thái báo rõ đường gọi trực tiếp và model thực tế. Tắt ô này
+  và Lưu để quay lại provider đã chọn; ô dự phòng độc lập vẫn có hiệu lực.
+
+Sau lỗi provider đủ điều kiện, API tùy chỉnh được ưu tiên trước Worker
+dự phòng nếu đã bật. Cấu hình DPAPI được tra bằng tài khoản/server chính,
+không bị đổi scope khi client đã chuyển sang Worker dự phòng.
 
 HTTP chỉ cho loopback. Remote dùng HTTPS; chuyển hướng bị từ chối để tránh
 gửi khóa sai endpoint. Server phải trả JSON/SSE kiểu OpenAI. Stream bị ngắt

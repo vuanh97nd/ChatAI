@@ -26,18 +26,19 @@ def validate(profile):
     key = profile.get('api_key', '')
     if not isinstance(key, str) or not 1 <= len(key) <= 4096 or any(ord(c) < 32 for c in key):
         raise ValueError('Nhập khóa xác thực server, tối đa 4096 ký tự.')
-    if type(profile.get('enabled', False)) is not bool:
-        raise ValueError('enabled phải là boolean.')
+    if any(type(profile.get(flag, False)) is not bool for flag in ('enabled', 'use_direct')):
+        raise ValueError('enabled/use_direct phải là boolean.')
     return dict(profile, url=profile['url'].strip().rstrip('/'), model=profile['model'].strip())
 
 
 def load(primary, enabled_only=False):
     try:
         value = json.loads(_dpapi(credentials_path().with_name('custom-backup.dpapi').read_bytes(), True))
-        if value.get('primary') != primary:
+        owner=value.get('primary',{})
+        if owner.get('username') != primary.get('username') or str(owner.get('endpoint','')).rstrip('/') != str(primary.get('endpoint','')).rstrip('/'):
             return None
         profile = validate(value['profile'])
-        return profile if not enabled_only or profile.get('enabled') else None
+        return profile if not enabled_only or profile.get('enabled') or profile.get('use_direct') else None
     except (OSError, ValueError, RuntimeError, KeyError, TypeError):
         return None
 

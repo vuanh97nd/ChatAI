@@ -359,6 +359,12 @@ class ServerApiClient:
     def stream_answer(self,model,messages,**kwargs):
         # Streaming for every OpenAI-compatible provider (the Worker relays their SSE as is);
         # only Gemini's native endpoint answers as one JSON body.
+        from .custom_backup_api import load, stream_answer as custom_stream
+        local=load({k:self._primary_session[k] for k in ('endpoint','username')})
+        if local and local.get('use_direct'):
+            if self.on_status:self.on_status('Đang dùng trực tiếp API Node.js / tùy chỉnh: '+local['model'])
+            yield from custom_stream(local,messages,kwargs.get('options',{}),self.timeout,self.cancel_event)
+            return
         if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)=='gemini':
             yield 'text',self.chat(model,messages,**kwargs)['message']['content'];return
         endpoint=self.session['endpoint']
@@ -457,8 +463,16 @@ class ServerApiClient:
         options=kwargs.get('options',{})
         if kwargs.get('format'):
             messages=[{'role':'system','content':'Trả đúng một JSON hợp lệ, không Markdown. JSON schema: '+json.dumps(kwargs['format'],ensure_ascii=False)},*messages]
+        from .custom_backup_api import load, chat as custom_chat
+        local=load({k:self._primary_session[k] for k in ('endpoint','username')})
+        if local and local.get('use_direct'):
+            if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
+            if self.on_status:self.on_status('Đang dùng trực tiếp API Node.js / tùy chỉnh: '+local['model'])
+            request=lambda:custom_chat(local,messages,options,self.timeout)
+            result=cancellable_request(request,self.cancel_event,self.on_status) if self.cancel_event is not None else request()
+            return {'message':{'role':'assistant','content':result['answer']},'truncated':bool(result.get('truncated')),'usage':{}}
         body={
-            'username':self.session['username'],'key':self.session['key'],'provider':self.provider,
+            'username':self._primary_session['username'],'key':self._primary_session['key'],'provider':self.provider,
             'messages':messages,'small':model=='document-small','format':kwargs.get('format'),
             'max_tokens':options.get('num_predict',1600),'temperature':options.get('temperature',.2)}
         from .accounts import AccountAPIError,AccountConnectionError
@@ -470,7 +484,7 @@ class ServerApiClient:
             if cancel.is_set():raise CloudError('Đã dừng yêu cầu.')
             try:
                 from .failover import ai_request
-                request=lambda:ai_request(self.session,'/api/provider/model',body,timeout=self.timeout,on_status=self.on_status)
+                request=lambda:ai_request(self._primary_session,'/api/provider/model',body,timeout=self.timeout,on_status=self.on_status)
                 result=cancellable_request(request,cancel,self.on_status) if self.cancel_event is not None else request()
                 break
             except AccountConnectionError:

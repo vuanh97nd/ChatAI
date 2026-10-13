@@ -2875,34 +2875,35 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         key.setPlaceholderText('Để trống giữ khóa đã lưu' if saved else 'CHATGPT2API_AUTH_KEY của server')
         model=QLineEdit(saved.get('model',''));model.setPlaceholderText('Nhập model server hỗ trợ');model.setMaxLength(160)
         enabled=QCheckBox('Dùng làm dự phòng khi dịch vụ AI hiện tại lỗi kết nối/quá tải');enabled.setChecked(saved.get('enabled',False))
+        direct=QCheckBox('Dùng API này ngay cho chat và thao tác AI — không chờ server chính lỗi');direct.setChecked(saved.get('use_direct',False))
         message=QLabel('Chưa kiểm tra API. /health thành công chưa chứng minh chat hoạt động.');message.setWordWrap(True)
-        form.addRow('URL API:',url);form.addRow('Khóa server:',key);form.addRow('Model:',model);form.addRow(enabled);form.addRow(message)
+        form.addRow('URL API:',url);form.addRow('Khóa server:',key);form.addRow('Model:',model);form.addRow(enabled);form.addRow(direct);form.addRow(message)
         row=QHBoxLayout();test=QPushButton('Kiểm tra chat');store=QPushButton('Lưu cấu hình');row.addWidget(test);row.addWidget(store);form.addRow(row)
         def profile():
             entered=key.text().strip()
             if not entered and url.text().strip().rstrip('/')!=saved.get('url'):
                 raise ValueError('URL đã đổi: nhập khóa của server mới.')
             return validate({'url':url.text(),'api_key':entered or saved.get('api_key',''),
-                'model':model.text(),'enabled':enabled.isChecked()})
+                'model':model.text(),'enabled':enabled.isChecked(),'use_direct':direct.isChecked()})
         def persist():
             nonlocal saved
             try:
                 value=profile();save(primary,value);saved=value;key.clear()
                 key.setPlaceholderText('Để trống giữ khóa đã lưu')
-                message.setText('Đã lưu trên máy này. Dự phòng '+('đã bật.' if value['enabled'] else 'chưa bật; có thể kiểm tra riêng.'))
+                message.setText('Đã lưu: dùng API tùy chỉnh trực tiếp cho yêu cầu AI mới.' if value['use_direct'] else 'Đã lưu trên máy này. Dự phòng '+('đã bật.' if value['enabled'] else 'chưa bật; có thể kiểm tra riêng.'))
             except Exception as error:message.setText(str(error))
         def check():
             if self.busy():return
             try:value=profile()
             except Exception as error:message.setText(str(error));return
-            for control in (url,key,model,enabled,test,store):control.setEnabled(False)
+            for control in (url,key,model,enabled,direct,test,store):control.setEnabled(False)
             message.setText('Đang gửi một yêu cầu chat thử…')
             def task(emit):
                 try:return {'value':chat(value,[{'role':'user','content':'Chỉ trả lời OK.'}],{'num_predict':64,'temperature':0},30)}
                 except Exception as error:return {'error':str(error).replace(value['api_key'],'[ẨN]')}
             def done(result):
                 if not dialog.isVisible():return
-                for control in (url,key,model,enabled,test,store):control.setEnabled(True)
+                for control in (url,key,model,enabled,direct,test,store):control.setEnabled(True)
                 if result.get('error'):message.setText('Chưa thành công: '+result['error'])
                 else:message.setText('API trả lời: '+result['value']['answer'][:300]+' — bấm Lưu để áp dụng.')
             self.work(task,done)
