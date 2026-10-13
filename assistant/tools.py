@@ -233,17 +233,31 @@ EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_solve',
     'Để áp chỉ tiêu Excel vào vật liệu, gọi geoslope_materials trước rồi Solve file output.',
     {'path':TEXT},['path'])))
 WRITES.add('geostudio_python')
+WRITES.add('geostudio_create_from_dxf')
+EXTRA_TOOLS.append(('geoslope_app', schema('geostudio_create_from_dxf',
+    'Tạo file GSZ MỚI dạng nháp từ các polygon khép kín trong DXF và chỉ tiêu người dùng. Không cần GSZ mẫu/mặt cắt cũ. '
+    'path là DXF; spec chuỗi JSON {analysis,units:"m",coordinate_source,method,materials,regions}. '
+    'materials: [{name,model:"MohrCoulomb",gamma,c_prime,phi_prime,source}] hoặc {name,model:"UndrainedPhiZero",gamma,cohesion,source}. '
+    'Không tự coi c/phi chưa rõ nghĩa là thông số hữu hiệu. regions:[{handle:"DXF_HANDLE",material:"Tên vật liệu"}]. '
+    'Tự đọc DXF để chọn đúng handle, không hỏi lại đường dẫn đã đính kèm. Chỉ nhận LWPOLYLINE kín, không bulge, không chồng lấn. '
+    'Giữ tọa độ thực, không thay bằng hình thang/mặt cắt mẫu; không dùng thông số mặc định. '
+    'Output CHƯA sẵn sàng tính: còn phải cấu hình nước, tải, miền trượt và xác minh dự án qua GeoStudio. '
+    'Không gọi Solve ngay hoặc báo Fs từ output mới này khi pending còn thiếu.',
+    {'path':TEXT,'spec':TEXT},['path','spec'])))
 EXTRA_TOOLS.append(('geoslope_app', schema('geostudio_python',
     'GeoStudio Python thật: PyGeoStudio đọc hình học GSZ; gsi chính thức cập nhật điểm hoặc Solve trên bản sao MỚI. '
     'operation inspect: đọc analysis, points (index 1-based), vùng và vật liệu đã lưu. '
+    'read_object: cần analysis và object thật từ tài liệu/SketchText; đọc payload trước khi ghi. '
+    'set_properties: properties chuỗi JSON [{object,before,after,source}], trước/sau là JSON Value đã đọc; '
+    'đối chiếu before toàn bộ rồi ghi/đọc lại/save trên bản sao. Không tự đoán path/đơn vị/thông số nước/tải. '
     'update_points: analysis đúng tên; updates là chuỗi JSON [{"index":1,"before":[x,y],"after":[x,y],"source":"DXF handle/vertex"}]. '
     'Chỉ cập nhật điểm hiện có sau khi đối chiếu PyGeoStudio và API, kiểm tra vùng không tự cắt và đọc lại tọa độ. '
-    'Không tạo điểm/vùng, không import DXF, không tự thay nước/tải/vật liệu. '
+    'Không tạo điểm/vùng, không import DXF, chỉ thay nước/tải/vật liệu bằng thuộc tính đã đọc chắc chắn. '
     'solve: chỉ cho mô hình SLOPE/W đã cấu hình/kiểm chứng đầy đủ, kiểm tra all_succeeded, LoadResults và đọc Fs mới. '
     'Không cần endpoint application_connections. Cần PyGeoStudio và gsi cài trong Python của Chat AI. '
     'Thất bại sau ghi có thể đã sửa bản sao; không tự lặp. Dùng output của lượt update làm path khi solve.',
-    {'path':TEXT,'operation':{'type':'string','enum':['inspect','update_points','solve']},
-     'analysis':TEXT,'updates':TEXT},['path','operation'])))
+    {'path':TEXT,'operation':{'type':'string','enum':['inspect','read_object','update_points','set_properties','solve']},
+     'analysis':TEXT,'object':TEXT,'updates':TEXT,'properties':TEXT},['path','operation'])))
 WRITES.add('geoslope_materials')
 EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_materials',
     'Ghi chỉ tiêu vật liệu từ BTH/bảng chỉ tiêu vào một BẢN SAO MỚI của file .gsz SLOPE/W trong whitelist; file nguồn giữ nguyên. '

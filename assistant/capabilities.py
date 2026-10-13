@@ -99,7 +99,7 @@ class Capabilities:
         if name in TRANSPORT_TOOLS:return self.application_transport.prepare(name,args)
         if name in MACRO_TOOLS:return self.application_macros.prepare(name,args)
         if name in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com.prepare(name,args)
-        if name in ('geoslope_profile','geostudio_python'):
+        if name in ('geoslope_profile','geostudio_python','geostudio_create_from_dxf'):
             from .geoslope_inspect import GeoslopeInspect
             return GeoslopeInspect(self.files).prepare(name,args)
         if name=='source_edit':return self.source_tools.prepare_edit(**args)
@@ -176,7 +176,7 @@ class Capabilities:
         if action=='plaxis_generate_script':return self.plaxis_app.commit(plan)
         if action in ('plaxis_run_problem','plaxis_commands','plaxis_tutorial_guide'):return self.plaxis_remote.commit(plan)
         if action=='geoslope_create':return self.geoslope_app.commit(plan)
-        if action in ('geoslope_profile','geostudio_python'):
+        if action in ('geoslope_profile','geostudio_python','geostudio_create_from_dxf'):
             from .geoslope_inspect import GeoslopeInspect
             return GeoslopeInspect(self.files).commit(plan)
         if action=='cad3d_create_open':return self.cad3d_app.commit(plan)

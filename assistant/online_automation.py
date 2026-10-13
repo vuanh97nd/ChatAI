@@ -875,7 +875,7 @@ def _geoslope_workflow(state):
             call.get('function',{}).get('name','')
             for call in message.get('tool_calls',[])
         )
-        if tool_names & {'geoslope_inspect','geoslope_profile','geoslope_solve','geostudio_python'}:
+        if tool_names & {'geoslope_inspect','geoslope_profile','geoslope_solve','geostudio_python','geostudio_create_from_dxf'}:
             return True
     return False
 
@@ -1176,7 +1176,7 @@ class OnlineAutomation:
         for module,component in (('application_transport',application_transport),('application_macros',application_macros)):
             if component is not None:self.schemas.extend(spec for key,spec in EXTRA_TOOLS if key==module)
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS if module=='geoslope_app' and
-                            ((spec['function']['name'] in ('geoslope_inspect','geoslope_profile','geostudio_python') and geoslope_inspector is not None) or
+                            ((spec['function']['name'] in ('geoslope_inspect','geoslope_profile','geostudio_python','geostudio_create_from_dxf') and geoslope_inspector is not None) or
                              (spec['function']['name']=='geoslope_create' and geoslope_app is not None)))
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS
                             if module=='geoslope_solver' and geoslope_solver is not None)
@@ -1281,7 +1281,7 @@ class OnlineAutomation:
         if name in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com
         if self.office_tools and any(s['function']['name']==name for s in self.office_tools.schemas):return self.office_tools
         if self.office_tools and (name.startswith('excel_') or name in ('office_read','office_create','word_replace','file_list')):return self.office_tools
-        if name in ('geoslope_inspect','geoslope_profile','geostudio_python'):return self.geoslope_inspector
+        if name in ('geoslope_inspect','geoslope_profile','geostudio_python','geostudio_create_from_dxf'):return self.geoslope_inspector
         if name=='geoslope_create':return self.geoslope_app
         if name in ('geoslope_solve','geoslope_materials'):return self.geoslope_solver
         if name=='cad_tracdoc_stations':return self.tracdoc_app

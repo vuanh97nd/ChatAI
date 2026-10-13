@@ -227,6 +227,9 @@ def inspect_gsz(path):
 class GeoslopeInspect:
     def __init__(self,files):self.files=files
     def prepare(self,name,args):
+        if name=='geostudio_create_from_dxf':
+            from .geostudio_dxf_project import GeoStudioDxfProject
+            return GeoStudioDxfProject(self.files).prepare(name,args)
         if name=='geostudio_python':
             from .geostudio_python import GeoStudioPython
             return GeoStudioPython(self.files).prepare(name,args)
@@ -251,6 +254,9 @@ class GeoslopeInspect:
         if type(start) is not int or not 0<=start<=1000000 or type(limit) is not int or not 1<=limit<=100:raise ValueError('start/limit không hợp lệ.')
         return {'action':'geoslope_inspect','path':str(path),'options':{k:v for k,v in args.items() if k!='path'}}
     def commit(self,plan):
+        if plan['action']=='geostudio_create_from_dxf':
+            from .geostudio_dxf_project import GeoStudioDxfProject
+            return GeoStudioDxfProject(self.files).commit(plan)
         if plan['action']=='geostudio_python':
             from .geostudio_python import GeoStudioPython
             return GeoStudioPython(self.files).commit(plan)

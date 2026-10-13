@@ -17,8 +17,8 @@ class GeoStudioPython:
         if path.suffix.lower() != '.gsz' or not path.is_file():
             raise ValueError('Cần dự án .gsz đã lưu trong whitelist.')
         operation = args.get('operation')
-        if operation not in ('inspect', 'update_points', 'solve'):
-            raise ValueError('operation: inspect, update_points hoặc solve.')
+        if operation not in ('inspect', 'read_object', 'update_points', 'set_properties', 'solve'):
+            raise ValueError('operation không được hỗ trợ.')
         analysis = args.get('analysis', '')
         if operation != 'inspect' and (not isinstance(analysis, str) or not analysis.strip()):
             raise ValueError('Cần tên analysis thật từ inspect.')
@@ -41,10 +41,25 @@ class GeoStudioPython:
                 raise ValueError('Cần nguồn tọa độ (DXF handle/vertex hoặc dữ kiện người dùng).')
         if operation == 'update_points' and not updates:
             raise ValueError('Chưa có tọa độ cần cập nhật.')
+        properties = args.get('properties', '[]')
+        properties = json.loads(properties) if isinstance(properties, str) else properties
+        if not isinstance(properties, list) or len(properties) > 100:
+            raise ValueError('properties cần danh sách tối đa 100 thuộc tính.')
+        if operation != 'set_properties' and properties or operation == 'set_properties' and not properties:
+            raise ValueError('Chỉ set_properties nhận danh sách thuộc tính không rỗng.')
+        def valid_object(value):
+            return isinstance(value, str) and 0 < len(value) <= 1000 and value.startswith(('Materials[', 'CurrentAnalysis.')) and all(ord(c) >= 32 for c in value)
+        if operation == 'read_object' and not valid_object(args.get('object')):
+            raise ValueError('Cần object thật bắt đầu Materials[...] hoặc CurrentAnalysis. từ tài liệu/SketchText.')
+        for row in properties:
+            if not isinstance(row, dict) or not valid_object(row.get('object')) or 'before' not in row or 'after' not in row or not isinstance(row.get('source'), str) or not row['source'].strip():
+                raise ValueError('Mỗi properties cần object, before, after và source.')
+            json.dumps(row, allow_nan=False)
         output = self.files.path(str(path.parent / ('ChatAI-GeoStudio-' + uuid.uuid4().hex[:12] + '.gsz')), exists=False)
         return {'action': name, 'path': str(path), 'sha256': digest(path),
                 'output': str(output), 'operation': operation, 'analysis': analysis,
-                'updates': updates, 'note': 'Làm trên bản sao mới; không tạo vùng hoặc nhập DXF.'}
+                'updates': updates, 'properties': properties, 'object': args.get('object'),
+                'note': 'Làm trên bản sao mới; không tạo vùng hoặc nhập DXF.'}
 
     def commit(self, plan):
         source = self.files.path(plan['path'])
@@ -72,7 +87,7 @@ class GeoStudioPython:
         analysis = model.getAnalysisByName(plan['analysis'])
         if analysis is None:
             raise ValueError('Không tìm thấy analysis trong PyGeoStudio.')
-        if analysis['Kind'] != 'SLOPE':
+        if analysis['Kind'] not in ('SLOPE', 'SLOPE/W'):
             raise ValueError('Tool này chỉ tính SLOPE/W, không đọc Fs từ analysis khác.')
         geometry = analysis['Geometry']
         points = np.asarray(geometry['Points'], dtype=float)
@@ -98,7 +113,26 @@ class GeoStudioPython:
         result = {'ok': False, 'output': str(output), 'source': str(source), 'solved': False}
         try:
             project = gsi.OpenProject(str(output))
-            if plan['operation'] == 'update_points':
+            if plan['operation'] in ('read_object', 'set_properties'):
+                from google.protobuf.json_format import ParseDict
+                def get_object(path):
+                    return MessageToDict(project.Get(gsi.GetRequest(
+                        analysis=plan['analysis'], object=path), timeout=30)).get('data')
+                if plan['operation'] == 'read_object':
+                    result.update(ok=True, object=plan['object'], data=get_object(plan['object']))
+                else:
+                    for row in plan['properties']:
+                        if get_object(row['object']) != row['before']:
+                            raise ValueError('before khác API hiện tại; không ghi thuộc tính.')
+                    for row in plan['properties']:
+                        check_stop()
+                        value = ParseDict(row['after'], gsi.Value())
+                        project.Set(gsi.SetRequest(analysis=plan['analysis'], object=row['object'], data=value), timeout=30)
+                        if get_object(row['object']) != row['after']:
+                            raise ValueError('Thuộc tính đọc lại không khớp; không lặp ghi.')
+                    project.Save()
+                    result.update(ok=True, readback=plan['properties'], results_stale=True)
+            elif plan['operation'] == 'update_points':
                 # Read all targets before the first write; do not conflate XML IDs
                 # with the official 1-based object array indices.
                 def read_point(index):
