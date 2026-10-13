@@ -1,0 +1,4 @@
+# Install with the Python used by Chat AI. gsi comes from the licensed
+# GeoStudio installation's API/requirements.txt, not from a guessed PyPI package.
+PyGeoStudio==0.4.3
+shapely>=2,<3
