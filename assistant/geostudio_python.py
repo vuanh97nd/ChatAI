@@ -71,6 +71,17 @@ class GeoStudioPython:
         # Inspect compatibility and ZIP/XML bounds before third-party parsing.
         from .geoslope_inspect import inspect_gsz
         saved = inspect_gsz(source)
+        if plan['operation'] == 'solve':
+            import zipfile
+            from xml.etree import ElementTree as ET
+            with zipfile.ZipFile(source) as archive:
+                xmls = [n for n in archive.namelist() if '/' not in n and n.lower().endswith('.xml')]
+                root = ET.fromstring(archive.read(xmls[0]))
+            target = next((a for a in root.findall('./Analyses/Analysis') if a.findtext('Name') == plan['analysis']), None)
+            if target is not None:
+                for context in root.findall('./Contexts/Context'):
+                    if context.findtext('AnalysisID') == target.findtext('ID') and context.findtext('IsDefined', '').strip().lower() == 'false':
+                        raise ValueError('Dự án nháp IsDefined=false: cấu hình và kiểm tra native nước/tải/miền trượt trước Solve; không ép cờ thành true.')
         import PyGeoStudio as pgs
         import numpy as np
         model = pgs.GeoStudioFile(str(source))
