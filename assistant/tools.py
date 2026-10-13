@@ -232,6 +232,18 @@ EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_solve',
     'Tool này chỉ chạy mô hình .gsz đã dựng sẵn; không chuyển Excel/DXF thành mô hình và không chỉnh sửa đầu vào. '
     'Để áp chỉ tiêu Excel vào vật liệu, gọi geoslope_materials trước rồi Solve file output.',
     {'path':TEXT},['path'])))
+WRITES.add('geostudio_python')
+EXTRA_TOOLS.append(('geoslope_app', schema('geostudio_python',
+    'GeoStudio Python thật: PyGeoStudio đọc hình học GSZ; gsi chính thức cập nhật điểm hoặc Solve trên bản sao MỚI. '
+    'operation inspect: đọc analysis, points (index 1-based), vùng và vật liệu đã lưu. '
+    'update_points: analysis đúng tên; updates là chuỗi JSON [{"index":1,"before":[x,y],"after":[x,y],"source":"DXF handle/vertex"}]. '
+    'Chỉ cập nhật điểm hiện có sau khi đối chiếu PyGeoStudio và API, kiểm tra vùng không tự cắt và đọc lại tọa độ. '
+    'Không tạo điểm/vùng, không import DXF, không tự thay nước/tải/vật liệu. '
+    'solve: chỉ cho mô hình SLOPE/W đã cấu hình/kiểm chứng đầy đủ, kiểm tra all_succeeded, LoadResults và đọc Fs mới. '
+    'Không cần endpoint application_connections. Cần PyGeoStudio và gsi cài trong Python của Chat AI. '
+    'Thất bại sau ghi có thể đã sửa bản sao; không tự lặp. Dùng output của lượt update làm path khi solve.',
+    {'path':TEXT,'operation':{'type':'string','enum':['inspect','update_points','solve']},
+     'analysis':TEXT,'updates':TEXT},['path','operation'])))
 WRITES.add('geoslope_materials')
 EXTRA_TOOLS.append(('geoslope_solver', schema('geoslope_materials',
     'Ghi chỉ tiêu vật liệu từ BTH/bảng chỉ tiêu vào một BẢN SAO MỚI của file .gsz SLOPE/W trong whitelist; file nguồn giữ nguyên. '

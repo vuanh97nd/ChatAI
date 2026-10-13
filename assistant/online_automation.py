@@ -875,7 +875,7 @@ def _geoslope_workflow(state):
             call.get('function',{}).get('name','')
             for call in message.get('tool_calls',[])
         )
-        if tool_names & {'geoslope_inspect','geoslope_profile','geoslope_solve'}:
+        if tool_names & {'geoslope_inspect','geoslope_profile','geoslope_solve','geostudio_python'}:
             return True
     return False
 
@@ -1176,7 +1176,7 @@ class OnlineAutomation:
         for module,component in (('application_transport',application_transport),('application_macros',application_macros)):
             if component is not None:self.schemas.extend(spec for key,spec in EXTRA_TOOLS if key==module)
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS if module=='geoslope_app' and
-                            ((spec['function']['name'] in ('geoslope_inspect','geoslope_profile') and geoslope_inspector is not None) or
+                            ((spec['function']['name'] in ('geoslope_inspect','geoslope_profile','geostudio_python') and geoslope_inspector is not None) or
                              (spec['function']['name']=='geoslope_create' and geoslope_app is not None)))
         self.schemas.extend(spec for module,spec in EXTRA_TOOLS
                             if module=='geoslope_solver' and geoslope_solver is not None)
@@ -1281,7 +1281,7 @@ class OnlineAutomation:
         if name in {'excel_com','word_com','powerpoint_com','autocad_com'}:return self.windows_com
         if self.office_tools and any(s['function']['name']==name for s in self.office_tools.schemas):return self.office_tools
         if self.office_tools and (name.startswith('excel_') or name in ('office_read','office_create','word_replace','file_list')):return self.office_tools
-        if name in ('geoslope_inspect','geoslope_profile'):return self.geoslope_inspector
+        if name in ('geoslope_inspect','geoslope_profile','geostudio_python'):return self.geoslope_inspector
         if name=='geoslope_create':return self.geoslope_app
         if name in ('geoslope_solve','geoslope_materials'):return self.geoslope_solver
         if name=='cad_tracdoc_stations':return self.tracdoc_app
@@ -1576,6 +1576,11 @@ class OnlineAutomation:
             # per-step data goes to `volatile`, sent as a system message after the history.
             volatile=''
             if _geoslope_workflow(state) and not research:
+                instruction+='\nGeoStudio: nếu có geostudio_python, dùng inspect rồi update_points/solve cho dự án đã có. '
+                instruction+='Đây là Python gsi/PyGeoStudio trực tiếp, không cần application_connections hoặc click File. '
+                instruction+='Chỉ sửa điểm có index/before đã đọc và tọa độ after có nguồn; không lấy tọa độ của bài mẫu. '
+                instruction+='Sau đổi hình học phải kiểm tra nước, tải, vật liệu, miền trượt còn đúng trước solve. '
+                instruction+='Tool chưa tạo mới vùng hoặc nhập DXF; không báo đã hỗ trợ chức năng đó.'
                 instruction+='\nGEOSTUDIO UI: Khi người dùng đã giao dựng/tính, tự chọn cách thực hiện trong quyền đã giao; '
                 instruction+='không hỏi lại nhập DXF hay vẽ, không xin pixel/menu từ người dùng. Giữ đúng dự án đang mở; '
                 instruction+='windows_list_windows/windows_attach chọn đúng EXE, PID và tiêu đề, windows_capture lấy observation mới. '
