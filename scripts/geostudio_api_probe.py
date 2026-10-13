@@ -8,11 +8,31 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import re
+import zipfile
+import xml.etree.ElementTree as ET
+
+
+def analysis_names(path):
+    with zipfile.ZipFile(path) as archive:
+        roots = [entry for entry in archive.infolist()
+                 if '/' not in entry.filename and '\\' not in entry.filename
+                 and entry.filename.lower().endswith('.xml')]
+        if len(roots) != 1 or roots[0].file_size > 20 * 1024 ** 2:
+            raise ValueError('GSZ needs one root project XML, at most 20 MiB.')
+        data = archive.read(roots[0])
+    if re.search(br'<!\s*(?:DOCTYPE|ENTITY)', data, re.I):
+        raise ValueError('Unsupported XML declarations.')
+    root = ET.fromstring(data)
+    return [name for item in root.findall('./Analyses/Analysis')
+            if (name := item.findtext('Name'))]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--project', type=Path)
+    parser.add_argument('--analysis', help='Exact analysis name from the project')
+    parser.add_argument('--object', help='Object path from API documentation, if needed')
     parser.add_argument('--output', type=Path, default=Path('data/geostudio-api-probe.json'))
     args = parser.parse_args()
     report = {'connected': False, 'solved': False, 'errors': []}
@@ -44,11 +64,20 @@ def main():
             with tempfile.TemporaryDirectory(prefix='ChatAI-GeoStudio-Probe-') as folder:
                 working = Path(folder) / source.name
                 shutil.copy2(source, working)
+                names = analysis_names(working)
+                report['analyses'] = names
+                selected = args.analysis or (names[0] if len(names) == 1 else None)
+                if not selected or selected not in names:
+                    raise ValueError('Use --analysis with one of these exact names: ' + json.dumps(names, ensure_ascii=False))
                 project = interface.OpenProject(str(working))
                 report['connected'] = True
                 report['source'] = str(source)
                 try:
-                    response = project.Get(pb.GetRequest(), timeout=30)
+                    request = pb.GetRequest(analysis=selected)
+                    if args.object:
+                        request.object = args.object
+                    report['get_request'] = MessageToDict(request, preserving_proto_field_name=True)
+                    response = project.Get(request, timeout=30)
                     report['get_response'] = MessageToDict(response, preserving_proto_field_name=True)
                     report['read_succeeded'] = True
                 finally:
