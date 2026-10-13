@@ -348,6 +348,7 @@ class ServerApiClient:
         if not session:raise CloudError('Đăng nhập để dùng AI trực tuyến với key do Admin cấu hình.')
         if provider not in API_ENDPOINTS and provider!='cloudflare' and not __import__('re').fullmatch(r'ai_[a-f0-9]{32}',provider):raise ValueError('Dịch vụ API không hợp lệ.')
         self.session=dict(session);self.provider=provider;self.model=provider;self.on_status=on_status;self.cancel_event=cancel_event
+        self._primary_session=dict(session)
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
         from .failover import active_backup
         backup=active_backup(self.session)
@@ -415,6 +416,12 @@ class ServerApiClient:
             except (ValueError,UnicodeDecodeError):detail={}
             if not isinstance(detail,dict):detail={}
             if not received_output and not (self.cancel_event is not None and self.cancel_event.is_set()) and error.code in (429,500,502,503,504,530) and detail.get('code')!='QUOTA_EXHAUSTED':
+                from .custom_backup_api import load, stream_answer as custom_stream
+                custom=load({k:self._primary_session[k] for k in ('endpoint','username')},enabled_only=True)
+                if custom:
+                    if self.on_status:self.on_status('Đang dùng API tùy chỉnh dự phòng.')
+                    yield from custom_stream(custom,messages,options,self.timeout,self.cancel_event)
+                    return
                 from .failover import load_backup,mark_unavailable
                 backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
                 if backup:
@@ -428,6 +435,13 @@ class ServerApiClient:
                 message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
             raise CloudError(message,detail.get('code','')) from None
         except (URLError,TimeoutError,HTTPException,ConnectionError):
+            if not received_output and not (self.cancel_event is not None and self.cancel_event.is_set()):
+                from .custom_backup_api import load, stream_answer as custom_stream
+                custom=load({k:self._primary_session[k] for k in ('endpoint','username')},enabled_only=True)
+                if custom:
+                    if self.on_status:self.on_status('Đang dùng API tùy chỉnh dự phòng.')
+                    yield from custom_stream(custom,messages,options,self.timeout,self.cancel_event)
+                    return
             from .failover import load_backup,mark_unavailable
             backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
             if not received_output and backup and not (self.cancel_event is not None and self.cancel_event.is_set()):

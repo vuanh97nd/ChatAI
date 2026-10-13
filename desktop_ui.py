@@ -2784,13 +2784,16 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         primary={k:self.server_session[k] for k in ('endpoint','username')}
         session=load_backup(primary)
         if not session:
-            QMessageBox.information(self,'API dự phòng','Kết nối tài khoản dự phòng trước. Dùng tài khoản quản trị dự phòng để lưu API.');return
+            self.custom_backup_api_dialog();return
         dialog=QDialog(self);dialog.setWindowTitle('Cấu hình API dự phòng');dialog.resize(560,360)
         form=QFormLayout(dialog);target=QLabel(session['endpoint']);target.setWordWrap(True);form.addRow('Server đích:',target)
         main_server=QLabel(primary['endpoint']);main_server.setWordWrap(True);form.addRow('Server chính:',main_server)
         change_server=QPushButton('Chọn / đổi server dự phòng')
         change_server.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_login_dialog)))
         form.addRow(change_server)
+        custom_api=QPushButton('API tùy chỉnh / Node.js — nhập URL và kiểm tra')
+        custom_api.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.custom_backup_api_dialog)))
+        form.addRow(custom_api)
         form.addRow(QLabel('Lưu khóa cần quyền Admin trên server dự phòng. Để trống để giữ khóa cũ.'))
         provider=QComboBox();models={'nvidia':self.cfg.get('nvidia_model',''),'deepseek':self.cfg.get('deepseek_model',''),'gemini':self.cfg.get('gemini_model',''),'groq':'openai/gpt-oss-120b','openai':self.cfg.get('openai_model',''),'openrouter':self.cfg.get('openrouter_model','openai/gpt-4.1-mini'),'cloudflare':''}
         for name in models:provider.addItem(PROVIDER_NAMES.get(name,name),name)
@@ -2857,6 +2860,54 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         form.addRow(controls)
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
         QTimer.singleShot(0,lambda:request('status') if dialog.isVisible() else None)
+        dialog.exec()
+
+    def custom_backup_api_dialog(self):
+        if self.busy() or not self.server_session:return
+        from assistant.custom_backup_api import load, save, validate, chat
+        primary={k:self.server_session[k] for k in ('endpoint','username')}
+        saved=load(primary) or {}
+        dialog=QDialog(self);dialog.setWindowTitle('API tùy chỉnh dự phòng — OpenAI compatible');dialog.resize(640,360)
+        form=QFormLayout(dialog)
+        note=QLabel('Gọi trực tiếp từ máy này. Nhập khóa xác thực server Node.js (.env), không nhập token phiên ChatGPT. Khóa lưu bằng DPAPI theo tài khoản Windows.');note.setWordWrap(True);form.addRow(note)
+        url=QLineEdit(saved.get('url',''));url.setPlaceholderText('http://127.0.0.1:3040 hoặc https://api.ten-mien-cua-ban')
+        key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password);key.setMaxLength(4096)
+        key.setPlaceholderText('Để trống giữ khóa đã lưu' if saved else 'CHATGPT2API_AUTH_KEY của server')
+        model=QLineEdit(saved.get('model',''));model.setPlaceholderText('Nhập model server hỗ trợ');model.setMaxLength(160)
+        enabled=QCheckBox('Dùng làm dự phòng khi dịch vụ AI hiện tại lỗi kết nối/quá tải');enabled.setChecked(saved.get('enabled',False))
+        message=QLabel('Chưa kiểm tra API. /health thành công chưa chứng minh chat hoạt động.');message.setWordWrap(True)
+        form.addRow('URL API:',url);form.addRow('Khóa server:',key);form.addRow('Model:',model);form.addRow(enabled);form.addRow(message)
+        row=QHBoxLayout();test=QPushButton('Kiểm tra chat');store=QPushButton('Lưu cấu hình');row.addWidget(test);row.addWidget(store);form.addRow(row)
+        def profile():
+            entered=key.text().strip()
+            if not entered and url.text().strip().rstrip('/')!=saved.get('url'):
+                raise ValueError('URL đã đổi: nhập khóa của server mới.')
+            return validate({'url':url.text(),'api_key':entered or saved.get('api_key',''),
+                'model':model.text(),'enabled':enabled.isChecked()})
+        def persist():
+            nonlocal saved
+            try:
+                value=profile();save(primary,value);saved=value;key.clear()
+                key.setPlaceholderText('Để trống giữ khóa đã lưu')
+                message.setText('Đã lưu trên máy này. Dự phòng '+('đã bật.' if value['enabled'] else 'chưa bật; có thể kiểm tra riêng.'))
+            except Exception as error:message.setText(str(error))
+        def check():
+            if self.busy():return
+            try:value=profile()
+            except Exception as error:message.setText(str(error));return
+            for control in (url,key,model,enabled,test,store):control.setEnabled(False)
+            message.setText('Đang gửi một yêu cầu chat thử…')
+            def task(emit):
+                try:return {'value':chat(value,[{'role':'user','content':'Chỉ trả lời OK.'}],{'num_predict':64,'temperature':0},30)}
+                except Exception as error:return {'error':str(error).replace(value['api_key'],'[ẨN]')}
+            def done(result):
+                if not dialog.isVisible():return
+                for control in (url,key,model,enabled,test,store):control.setEnabled(True)
+                if result.get('error'):message.setText('Chưa thành công: '+result['error'])
+                else:message.setText('API trả lời: '+result['value']['answer'][:300]+' — bấm Lưu để áp dụng.')
+            self.work(task,done)
+        test.clicked.connect(check);store.clicked.connect(persist)
+        close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
         dialog.exec()
 
     def login_dialog(self):

@@ -30,17 +30,34 @@ def eligible(error):
 
 def ai_request(session,path,body,timeout=125,on_status=None):
     allowed=path in ('/api/provider/model','/api/models','/api/document/model')
+    def custom(error):
+        if path!='/api/provider/model' or not eligible(error):return None
+        from .custom_backup_api import fallback
+        return fallback(session,body.get('messages',[]),
+            {'num_predict':body.get('max_tokens',1600),'temperature':body.get('temperature',.2)},timeout,on_status)
     active=active_backup(session) if allowed else None
     if active:
-        return request_account(active['endpoint'],path,dict(body,username=active['username'],key=active['key']),timeout=timeout)
+        try:return request_account(active['endpoint'],path,dict(body,username=active['username'],key=active['key']),timeout=timeout)
+        except RuntimeError as error:
+            result=custom(error)
+            if result is not None:return result
+            raise
     try:return request_account(session['endpoint'],path,body,timeout=timeout)
     except RuntimeError as error:
         backup=load_backup({'endpoint':session['endpoint'],'username':session['username']})
-        if path not in ('/api/provider/model','/api/models','/api/document/model') or not backup or not eligible(error):raise
+        if not allowed or not eligible(error):raise
+        if not backup:
+            result=custom(error)
+            if result is not None:return result
+            raise
         mark_unavailable(session)
         if on_status:on_status('Server chính không hoạt động; đang dùng AI ở server dự phòng. Lịch sử vẫn thuộc server chính.')
         payload=dict(body,username=backup['username'],key=backup['key'])
-        return request_account(backup['endpoint'],path,payload,timeout=timeout)
+        try:return request_account(backup['endpoint'],path,payload,timeout=timeout)
+        except RuntimeError as backup_error:
+            result=custom(backup_error)
+            if result is not None:return result
+            raise
 
 # A short circuit avoids contacting the locked Worker on every agent step.
 import time
