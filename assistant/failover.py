@@ -46,9 +46,9 @@ def ai_request(session,path,body,timeout=125,on_status=None):
     except RuntimeError as error:
         backup=load_backup({'endpoint':session['endpoint'],'username':session['username']})
         if not allowed or not eligible(error):raise
+        result=custom(error)
+        if result is not None:return result
         if not backup:
-            result=custom(error)
-            if result is not None:return result
             raise
         mark_unavailable(session)
         if on_status:on_status('Server chính không hoạt động; đang dùng AI ở server dự phòng. Lịch sử vẫn thuộc server chính.')
