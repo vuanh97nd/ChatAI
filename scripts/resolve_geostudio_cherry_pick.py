@@ -44,8 +44,17 @@ def main():
     if not pending.startswith('3fa0c78'):
         raise ValueError('This resolver is only for cherry-pick 3fa0c78.')
     relative = 'assistant/online_automation.py'
-    text = integrate(git('show', ':2:' + relative))
     path = root / relative
+    stages = git('ls-files', '--unmerged', '--', relative)
+    if any(line.split('\t', 1)[0].endswith(' 2') for line in stages.splitlines()):
+        base = git('show', ':2:' + relative)
+    else:
+        # A prior restore/add may have collapsed the unmerged index to stage 0.
+        # Preserve valid working edits; never parse conflict markers as Python.
+        base = path.read_text(encoding='utf-8-sig')
+        if any(line.startswith(('<<<<<<< ', '=======', '>>>>>>> ')) for line in base.splitlines()):
+            base = git('show', 'HEAD:' + relative)
+    text = integrate(base)
     # Preserve the conflicted working file for review, including local edits.
     backup = root / 'data' / ('online_automation-conflict-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.txt')
     backup.parent.mkdir(parents=True, exist_ok=True)
