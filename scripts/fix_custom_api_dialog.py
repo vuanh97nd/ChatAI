@@ -7,6 +7,23 @@ from datetime import datetime
 
 def fix(text):
     ast.parse(text)
+    old = '        custom_api.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.custom_backup_api_dialog)))\n'
+    new = (
+        '        def open_custom_api(checked=False):\n'
+        '            try:\n'
+        '                self.custom_backup_api_dialog()\n'
+        '            except Exception:\n'
+        '                import traceback\n'
+        '                details=traceback.format_exc()\n'
+        '                try:\n'
+        "                    log=ROOT/'data'/'crash.log'\n"
+        '                    log.parent.mkdir(parents=True,exist_ok=True)\n'
+        "                    with log.open('a',encoding='utf-8') as stream:stream.write('\\nCustom API dialog open failed\\n'+details)\n"
+        '                except OSError:pass\n'
+        "                QMessageBox.warning(dialog,'API tùy chỉnh','Không mở được hộp cấu hình API. Chi tiết đã ghi trong data/crash.log. Hộp hiện tại được giữ nguyên.')\n"
+        '        custom_api.clicked.connect(open_custom_api)\n'
+    )
+    text = text.replace(old, new)
     count = 0
     for name in ('custom_backup_api_dialog', 'custom_local_api_dialog'):
         pattern = re.compile(r'(^    def ' + name + r'\(self\):\n)(.*?)(?=^    def |\Z)', re.M | re.S)
