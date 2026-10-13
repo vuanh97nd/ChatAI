@@ -28,6 +28,19 @@ Sau lỗi provider đủ điều kiện, API tùy chỉnh được ưu tiên tr�
 dự phòng nếu đã bật. Cấu hình DPAPI được tra bằng tài khoản/server chính,
 không bị đổi scope khi client đã chuyển sang Worker dự phòng.
 
+## Công cụ và quyền thao tác
+
+Node.js chỉ là kênh AI; tool executor nằm trong Chat AI Desktop. Lượt
+OnlineAutomation gửi các schema thật của PLAXIS/CAD/Windows/file đang có,
+giải thích rằng đây là JSON planner cho executor bên ngoài, không phụ thuộc
+danh sách native tools của phiên ChatGPT. Không trao quyền mới ở phía Node.
+Quyền ứng dụng, whitelist, stop/pause và kiểm chứng mô hình vẫn áp dụng như
+các provider khác. Không coi câu trả lời AI là bằng chứng thao tác đã chạy.
+
+Yêu cầu tiếp tục một bài PLAXIS có trong hội thoại được định tuyến về chế
+độ thao tác, ngay cả khi chưa có kết quả tool trước đó. Không chuyển câu hỏi
+thời tiết hoặc công việc khác sang thao tác chỉ vì lịch sử có PLAXIS.
+
 HTTP chỉ cho loopback. Remote dùng HTTPS; chuyển hướng bị từ chối để tránh
 gửi khóa sai endpoint. Server phải trả JSON/SSE kiểu OpenAI. Stream bị ngắt
 sau khi đã có nội dung không được tự phát lại yêu cầu.

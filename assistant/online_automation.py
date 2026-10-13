@@ -262,6 +262,13 @@ def check_confirmation(output,state,cfg):
             if failure:raise ValueError(failure+' Chọn bước đọc chẩn đoán khác; không gửi lại lô lệnh lỗi.')
         return
     answer=output['answer']
+    if state.get('node_tool_executor'):
+        from .node_tool_bridge import unsupported_denial
+        available=unsupported_denial(answer,state.get('planning_tool_names',[]))
+        if available:
+            raise ValueError('Chat AI đã cung cấp tool thật '+available+'. Trả JSON gọi tool cho bước đọc hiện tại; '
+                'không kết luận thiếu tích hợp từ danh sách công cụ native ChatGPT. Kết nối/quyền thực tế sẽ được executor kiểm tra. '
+                'Nếu tool chạy lỗi, báo chính xác lỗi đó, không tự nhận đã thao tác.')
     unverified=unverified_completion(answer,state)
     if unverified:
         last_user=max((i for i,m in enumerate(state['messages']) if m.get('role')=='user'),default=-1)
@@ -844,6 +851,9 @@ def use_automation(prompt, cfg, state, tool_mode=False):
     recent=state.get('messages',[])[-60:]
     plaxis_task=any(m.get('role')=='tool' and str(m.get('tool_name','')).startswith('plaxis_') for m in recent)
     manual_read=any(m.get('role')=='tool' and m.get('tool_name')=='pdf_read' for m in recent)
+    continuing=re.fullmatch(r'\s*(?:tiếp tục|làm tiếp|làm đi|dựng đi|tính đi|đã cấp.*quyền|cấp.*quyền rồi|ok|đồng ý)\s*[.!]?\s*',prompt,re.I)
+    plaxis_goal=any(m.get('role')=='user' and requested_automation(str(m.get('content',''))) and re.search(r'plaxis|\bTBM\b',str(m.get('content','')),re.I) for m in recent)
+    if continuing and plaxis_goal:return True
     return bool(plaxis_task or (manual_read and re.search(r'manual|pdf|tài liệu|\bbài\b|tutorial|số liệu|tính|kiểm tra',prompt,re.I)))
 
 
@@ -1605,6 +1615,18 @@ class OnlineAutomation:
                               '{"answer":"câu hỏi cụ thể","tool":"","arguments":{}} để trao đổi. '
                               'Không hỏi lại thông tin đã có. Khi đủ dữ kiện, đề xuất công cụ phù hợp. '
                               'arguments nên là đối tượng JSON, tránh mã hóa JSON thành chuỗi lồng nhau.')
+            primary=getattr(self.client,'_primary_session',None)
+            local_api=None
+            if isinstance(primary,dict) and all(k in primary for k in ('endpoint','username')):
+                from .custom_backup_api import load
+                local_api=load({k:primary[k] for k in ('endpoint','username')},enabled_only=True)
+            state['node_tool_executor']=bool(local_api)
+            if local_api:
+                from .node_tool_bridge import planning_contract
+                contract,names=planning_contract(planning_schemas)
+                state['planning_tool_names']=names
+                messages[0]['content']+=contract
+                self.store.audit(self.cid,'local_api_tool_executor',{'tool_count':len(names),'plaxis_available':'plaxis_commands' in names})
             messages[0]['content']+='\n'+instruction_note
             messages[0]['content']+='\nVới bài toán PLAXIS không có mẫu, dùng plaxis_commands để tra lệnh và dựng đúng bài từng bước. Yêu cầu "tự tạo mẫu"/"tìm cách khác" giữ nguyên bài đang làm, không đổi sang embankment chỉ vì có mẫu sẵn. Không tự đổi thông số, bỏ strut/neo/tải hoặc đề xuất giản lược nếu chưa được yêu cầu. Chỉ hỏi đúng dữ kiện còn thiếu từ tài liệu.'
             if any(schema['function']['name']=='plaxis_commands' for schema in planning_schemas):
