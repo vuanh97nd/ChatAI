@@ -2862,6 +2862,10 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
 
     def custom_local_api_dialog(self):
         """Dialog cấu hình API tùy chỉnh dự phòng (OpenAI compatible, gọi trực tiếp từ máy)."""
+        existing=getattr(self,'_local_api_dialog',None)
+        if existing is not None:
+            try:existing.raise_();existing.activateWindow();return
+            except RuntimeError:self._local_api_dialog=None
         try:
             self._custom_local_api_dialog_impl()
         except Exception as e:
@@ -2880,7 +2884,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         status_lbl=QLabel('');status_lbl.setWordWrap(True)
         form.addRow('URL API:',url_edit);form.addRow('Khóa server:',key_edit);form.addRow('Model:',model_edit)
         form.addRow(fallback_chk);form.addRow(direct_chk);form.addRow(status_lbl)
-        # Pre-fill from saved config
         cfg_now=load_config()
         if cfg_now:
             url_edit.setText(cfg_now.get('url',''));model_edit.setText(cfg_now.get('model',''))
@@ -2934,7 +2937,10 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                 status_lbl.setText('Đã khởi động server Node.js. Đợi vài giây rồi bấm Kiểm tra chat.')
             except Exception as e:status_lbl.setText('Không khởi động được server: '+str(e))
         test_btn.clicked.connect(do_test);save_btn.clicked.connect(do_save);launch_btn.clicked.connect(do_launch)
-        dialog.exec()
+        def _clear_ref():self._local_api_dialog=None
+        dialog.finished.connect(_clear_ref)
+        self._local_api_dialog=dialog
+        dialog.open()
 
     def login_dialog(self):
         if self.server_session:
