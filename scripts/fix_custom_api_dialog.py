@@ -31,6 +31,8 @@ def fix(text):
         if not match:
             continue
         body = match[2]
+        body = body.replace('try:existing.raise_();existing.activateWindow();return',
+                            'try:existing.show();existing.raise_();existing.activateWindow();return')
         body = body.replace(
             "        if self.busy():\n"
             "            QMessageBox.information(self,'API tùy chỉnh','Ứng dụng đang thực hiện công việc. Dừng hoặc chờ xong rồi mở cấu hình API.');return\n", '')
@@ -53,6 +55,23 @@ def fix(text):
         count += 1
     if not count:
         raise ValueError('No custom API dialog found; nothing written.')
+    # The merged version may cache a modeless dialog in a separate implementation.
+    text = text.replace('try:existing.raise_();existing.activateWindow();return',
+                        'try:existing.show();existing.raise_();existing.activateWindow();return')
+    impl = re.compile(r'(^    def _custom_local_api_dialog_impl\(self\):\n)(.*?)(?=^    def |\Z)', re.M | re.S)
+    match = impl.search(text)
+    if match:
+        body = match[2].replace('dialog=QDialog(self);','dialog=QDialog(QApplication.activeModalWidget() or self);')
+        text = text[:match.start(2)] + body + text[match.end(2):]
+    # Keep a live reference and let Qt open asynchronously instead of nesting exec.
+    pattern = re.compile(r'(^    def custom_backup_api_dialog\(self\):\n)(.*?)(?=^    def |\Z)', re.M | re.S)
+    match = pattern.search(text)
+    if match:
+        body = match[2].replace(
+            '        dialog.show();dialog.raise_();dialog.activateWindow()\n        dialog.exec()\n',
+            '        self._custom_backup_api_window=dialog\n'
+            '        dialog.open();dialog.raise_();dialog.activateWindow()\n')
+        text = text[:match.start(2)] + body + text[match.end(2):]
     ast.parse(text)
     return text
 
