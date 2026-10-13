@@ -5,8 +5,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 from .agent import run_agent
+from .model_config import select_tier
 from .schemas import JobRequest
 from .utils import logger
+
+_MAX_RAG_SOURCES = 2
 
 
 @dataclass
@@ -14,19 +17,23 @@ class Job:
     id: str
     request: JobRequest
     status: str = 'queued'
+    model_tier: str = 'flash'
     created: float = field(default_factory=time.time)
     events: list[dict[str, Any]] = field(default_factory=list)
     result: dict[str, Any] | None = None
     stop: asyncio.Event = field(default_factory=asyncio.Event)
 
     def public(self) -> dict[str, Any]:
-        return {'id': self.id, 'status': self.status, 'created': self.created,
-                'events': list(self.events), 'result': self.result}
+        return {'id': self.id, 'status': self.status, 'model_tier': self.model_tier,
+                'created': self.created, 'events': list(self.events), 'result': self.result}
 
 
 class Jobs:
-    def __init__(self, model: Any, runtime: Any, capacity: int = 32, memory: Any = None, knowledge: Any = None) -> None:
-        self.model, self.runtime, self.capacity = model, runtime, capacity
+    def __init__(self, flash_model: Any, reasoning_model: Any, runtime: Any,
+                 capacity: int = 32, memory: Any = None, knowledge: Any = None) -> None:
+        self.flash_model = flash_model
+        self.reasoning_model = reasoning_model
+        self.runtime, self.capacity = runtime, capacity
         self.memory = memory
         self.knowledge = knowledge
         self.jobs: dict[str, Job] = {}
@@ -39,7 +46,8 @@ class Jobs:
             if terminal is None:
                 raise RuntimeError('Hàng đợi đầy; chờ công việc hiện tại kết thúc.')
             del self.jobs[terminal]
-        job = Job(id=uuid.uuid4().hex, request=request)
+        tier = select_tier(request.prompt, request.max_steps, getattr(request, 'model_tier', 'auto'))
+        job = Job(id=uuid.uuid4().hex, request=request, model_tier=tier)
         self.jobs[job.id] = job
         task = asyncio.create_task(self.run(job))
         self.tasks.add(task)
@@ -58,8 +66,11 @@ class Jobs:
                 context = await asyncio.to_thread(self.memory.load, job.request.project_id, job.request.version) if self.memory and job.request.project_id else {}
                 if self.knowledge:
                     sources = await asyncio.to_thread(self.knowledge.rag_search, job.request.prompt[:2000])
+                    if isinstance(sources, list):
+                        sources = sources[:_MAX_RAG_SOURCES]
                     context = {'historical_project': context, 'retrieved_sources_untrusted': sources}
-                job.result = await run_agent(self.model, self.runtime, job.request.prompt,
+                model = self.reasoning_model if job.model_tier == 'reasoning' else self.flash_model
+                job.result = await run_agent(model, self.runtime, job.request.prompt,
                     job.request.version, job.request.max_steps, job.stop, job.events, job.request.criteria, job.request.max_reviews, context)
                 job.status = 'stopped' if job.stop.is_set() else 'failed' if job.result['halted'] or job.result['limit_reached'] or job.result.get('criteria_failed') else 'finished'
             except Exception as error:
@@ -76,4 +87,6 @@ class Jobs:
         # Let a current native call report its actual result; no forced task cancellation.
         if self.tasks:
             await asyncio.gather(*list(self.tasks), return_exceptions=True)
+        if self.flash_model is not self.reasoning_model and hasattr(self.reasoning_model, 'close'):
+            pass  # langchain models have no explicit close; let GC handle it
         self.runtime.close()

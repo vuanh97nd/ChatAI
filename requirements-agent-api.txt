@@ -3,4 +3,6 @@ pydantic>=2.9,<3
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 langgraph>=0.2,<2
+langchain-core>=0.3,<1
 langchain-ollama>=0.2,<2
+langchain-openai>=0.2,<1      # OpenRouter — DeepSeek Flash + Nemotron Super
