@@ -227,6 +227,9 @@ def inspect_gsz(path):
 class GeoslopeInspect:
     def __init__(self,files):self.files=files
     def prepare(self,name,args):
+        if name=='geostudio_python':
+            from .geostudio_python import GeoStudioPython
+            return GeoStudioPython(self.files).prepare(name,args)
         path=self.files.path(args['path'])
         if not path.is_file() or path.suffix.lower() not in {'.xlsx','.dxf','.gsz'}:raise ValueError('Cần XLSX, DXF hoặc GSZ trong thư mục được phép.')
         if path.stat().st_size>40*1024**2:raise ValueError('Tệp tối đa 40 MiB.')
@@ -248,6 +251,9 @@ class GeoslopeInspect:
         if type(start) is not int or not 0<=start<=1000000 or type(limit) is not int or not 1<=limit<=100:raise ValueError('start/limit không hợp lệ.')
         return {'action':'geoslope_inspect','path':str(path),'options':{k:v for k,v in args.items() if k!='path'}}
     def commit(self,plan):
+        if plan['action']=='geostudio_python':
+            from .geostudio_python import GeoStudioPython
+            return GeoStudioPython(self.files).commit(plan)
         if plan['action']=='geoslope_profile':
             import ezdxf
             source=self.files.path(plan['source'])
