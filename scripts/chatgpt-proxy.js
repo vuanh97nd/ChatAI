@@ -120,19 +120,34 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const upstream = await callUpstream('/v1/chat/completions', body);
+
+    // Detect and rewrite ChatGPT "Unusual activity" 403 before forwarding
+    if (upstream.status === 403) {
+      let detail = '';
+      try { detail = JSON.parse(upstream.body)?.detail || ''; } catch {}
+      if (/unusual activity/i.test(detail)) {
+        console.warn('[proxy] ChatGPT đã chặn kết nối (unusual activity). Thử đổi mạng hoặc đăng nhập lại tài khoản OpenAI.');
+        upstream.body = JSON.stringify({
+          error: { message: detail, type: 'unusual_activity', code: 'UNUSUAL_ACTIVITY' },
+        });
+      } else {
+        console.warn('[proxy] Upstream trả 403 — Không có quyền truy cập.');
+      }
+    }
+
     res.writeHead(upstream.status, {
-      'Content-Type': upstream.headers['content-type'] || 'application/json',
+      'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     });
     res.end(upstream.body);
 
-    if (upstream.status >= 400) {
+    if (upstream.status >= 400 && upstream.status !== 403) {
       let hint = '';
       if (upstream.status === 401) hint = ' — OPENAI_API_KEY không hợp lệ.';
       else if (upstream.status === 429) hint = ' — OpenAI đang giới hạn yêu cầu hoặc hết hạn mức.';
       else if (upstream.status === 404) hint = ' — Model không tồn tại hoặc chưa được phép.';
       else if (upstream.status === 502) hint = ' — OpenAI upstream lỗi tạm thời; đã thử lại nhưng vẫn thất bại.';
-      console.warn(`[proxy] Upstream trả ${upstream.status}${hint}`);
+      if (hint) console.warn(`[proxy] Upstream trả ${upstream.status}${hint}`);
     }
   } catch (err) {
     const msg = `Không kết nối được OpenAI: ${err.message}. Kiểm tra mạng và OPENAI_API_KEY.`;

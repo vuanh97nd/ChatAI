@@ -2051,7 +2051,15 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
     const exhausted=['insufficient_quota','quota_exceeded','billing_hard_limit_reached','resource_exhausted'].includes(code);
     return reply({success:false,code:exhausted?'QUOTA_EXHAUSTED':'RATE_LIMIT',retry_after:response.headers.get('Retry-After')||null,message:exhausted?'AI đã hết hạn mức. Chọn AI khác hoặc kiểm tra tài khoản dịch vụ.':'AI đang giới hạn yêu cầu. Vui lòng chờ rồi thử lại.'},429);
    }
-   await response.body?.cancel();const hints={401:'API key không hợp lệ.',403:'Key chưa có quyền dùng AI này.',404:'Không tìm thấy mã AI '+selectedModel+'.',410:'AI '+selectedModel+' đã ngừng phục vụ. Đổi mã AI trong Cài đặt; lỗi này không xác định key sai.',429:'Dịch vụ đang giới hạn yêu cầu hoặc hết hạn mức.'};return fail('Dịch vụ AI HTTP '+response.status+'. '+(hints[response.status]||'Chưa xử lý được yêu cầu.'),502);}
+   if(response.status===403){
+    let body403={};try{body403=await response.json();}catch{await response.body?.cancel();}
+    const detail403=String(body403?.detail||body403?.error?.message||'');
+    if(/unusual activity/i.test(detail403)){
+     return reply({success:false,code:'UNUSUAL_ACTIVITY',message:'ChatGPT đã chặn kết nối do phát hiện hoạt động bất thường. Thử đổi mạng hoặc đăng nhập lại tài khoản OpenAI rồi thử lại.'},502);
+    }
+    return fail('Dịch vụ AI HTTP 403. Key chưa có quyền dùng AI này.',502);
+   }
+   await response.body?.cancel();const hints={401:'API key không hợp lệ.',404:'Không tìm thấy mã AI '+selectedModel+'.',410:'AI '+selectedModel+' đã ngừng phục vụ. Đổi mã AI trong Cài đặt; lỗi này không xác định key sai.',429:'Dịch vụ đang giới hạn yêu cầu hoặc hết hạn mức.'};return fail('Dịch vụ AI HTTP '+response.status+'. '+(hints[response.status]||'Chưa xử lý được yêu cầu.'),502);}
    if(payload.stream===true){
    const reader=response.body.getReader();let bytes=0;
    streaming=true;
