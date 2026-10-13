@@ -248,6 +248,23 @@ class SupportMixin:
             return {'cloud_done':True,'message':failure or summary,'switch_required':switch_required,'timing':timing}
         def task(emit):
             try:return run_chat(emit)
+            except Exception as main_error:
+                # Thử local OpenAI-compatible API nếu được cấu hình làm dự phòng.
+                try:
+                    from .local_openai import load_config,chat as local_chat
+                    local_cfg=load_config()
+                    if local_cfg and local_cfg.get('use_as_fallback'):
+                        emit({'type':'status','text':'Server chính lỗi; đang thử API tùy chỉnh dự phòng…'})
+                        state=self.store.load(cid)
+                        history_msgs=state.get('messages',[])
+                        openai_messages=[{'role':m['role'],'content':m.get('content','')} for m in history_msgs if m.get('role') in ('user','assistant') and m.get('content')]
+                        answer=local_chat(openai_messages,local_cfg['url'],local_cfg.get('key',''),local_cfg.get('model','gpt-4o-mini'),timeout=90)
+                        state['messages'].append({'role':'assistant','content':answer})
+                        state['running']=False;self.store.save(cid,state)
+                        return {'cloud_done':True,'message':'Trả lời từ API dự phòng ('+local_cfg.get('url','?')+')'}
+                except Exception:
+                    pass  # Fallback failed too; re-raise the original error.
+                raise main_error
             finally:
                 # Preparation/auth failures and cancellation must not leave a queued
                 # user message marked running. The local message remains available.

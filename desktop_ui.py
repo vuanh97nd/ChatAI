@@ -2506,6 +2506,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         self.button(box,'Kết nối AI dự phòng',self.backup_login_dialog)
         self.button(box,'Cấu hình API dự phòng',self.backup_provider_dialog)
         self.button(box,'Tắt AI dự phòng',forget_backup)
+        self.button(box,'API tùy chỉnh dự phòng (OpenAI compatible)',self.custom_local_api_dialog)
         self.account_remember=QCheckBox('Ghi nhớ đăng nhập');self.account_remember.setChecked(True);box.addWidget(self.account_remember)
         self.account_edit_button=self.button(box,'Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
         self.account_password_button=self.button(box,'Đổi mật khẩu',self.change_password_dialog)
@@ -2929,6 +2930,75 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             self.work(task,done)
         test.clicked.connect(check);store.clicked.connect(persist)
         close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
+
+    def custom_local_api_dialog(self):
+        """Dialog cấu hình API tùy chỉnh dự phòng (OpenAI compatible, gọi trực tiếp từ máy)."""
+        from assistant.local_openai import load_config,save_config,test_chat
+        dialog=QDialog(self);dialog.setWindowTitle('API tùy chỉnh dự phòng — OpenAI compatible');dialog.resize(600,0)
+        form=QFormLayout(dialog)
+        form.addRow(QLabel('Gọi trực tiếp từ máy này. Nhập khóa xác thực server Node.js (.env), không nhập token phiên ChatGPT.\nKhóa lưu bằng DPAPI theo tài khoản Windows.'))
+        url_edit=QLineEdit();url_edit.setPlaceholderText('http://127.0.0.1:3040');url_edit.setMaxLength(200)
+        key_edit=QLineEdit();key_edit.setEchoMode(QLineEdit.EchoMode.Password);key_edit.setPlaceholderText('Để trống giữ khóa đã lưu');key_edit.setMaxLength(256)
+        model_edit=QLineEdit();model_edit.setPlaceholderText('gpt-4o-mini');model_edit.setMaxLength(160)
+        fallback_chk=QCheckBox('Dùng làm dự phòng khi dịch vụ AI hiện tại lỗi kết nối/quá tải')
+        direct_chk=QCheckBox('Dùng API này ngay cho chat và thao tác AI — không chờ server chính lỗi')
+        status_lbl=QLabel('');status_lbl.setWordWrap(True)
+        form.addRow('URL API:',url_edit);form.addRow('Khóa server:',key_edit);form.addRow('Model:',model_edit)
+        form.addRow(fallback_chk);form.addRow(direct_chk);form.addRow(status_lbl)
+        # Pre-fill from saved config
+        cfg_now=load_config()
+        if cfg_now:
+            url_edit.setText(cfg_now.get('url',''));model_edit.setText(cfg_now.get('model',''))
+            fallback_chk.setChecked(bool(cfg_now.get('use_as_fallback')));direct_chk.setChecked(bool(cfg_now.get('use_directly')))
+        buttons_row=QHBoxLayout()
+        test_btn=QPushButton('Kiểm tra chat');save_btn=QPushButton('Lưu cấu hình');launch_btn=QPushButton('Khởi động server Node.js')
+        buttons_row.addWidget(test_btn);buttons_row.addWidget(save_btn);form.addRow(buttons_row);form.addRow(launch_btn)
+        close_box=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close_box.rejected.connect(dialog.reject);form.addRow(close_box)
+        all_btns=[test_btn,save_btn,launch_btn]
+        def set_busy(on):
+            for b in all_btns:b.setEnabled(not on)
+            url_edit.setEnabled(not on);key_edit.setEnabled(not on);model_edit.setEnabled(not on)
+        def get_fields():
+            url=(url_edit.text().strip() or 'http://127.0.0.1:3040')
+            key=key_edit.text().strip()
+            model=(model_edit.text().strip() or 'gpt-4o-mini')
+            return url,key,model
+        def do_test():
+            if self.busy():return
+            url,key,model=get_fields()
+            saved_key=(cfg_now or {}).get('key','') if not key else key
+            if not saved_key:status_lbl.setText('Nhập khóa server rồi thử lại.');return
+            set_busy(True);status_lbl.setText('Đang kiểm tra chat (có thể phát sinh phí API)…')
+            def task(emit):
+                try:answer=test_chat(url,saved_key,model);return {'answer':answer}
+                except Exception as e:return {'error':str(e)}
+            def done(result):
+                set_busy(False)
+                if not dialog.isVisible():return
+                if result.get('error'):
+                    status_lbl.setText('Chưa thành công: '+result['error'])
+                else:
+                    status_lbl.setText('Thành công — AI trả lời: '+str(result.get('answer',''))[:200])
+            self.work(task,done)
+        def do_save():
+            url,key,model=get_fields()
+            if not url:status_lbl.setText('Nhập URL API.');return
+            saved_key=(cfg_now or {}).get('key','') if not key else key
+            try:
+                save_config(url,saved_key,model,fallback_chk.isChecked(),direct_chk.isChecked())
+                status_lbl.setText('Đã lưu cấu hình. Kiểm tra chat để xác minh kết nối.')
+            except Exception as e:status_lbl.setText('Lưu thất bại: '+str(e))
+        def do_launch():
+            import subprocess,sys,shutil
+            node=shutil.which('node') or shutil.which('node.exe')
+            if not node:status_lbl.setText('Không tìm thấy Node.js. Cài Node.js từ nodejs.org rồi thử lại.');return
+            script=str(ROOT/'scripts'/'chatgpt-proxy.js')
+            try:
+                subprocess.Popen([node,script],cwd=str(ROOT/'scripts'),
+                    creationflags=getattr(subprocess,'CREATE_NEW_CONSOLE',0))
+                status_lbl.setText('Đã khởi động server Node.js. Đợi vài giây rồi bấm Kiểm tra chat.')
+            except Exception as e:status_lbl.setText('Không khởi động được server: '+str(e))
+        test_btn.clicked.connect(do_test);save_btn.clicked.connect(do_save);launch_btn.clicked.connect(do_launch)
         dialog.exec()
 
     def login_dialog(self):
