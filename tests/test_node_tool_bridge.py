@@ -23,7 +23,13 @@ class NodeToolBridgeTests(unittest.TestCase):
     def test_continuation_routes_to_tools_without_prior_tool_result(self):
         state={'messages':[{'role':'user','content':'Làm bài TBM trong PLAXIS 3D.'}]}
         self.assertTrue(use_automation('tiếp tục',{'windows_apps_enabled':True},state))
+        self.assertTrue(use_automation('file đây. làm đi',{'windows_apps_enabled':True},state))
         self.assertFalse(use_automation('tiếp tục',{'windows_apps_enabled':False},state))
         self.assertFalse(use_automation('thời tiết hôm nay',{'windows_apps_enabled':True},state))
+
+    def test_existing_attachment_cannot_be_denied(self):
+        state={'messages':[], 'automation_attachments':[{'name':'TBM.pdf','path':'C:/allowed/TBM.pdf'}]}
+        with self.assertRaisesRegex(ValueError,'path thật'):
+            check_confirmation({'tool':'','arguments':{},'answer':'Tôi chưa nhận được file đính kèm trong lượt này.'},state,{})
 
 if __name__=='__main__': unittest.main()

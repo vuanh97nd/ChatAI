@@ -1929,7 +1929,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
             QMessageBox.information(self,'Phối hợp AI','Mục Chuyên gia phối hợp các AI trên máy. Hãy chọn AI trên máy để dùng mục này.');self.choose_other_model();return
         if model in REMOTE_MODELS:
             from assistant.online_automation import use_automation
-            if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1 or self.task_autonomy_check.isChecked()):
+            if use_automation(prompt,self.cfg,self.store.load(self.cid),self.chat_mode.currentIndex()==1 or self.task_autonomy_check.isChecked(),has_attachments=bool(self.pending_documents or self.pending_image)):
                 self.online_windows_task(prompt=prompt);return
             if self.chat_mode.currentIndex() in (1,2,3):
                 QMessageBox.information(self,'Chọn chế độ','Chế độ công cụ Office cần AI trên máy. Tệp Office, PDF, DXF và ảnh có thể gửi cùng AI trực tuyến.');return
@@ -2060,7 +2060,7 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
                         with destination.open('xb') as output:output.write(source.read_bytes())
                         attachments.append({'name':source.name,'path':str(destination)})
                         audit('automation_attachment_staged',{'name':source.name,'path':str(destination)})
-                    state['automation_attachments']=attachments
+                    if attachments:state['automation_attachments']=attachments
                     from assistant.automation_start import start_automation
                     start_automation(agent,state,prompt,model,session['username'],image=attachment_image)
                     state['messages'][-1]['documents']=attachments
