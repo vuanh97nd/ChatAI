@@ -2879,6 +2879,26 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         message=QLabel('Chưa kiểm tra API. /health thành công chưa chứng minh chat hoạt động.');message.setWordWrap(True)
         form.addRow('URL API:',url);form.addRow('Khóa server:',key);form.addRow('Model:',model);form.addRow(enabled);form.addRow(direct);form.addRow(message)
         row=QHBoxLayout();test=QPushButton('Kiểm tra chat');store=QPushButton('Lưu cấu hình');row.addWidget(test);row.addWidget(store);form.addRow(row)
+        launch=QPushButton('Khởi động server Node.js');form.addRow(launch)
+        def start_node():
+            import os, socket, subprocess
+            if os.name!='nt':
+                message.setText('Khởi động server cục bộ yêu cầu Windows.');return
+            local=os.environ.get('LOCALAPPDATA')
+            launcher=Path(local)/'ChatAI'/'NodeServer'/'start-local.ps1' if local else None
+            if launcher is None or not launcher.is_file():
+                message.setText('Chưa tìm thấy server đã cài. Chạy scripts/setup-local-node-server.ps1 -Start trước.');return
+            try:
+                with socket.create_connection(('127.0.0.1',3040),timeout=0.3):
+                    message.setText('Cổng 3040 đã có dịch vụ chạy. Bấm Kiểm tra chat để xác nhận API.');return
+            except OSError:pass
+            try:
+                subprocess.Popen(['powershell.exe','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',str(launcher)],
+                                 cwd=str(launcher.parent),creationflags=subprocess.CREATE_NEW_CONSOLE)
+                message.setText('Đã mở cửa sổ khởi động server. Giữ cửa sổ đó mở; chờ server lắng nghe rồi bấm Kiểm tra chat.')
+            except OSError:
+                message.setText('Không mở được PowerShell để khởi động server.')
+        launch.clicked.connect(start_node)
         def profile():
             entered=key.text().strip()
             if not entered and url.text().strip().rstrip('/')!=saved.get('url'):
