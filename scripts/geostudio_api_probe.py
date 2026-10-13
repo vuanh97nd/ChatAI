@@ -28,6 +28,30 @@ def analysis_names(path):
             if (name := item.findtext('Name'))]
 
 
+def point_object(path, analysis):
+    """Use the documented Points[id] form with an ID from the saved model.
+
+    A missing/ambiguous geometry is a diagnostic, not a reason to invent IDs.
+    """
+    with zipfile.ZipFile(path) as archive:
+        names = [name for name in archive.namelist()
+                 if '/' not in name and '\\' not in name and name.lower().endswith('.xml')]
+        root = ET.fromstring(archive.read(names[0]))
+    geometries = root.findall('./Geometries/Geometry')
+    item = next(item for item in root.findall('./Analyses/Analysis')
+                if item.findtext('Name') == analysis)
+    geometry_id = item.findtext('GeometryId') or item.findtext('GeometryID')
+    if geometry_id:
+        geometries = [g for g in geometries if g.findtext('ID') == geometry_id]
+    if len(geometries) != 1:
+        raise ValueError('Ambiguous geometry: supply --object from the API documentation.')
+    for point in geometries[0].findall('./Points/Point'):
+        ident = point.get('ID') or point.findtext('ID')
+        if ident and ident.isdecimal():
+            return 'CurrentAnalysis.GeometryItems.Points[' + ident + ']'
+    raise ValueError('No saved point ID found; supply --object from the API documentation.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--project', type=Path)
@@ -73,9 +97,8 @@ def main():
                 report['connected'] = True
                 report['source'] = str(source)
                 try:
-                    request = pb.GetRequest(analysis=selected)
-                    if args.object:
-                        request.object = args.object
+                    request = pb.GetRequest(analysis=selected,
+                                            object=args.object or point_object(working, selected))
                     report['get_request'] = MessageToDict(request, preserving_proto_field_name=True)
                     response = project.Get(request, timeout=30)
                     report['get_response'] = MessageToDict(response, preserving_proto_field_name=True)
