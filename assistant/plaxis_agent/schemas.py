@@ -86,6 +86,7 @@ class JobRequest(Input):
     project_id: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[\w.-]+$")
     criteria: list[Criterion] = Field(default_factory=list, max_length=20)
     max_reviews: int = Field(default=2, ge=1, le=4)
+    model_tier: Literal['flash', 'reasoning', 'auto'] = Field(default='auto')
 
 
 

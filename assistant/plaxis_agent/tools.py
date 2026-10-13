@@ -12,14 +12,26 @@ MODELS: dict[str, type[BaseModel]] = {
     'plaxis_safe_layer': Layer, 'plaxis_safe_calculate': Calculate,
     'plaxis_safe_contour': Contour,
 }
+_MAX_RESULT_CHARS = 2000
+
+# Compact descriptions (~80 chars avg) trim schema tokens; enables prefix-cache hits on DeepSeek Flash.
 DESCRIPTIONS = {
-    'plaxis_safe_geo_calculate': 'Tính Python xác định: settlement(H,e0,Cc,sigma0,delta_sigma), bearing_capacity(c,phi,gamma,B,Df), earth_pressure(gamma,H,phi), mohr_coulomb(c,phi,sigma_n). SI m/kN/kPa/độ; slope chỉ sơ bộ. Không thao tác PLAXIS.',
-    'plaxis_safe_inspect': 'Đọc trạng thái PLAXIS Input hiện tại; kiểm tra trước khi ghi, không tạo mới dự án.',
-    'plaxis_safe_material': 'Tạo vật liệu Mohr-Coulomb theo số liệu có nguồn, SI kN/m/kPa; dùng kết quả tên API thật để đọc lại. Không dùng cho HS hay Undrained B.',
-    'plaxis_safe_layer': 'Thêm một lớp đất 2D có bề dày xác định vào borehole đã có; chưa gán vật liệu. Không tự tạo borehole.',
-    'plaxis_safe_calculate': 'Đối chiếu các thuộc tính kỳ vọng rồi calculate cùng một lô. Các checks chỉ xác minh phần liệt kê; chưa chứng minh toàn bộ bài đúng manual.',
-    'plaxis_safe_contour': 'Tạo soil contour hoặc polygon 2D từ danh sách đỉnh (x,y). shape=rectangle dùng soilcontour xmin ymin xmax ymax (đúng 4 đỉnh trục XY). shape=polygon dùng lệnh PLAXIS polygon với các đỉnh theo thứ tự (3+ đỉnh, không trùng). Không dùng polycurve waypoints.',
+    'plaxis_safe_geo_calculate': 'Tính địa kỹ thuật Python: settlement(H,e0,Cc,sigma0,delta_sigma), bearing_capacity(c,phi,gamma,B,Df), earth_pressure(gamma,H,phi), mohr_coulomb(c,phi,sigma_n). SI m/kN/kPa/độ. Không thao tác PLAXIS.',
+    'plaxis_safe_inspect': 'Đọc trạng thái PLAXIS Input; bắt buộc trước mọi thao tác ghi.',
+    'plaxis_safe_material': 'Tạo vật liệu Mohr-Coulomb (SI kN/m/kPa); chỉ Drained hoặc Undrained A. Cần nguồn dữ liệu.',
+    'plaxis_safe_layer': 'Thêm lớp đất 2D theo bề dày vào borehole đã có; chưa gán vật liệu.',
+    'plaxis_safe_calculate': 'Verify thuộc tính kỳ vọng rồi calculate trong cùng lô.',
+    'plaxis_safe_contour': 'Tạo soil contour/polygon 2D từ danh sách đỉnh (x,y). rectangle=soilcontour 4 đỉnh trục XY; polygon=PLAXIS polygon 3+ đỉnh.',
 }
+
+
+def _truncate_result(result: dict[str, Any]) -> dict[str, Any]:
+    if len(json.dumps(result, ensure_ascii=False, default=str)) <= _MAX_RESULT_CHARS:
+        return result
+    trimmed = {k: result[k] for k in ('ok', 'error', 'uncertain', 'metrics', 'source', 'material_verified') if k in result}
+    trimmed['_truncated'] = True
+    trimmed['_hint'] = 'Kết quả bị cắt; dùng inspect lại để đọc chi tiết nếu cần.'
+    return trimmed
 
 
 def schemas() -> list[dict[str, Any]]:
@@ -107,7 +119,7 @@ def execute(remote: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]
             result['material_verified'] = result.get('ok') is True and result.get('model_verified') is True
             result['model_verified'] = False  # Material checks do not verify a whole project.
         logger.info('tool_end name=%s ok=%s uncertain=%s', name, result.get('ok'), result.get('uncertain'))
-        return result
+        return _truncate_result(result)
     except (ValidationError, ValueError) as error:
         return {'ok': False, 'not_executed': True, 'error': str(error)[:2000]}
     except Exception as error:
