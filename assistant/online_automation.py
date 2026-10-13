@@ -283,6 +283,13 @@ def check_confirmation(output,state,cfg):
     query=next((m.get('content','') for m in reversed(state['messages']) if m.get('role')=='user'),'')
     approved=re.fullmatch(r'\s*(?:ok|có|đồng ý|làm(?:\s+nhé|\s+đi)?)\s*[.!]?\s*',query,re.I)
     repeated_choice=approved and re.search(r'bạn\s+chọn\s+hướng\s+nào',answer,re.I)
+    if _geoslope_workflow(state) and re.search(
+            r'(?:bạn|vui lòng)[^\n?]{0,120}(?:tọa độ pixel|vị trí menu|menu[^\n?]{0,40}nằm ở đâu|'
+            r'xác nhận[^\n?]{0,60}(?:click|bấm|Alt\+F)|muốn[^\n?]{0,60}(?:nhập.*DXF|vẽ.*polyline))',answer,re.I):
+        raise ValueError('GeoStudio đã được giao thao tác: không hỏi người dùng tọa độ pixel hoặc chọn lại cách nhập. '
+            'Dùng cửa sổ đã chọn và ảnh mới; ưu tiên control UIA đã inspect, hoặc windows_input operation=press_key key=ALT+F '
+            'với observation hiện tại. Xem ảnh trả về để xác nhận menu mở. Nếu thất bại, đổi phương pháp có căn cứ '
+            'hoặc báo lỗi công cụ cụ thể; không suy đoán tên menu và không bỏ qua kiểm tra hình học.')
     if permission or delegated_lookup or repeated_choice:
         raise ValueError('Phản hồi kế hoạch hỏi lại quyền hoặc đẩy việc tra cứu cho người dùng. Quyền tự thực hiện đã có: tự tra bằng công cụ, kiểm tra kết quả và sửa bước lỗi; chỉ hỏi dữ kiện kỹ thuật không thể tự xác minh hoặc cần đăng nhập.')
     # A promise is not a tool action. Do not end delegated execution merely
@@ -1568,6 +1575,20 @@ class OnlineAutomation:
             # Stable text stays in `instruction` (a cacheable prefix for every provider);
             # per-step data goes to `volatile`, sent as a system message after the history.
             volatile=''
+            if _geoslope_workflow(state) and not research:
+                instruction+='\nGEOSTUDIO UI: Khi người dùng đã giao dựng/tính, tự chọn cách thực hiện trong quyền đã giao; '
+                instruction+='không hỏi lại nhập DXF hay vẽ, không xin pixel/menu từ người dùng. Giữ đúng dự án đang mở; '
+                instruction+='windows_list_windows/windows_attach chọn đúng EXE, PID và tiêu đề, windows_capture lấy observation mới. '
+                instruction+='UIA chỉ dùng control thật do windows_inspect trả về và đúng session; không dùng session visual cho UIA. '
+                instruction+='Nếu UIA không có menu, dùng windows_input operation=press_key key=ALT+F với observation hiện tại; '
+                instruction+='xem ảnh trả về trước khi chọn mục tiếp. Tên File/Import/DXF phải nhìn thấy hoặc có tài liệu đúng phiên bản, '
+                instruction+='không mặc định menu đó tồn tại. Tọa độ click là pixel trong ảnh cửa sổ, không phải toàn màn hình, '
+                instruction+='không dùng lại (30,40) hay tọa độ đã thất bại. Thao tác báo OK chỉ là đã gửi input, không chứng minh menu mở. '
+                instruction+='Nếu click không đổi giao diện, chuyển sang phím tắt/control đã đọc; nếu vẫn không được, '
+                instruction+='báo thao tác và lỗi cụ thể, không vòng lặp dò/click. Không tự đóng hộp thoại có thể mất dữ liệu. '
+                instruction+='Sau nhập DXF, kiểm tra hình học có xuất hiện và là vùng tính hay chỉ ảnh nền; '
+                instruction+='tạo vùng, gán vật liệu, nước/tải/phương pháp theo dữ liệu có nguồn trước Solve. '
+                instruction+='Chỉ báo tính xong khi có log/kết quả mới thực tế; hình học nhìn thấy không phải mô hình đã tính.'
             if state.get('execution_selection') and not research:
                 selected=state['execution_selection']
                 volatile+='\nPHẠM VI NGƯỜI DÙNG ĐÃ CHỌN: '+selected['selection']+'. Không hỏi lại phạm vi này. '
