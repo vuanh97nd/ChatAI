@@ -27,7 +27,7 @@ class AccountConnectionError(RuntimeError):
     """
 
 
-def request_account(endpoint,path,body,timeout=12):
+def _request_account(endpoint,path,body,timeout=12):
     url=urlparse(endpoint)
     if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment or url.path not in ('','/'):
         raise ValueError('URL server phải là URL gốc HTTPS.')
@@ -51,7 +51,7 @@ def request_account(endpoint,path,body,timeout=12):
         if error.code==403:
             message=str(message)+'\nKết nối Chat AI v3.0.0: server từ chối truy cập. Kiểm tra Security Events của Cloudflare; nếu có challenge, cần quy tắc dành riêng cho API ứng dụng.'
         if not isinstance(detail,dict):detail={}
-        for key in ('key','password','old_key','new_key','api_key'):
+        for key in ('key','password','old_key','new_key','api_key','billing_session'):
             if body.get(key):message=str(message).replace(str(body[key]),'[ẨN]')
         raise AccountAPIError(str(message),error.code,detail.get('retry_after') or error.headers.get('Retry-After'),detail.get('code')) from None
     except (URLError,TimeoutError):raise RuntimeError('Không kết nối được server Chat AI.') from None
@@ -59,6 +59,22 @@ def request_account(endpoint,path,body,timeout=12):
         raise AccountConnectionError('Kết nối tới server Chat AI bị ngắt trước khi có phản hồi.') from None
     if not result.get('success'):raise RuntimeError('Server chưa xác nhận yêu cầu.')
     return result
+
+def request_account(endpoint,path,body,timeout=12):
+    from .billing_client import PRIMARY,billing_path,direct_request,enrich_accounts
+    if endpoint.rstrip('/')==PRIMARY:
+        if billing_path(path):
+            return direct_request(_request_account,endpoint,path,body,timeout)
+        if path in ('/api/admin/accounts/list','/api/admin/accounts/detail'):
+            body={**body,'billing_direct':True}
+            result=_request_account(endpoint,path,body,timeout)
+            if path.endswith('/list'):
+                return enrich_accounts(_request_account,endpoint,body,result,timeout)
+            if isinstance(result.get('user'),dict):
+                enriched=enrich_accounts(_request_account,endpoint,body,{'users':[result['user']]},timeout)
+                result['user']=enriched['users'][0]
+            return result
+    return _request_account(endpoint,path,body,timeout)
 
 def _dpapi(raw,decrypt=False):
     if os.name!='nt':raise RuntimeError('Ghi nhớ đăng nhập được bảo vệ bằng DPAPI trên Windows.')

@@ -108,6 +108,11 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    assert.equal(main.DB.raw.prepare("SELECT balance FROM billing_spend_wallets WHERE owner='alice'").get().balance,19996000);
    assert.equal(main.DB.raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name='billing_wallets'").get().n,0,'no primary legacy wallet created');
    r=await call(main,mainOrigin,'/api/billing/status',{},'alice');assert.equal(r.value.wallet.available_vnd,19996);
+   const ticket=await call(main,mainOrigin,'/api/account/billing-session',{},'alice');
+   const lastLink=lastEnvelope;
+   const directResponse=await worker.fetch(new Request(backupOrigin+'/api/billing/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({billing_session:ticket.value.billing_session})}),backup,{});
+   const directWallet=await directResponse.json();assert.equal(directWallet.wallet.available_vnd,19996,'direct balance includes verified funds already allocated to AI');assert.ok(directWallet.ai_sync_at);
+   assert.equal(lastEnvelope,lastLink,'direct wallet never forwards or synchronizes through primary');
    // A replay of a signed link message cannot mutate anything.
    const replay=await worker.fetch(new Request(lastEnvelope.url,lastEnvelope.options),backup,{});assert.equal(replay.status,409);
    offline=true;
@@ -158,6 +163,46 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    assert.equal((await webhook()).status,200);assert.equal((await webhook()).status,200);
    assert.equal(backup.DB.raw.prepare("SELECT balance FROM billing_wallets WHERE owner='ledgeralice'").get().balance,39990000,'one central bank credit across webhook retries');
    assert.equal(backup.DB.raw.prepare('SELECT count(*) AS n FROM billing_receipts WHERE order_id=?').get(order.id).n,1);
+  }finally{globalThis.fetch=original;}
+ });
+}
+
+for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
+ test(`${name}: direct billing sessions isolate credentials, scope, funds and primary traffic`,async()=>{
+  const mainOrigin='https://main.example.org',backupOrigin='https://backup.example.org',link='fixture-direct-link-secret-more-than-32-characters';
+  const main={DB:database(),ADMIN_KEY:'fixture-primary-admin',BILLING_ROLE:'primary',BILLING_AUTHORITY_URL:backupOrigin,BILLING_PUBLIC_ORIGIN:mainOrigin,BILLING_LINK_KEY:link,BILLING_ACCOUNT_MAP:JSON.stringify({alice:'ledgeralice'})};
+  const backup={DB:database(),ADMIN_KEY:'fixture-backup-admin',BILLING_ROLE:'authority',BILLING_PRIMARY_URL:mainOrigin,BILLING_LINK_KEY:link};
+  const send=async(env,origin,path,body)=>{const response=await worker.fetch(new Request(origin+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),env,{});return {status:response.status,value:await response.json()};};
+  const issue=(username='admin',targets=[])=>send(main,mainOrigin,'/api/account/billing-session',{username,key:username==='admin'?main.ADMIN_KEY:'fixture-password',targets});
+  const direct=(token,path,body={})=>send(backup,backupOrigin,path,{...body,billing_session:token});
+  const original=globalThis.fetch;let outbound=0;globalThis.fetch=async()=>{outbound++;throw new Error('No forwarding permitted during direct billing test');};
+  try{
+   const admin=(await issue('admin',['alice']));assert.equal(admin.status,200);
+   main.DB.raw.prepare("INSERT INTO users(username,key,tier,expires_at,created_at) VALUES('alice','fixture-password','pro','Vĩnh viễn',?)").run(new Date().toISOString());
+   const accountList=await send(main,mainOrigin,'/api/admin/accounts/list',{username:'admin',key:main.ADMIN_KEY,billing_direct:true});assert.equal(accountList.status,200);assert.equal(outbound,0,'new account-list clients do not trigger billing calls on primary');
+   const a=(await issue('admin',['alice'])).value.billing_session;
+   const u=(await issue('alice')).value.billing_session;
+   assert.ok(!u.includes(main.ADMIN_KEY));
+   const decoded=JSON.parse(Buffer.from(u.split('.')[0],'base64').toString());assert.equal(decoded.actor.username,'ledgeralice');assert.ok(!JSON.stringify(decoded).includes('fixture-password'));
+   assert.equal((await issue('alice',['alice'])).status,403);
+   assert.equal((await direct(a,'/api/admin/billing/config/save',{config:{enabled:true,service_fee:0,token_price:4000,bank:'VCB',account:'0123456789',name:'FIXTURE',secret:'fixture-webhook-secret-more-than-32'}})).status,200);
+   const credit={target:'alice',amount:20000,note:'fixture',request_id:crypto.randomUUID()};
+   assert.equal((await direct(a,'/api/admin/billing/credit',credit)).status,200);
+   assert.equal((await direct(a,'/api/admin/billing/credit',credit)).status,200,'manual credit retry is idempotent');
+   let wallet=await direct(u,'/api/billing/status');assert.equal(wallet.status,200);assert.equal(wallet.value.wallet.balance,20000000);assert.equal(wallet.value.direct_billing,true);
+   assert.equal((await direct(u,'/api/admin/billing/config/get')).status,403);
+   assert.equal((await direct(a,'/api/admin/billing/credit',{...credit,target:'other'})).status,403);
+   assert.equal((await direct(u+'bad','/api/billing/status')).status,401);
+   assert.equal((await send(backup,backupOrigin,'/api/account/profile/get',{billing_session:u})).status,401,'billing token cannot authenticate general APIs');
+   const order={kind:'topup',amount:20000,request_id:crypto.randomUUID()};
+   const q=await direct(u,'/api/billing/order',order);assert.equal(q.status,200);assert.equal((await direct(u,'/api/billing/order',order)).value.order.id,q.value.order.id);
+   assert.equal((await direct(a,'/api/billing/order/status',{order_id:q.value.order.id})).status,404,'other account cannot read order');
+   backup.BILLING_MIGRATION_FREEZE='true';assert.equal((await direct(u,'/api/billing/order',{...order,request_id:crypto.randomUUID()})).status,503);backup.BILLING_MIGRATION_FREEZE='false';
+   const totals=await direct(a,'/api/admin/billing/totals',{owners:['alice','unmapped']});assert.equal(totals.value.totals.alice.balance_vnd,20000);assert.equal(totals.value.totals.unmapped.billing_unavailable,true);
+   backup.BILLING_PRIMARY_URL='https://wrong.example.org';assert.equal((await direct(u,'/api/billing/status')).status,401);backup.BILLING_PRIMARY_URL=mainOrigin;
+   const oldNow=Date.now;try{Date.now=()=>oldNow()+301000;assert.equal((await direct(u,'/api/billing/status')).value.code,'BILLING_SESSION_EXPIRED');}finally{Date.now=oldNow;}
+   assert.equal(outbound,0,'session issuance and direct wallet/QR calls never forward between Workers');
+   assert.equal(main.DB.raw.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name='billing_wallets'").get().n,0,'identity issuance creates no primary wallet');
   }finally{globalThis.fetch=original;}
  });
 }

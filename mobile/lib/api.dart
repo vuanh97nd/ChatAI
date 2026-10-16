@@ -70,7 +70,69 @@ class ChatApi {
     }
   }
 
+  final Map<String, Map<String, dynamic>> _billingSessions = {};
+  final Map<String, Future<Map<String, dynamic>>> _billingIssuing = {};
+  Session? _billingIdentity;
+
+  Future<Map<String, dynamic>> _directBilling(String path, Map<String, dynamic> payload) async {
+    if (session == null) throw ApiException('Vui lòng đăng nhập.', 401);
+    if (!identical(_billingIdentity, session)) {
+      _billingSessions.clear(); _billingIssuing.clear(); _billingIdentity = session;
+    }
+    final identity = session;
+    final targets = <String>{if (payload['target'] is String) payload['target'] as String,
+      ...((payload['owners'] as List<dynamic>?) ?? []).cast<String>()}.toList()..sort();
+    final scope = jsonEncode(targets);
+    var ticket = _billingSessions[scope];
+    if (ticket == null || (ticket['expires_at'] as num) < DateTime.now().millisecondsSinceEpoch + 15000) {
+      final pending = _billingIssuing.putIfAbsent(scope, () => _post('/api/account/billing-session', {'targets': targets}));
+      try {
+        ticket = await pending;
+        if (!identical(identity, session)) throw ApiException('Phiên đăng nhập đã đổi.', 401);
+        if (ticket['billing_endpoint'] != defaultBackupServer || ticket['billing_session'] is! String || ticket['expires_at'] is! num) {
+          throw ApiException('Server thanh toán chưa được xác minh.');
+        }
+        if (_billingSessions.length >= 128) _billingSessions.clear();
+        _billingSessions[scope] = ticket;
+      } finally { if (identical(_billingIssuing[scope], pending)) _billingIssuing.remove(scope); }
+    }
+    final clean = {...payload}..remove('username')..remove('key')..remove('billing_session');
+    final authority = ChatApi(client: client, endpoint: defaultBackupServer);
+    try {
+      return await authority._post(path, {...clean, 'billing_session': ticket['billing_session']}, authenticated: false);
+    } on ApiException catch (e) {
+      if (e.code == 'BILLING_SESSION_EXPIRED') _billingSessions.remove(scope);
+      rethrow; // Never retry an ambiguous top-up or send it through the primary.
+    }
+  }
+
   Future<Map<String, dynamic>> post(String path, Map<String, dynamic> payload,
+      {bool authenticated = true}) async {
+    final primary = server.origin == Uri.parse(defaultServer).origin && server.origin == 'https://chatai.anhvn53.workers.dev';
+    if (authenticated && primary && (path.startsWith('/api/billing/') || path.startsWith('/api/admin/billing/')) &&
+        !['/api/admin/billing/central-check', '/api/admin/billing/central-migration'].contains(path)) {
+      try { return await _directBilling(path, payload); }
+      on ApiException catch (e) {
+        if (e.status >= 500 || ['CONNECTION', 'TIMEOUT'].contains(e.code)) {
+          throw ApiException('Server thanh toán dự phòng không khả dụng. Không nạp tiền hoặc dùng QR cũ; kiểm tra đơn trước khi thử lại.', 503, 'BILLING_AUTHORITY_UNAVAILABLE');
+        }
+        rethrow;
+      }
+    }
+    final accountRead = authenticated && primary && ['/api/admin/accounts/list', '/api/admin/accounts/detail'].contains(path);
+    final result = await _post(path, {...payload, if (accountRead) 'billing_direct': true}, authenticated: authenticated);
+    if (accountRead) {
+      final users = result['users'] as List<dynamic>? ?? [if (result['user'] != null) result['user']];
+      final owners = users.where((u) => u['account_status'] != 'deleted').map((u) => u['username'] as String).toList();
+      Map<String, dynamic> totals = {};
+      try { if (owners.isNotEmpty) totals = (await _directBilling('/api/admin/billing/totals', {'owners': owners}))['totals'] as Map<String, dynamic>; }
+      catch (_) { /* Account administration remains available during billing outages. */ }
+      for (final u in users) { u['billing'] = totals[u['username']] ?? {'billing_unavailable': true}; }
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> payload,
       {bool authenticated = true}) async {
     if (authenticated && session == null) {
       throw ApiException('Vui lòng đăng nhập.', 401);
@@ -253,5 +315,5 @@ class ChatApi {
     return text;
   }
 
-  void close() => client.close();
+  void close() { _billingSessions.clear(); _billingIssuing.clear(); _billingIdentity = null; client.close(); }
 }
