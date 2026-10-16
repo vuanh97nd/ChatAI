@@ -263,13 +263,25 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (working) return;
     changed(() { working = true; error = null; });
     try { await fn(); }
-    catch (e) { changed(() => error = '$e'); }
+    catch (e) {
+      changed(() {
+        error = '$e';
+        if (e is ApiException && e.code == 'BILLING_AUTHORITY_UNAVAILABLE') {
+          order = null;
+          billing = {...?billing, 'billing_offline': true, 'topups_available': false};
+        }
+      });
+    }
     finally { changed(() => working = false); }
   }
   Future<void> refresh() async {
     // Explicit refresh only: no background wallet/history scan.
     final values = await Future.wait([
-      api.post('/api/billing/status', {}),
+      api.post('/api/billing/status', {}).catchError((Object e) {
+        if (e is ApiException && e.status == 401) throw e;
+        return <String, dynamic>{'billing_offline': true, 'topups_available': false,
+          'message': 'Chưa kết nối được server thanh toán. Không nạp tiền.'};
+      }),
       api.post('/api/memory/personal/list', {}).catchError((Object e) {
         return <String, dynamic>{'items': <dynamic>[], 'warning': '$e'};
       }),
@@ -502,6 +514,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     });
   }
   Future<void> topUp(int amount) async {
+    if (billing?['billing_offline'] == true || billing?['topups_available'] == false) {
+      throw ApiException('Server thanh toán đang lỗi. Chỉ dùng số dư đã xác nhận; tạm khóa nạp tiền.');
+    }
     // Keep the same ID after a timeout; never silently create a second order.
     if (paymentRequest != null && requestedAmount != amount) {
       throw ApiException('Đơn trước chưa rõ kết quả. Thử lại đúng số tiền $requestedAmount đ để kiểm tra đơn đó.');
@@ -538,7 +553,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       } else { pollSeconds = 10; }
     } catch (e) {
       pollSeconds = (pollSeconds * 2).clamp(10, 60).toInt();
-      changed(() => error = 'Chưa kiểm tra được thanh toán: $e');
+      changed(() {
+        error = 'Chưa kiểm tra được thanh toán: $e';
+        if (e is ApiException && e.code == 'BILLING_AUTHORITY_UNAVAILABLE') {
+          order = null;
+          billing = {...?billing, 'billing_offline': true, 'topups_available': false};
+        }
+      });
     } finally { pollBusy = false; schedulePoll(); }
   }
   Future<void> editMemory() async {
@@ -639,6 +660,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       Text('Số dư: ${wallet == null ? 'Chưa tải được' : money(wallet['balance_vnd'] as num)}',
         style: Theme.of(context).textTheme.titleLarge),
       Text('Khả dụng: ${money((wallet?['available_vnd'] as num?) ?? 0)}'),
+      if (billing?['billing_offline'] == true)
+        const Text('Server thanh toán đang lỗi. Tạm khóa nạp tiền; chỉ dùng phần tiền đã được xác nhận.'),
       Text('Phí duy trì: ${money((billing?['service_fee'] as num?) ?? 0)}/30 ngày'),
       Text('DeepSeek: ${money((billing?['price_per_million'] as num?) ?? 4000)}/triệu token'),
       for (final m in billing?['monthly_usage'] as List<dynamic>? ?? [])
@@ -648,7 +671,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         TextField(controller: amount, keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           decoration: const InputDecoration(labelText: 'Số tiền', helperText: '20.000–10.000.000 đ, bội số 1.000 đ')),
-        FilledButton(onPressed: working ? null : () => guard(() async {
+        FilledButton(onPressed: working || billing?['billing_offline'] == true || billing?['topups_available'] == false ? null : () => guard(() async {
           final value = int.tryParse(amount.text) ?? 0;
           if (value < 20000 || value > 10000000 || value % 1000 != 0) throw ApiException('Số tiền không hợp lệ.');
           await topUp(value);

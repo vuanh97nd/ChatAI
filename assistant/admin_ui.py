@@ -72,6 +72,7 @@ class AdminMixin:
                 from .billing_ui import money,date_label as billing_date
                 billing=user.get('billing') or {}
                 values.extend([f"{billing.get('month_tokens',0):,}",f"{billing.get('total_tokens',0):,}",money(billing.get('month_token_fee',0)),money(billing.get('balance_vnd',0)),('Miễn phí' if billing.get('maintenance_waived') else billing_date(billing.get('maintenance_until'))),billing.get('pending_count',0)])
+                if billing.get('billing_unavailable'):values[-6:]=['Chưa kết nối thanh toán']*6
                 for col,value in enumerate(values):
                     item=QTableWidgetItem(str(value));item.setToolTip(str(value));self.admin_table.setItem(row,col,item)
                     if col in (8,9):item.setToolTip('Tổng token API đã ghi nhận (đầu vào + đầu ra).\nDeepSeek tính phí: '+str(billing.get('paid_total_tokens',0))+' token tổng cộng\nAI miễn phí: '+str(billing.get('free_total_tokens',0))+' token tổng cộng\nChưa gồm lượt thiếu usage và token local. Tháng theo giờ Việt Nam.')
@@ -123,6 +124,7 @@ class AdminMixin:
         from .billing_ui import money,date_label as billing_date
         billing=user.get('billing') or {}
         totals=QLabel('Token tháng này: '+f"{billing.get('month_tokens',0):,}"+' · Tổng: '+f"{billing.get('total_tokens',0):,}"+'\nPhí token tháng: '+money(billing.get('month_token_fee',0))+' · Ví: '+money(billing.get('balance_vnd',0))+'\nHạn duy trì: '+('Miễn phí' if billing.get('maintenance_waived') else billing_date(billing.get('maintenance_until')))+' · Lượt thiếu usage / đối soát: '+str(billing.get('pending_count',0)));totals.setWordWrap(True);layout.addWidget(totals)
+        if billing.get('billing_unavailable'):totals.setText('Chưa kết nối được server thanh toán; chưa xác định số dư hoặc phí token.')
         log=QPlainTextEdit();log.setReadOnly(True);log.setPlainText('\n'.join(date_label(row['created_at'])+' · '+row['action']+' · '+row['details'] for row in result.get('audit',[])));layout.addWidget(QLabel('Nhật ký quản trị gần nhất'));layout.addWidget(log)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Save|QDialogButtonBox.StandardButton.Cancel);buttons.button(QDialogButtonBox.StandardButton.Save).setText('Lưu thay đổi');buttons.button(QDialogButtonBox.StandardButton.Cancel).setText('Hủy');layout.addWidget(buttons)
         buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject)

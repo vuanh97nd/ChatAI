@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 const defaultServer = String.fromEnvironment('CHAT_AI_SERVER',
-    defaultValue: 'https://chatai-backup.vuanh97nd1.workers.dev');
+    defaultValue: 'https://chatai.anhvn53.workers.dev');
 
-const defaultBackupServer = 'https://chatai.anhvn53.workers.dev';
+const defaultBackupServer = 'https://chatai-backup.vuanh97nd1.workers.dev';
 
 const autoSearchInstruction = '\nNếu hỏi thời tiết mà chưa biết địa điểm, hãy hỏi tỉnh/thành phố trước; không tự đoán vị trí. '
     'Bạn có thể tự tra web khi cần thông tin mới, giá/lịch hiện tại, tài liệu/API hoặc nguồn kiểm chứng. '
