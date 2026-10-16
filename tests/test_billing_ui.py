@@ -134,6 +134,18 @@ class BillingUITests(unittest.TestCase):
             self.assertEqual(dialog.webhook.text(),'https://example.org/api/billing/webhook')
         finally:dialog.close()
 
+    def test_billing_outage_hides_qr_and_disables_new_payments(self):
+        dialog=self.dialog()
+        try:
+            dialog.qr.setText('OLD QR');dialog.topup.setEnabled(True);dialog.renew.setEnabled(True)
+            dialog.received('/api/billing/status',{'billing_offline':True,'topups_available':False,'message':'offline'})
+            self.assertEqual(dialog.qr.text(),'')
+            self.assertFalse(dialog.topup.isEnabled());self.assertFalse(dialog.renew.isEnabled())
+            dialog.qr.setText('OLD QR')
+            dialog.failed('Server thanh toán dự phòng không khả dụng.')
+            self.assertEqual(dialog.qr.text(),'')
+        finally:dialog.close()
+
     def test_user_trial_and_manual_retry_id(self):
         dialog=self.dialog()
         try:

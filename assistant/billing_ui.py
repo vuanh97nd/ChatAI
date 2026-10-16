@@ -149,6 +149,9 @@ class BillingDialog(QDialog):
 
     def failed(self,text):
         self.status.setText(text)
+        if 'Server thanh toán dự phòng không khả dụng' in text:
+            self.topup.setEnabled(False);self.renew.setEnabled(False);self.qr.clear()
+            self.payment_info.setText('Server thanh toán đang lỗi. Không chuyển khoản hoặc tạo QR mới; chỉ dùng phần tiền đã xác nhận còn lại trong ví.')
         if self.worker and self.worker.path=='/api/billing/order/status':
             self.timer.setInterval(min(60000,self.timer.interval()*2))
         if self.summary.text()=='Đang tải số dư…':
@@ -210,6 +213,10 @@ class BillingDialog(QDialog):
         self.send('/api/admin/billing/reconcile',{'id':self.review_id.text().strip(),'tokens':self.review_tokens.value(),'note':self.reason.text().strip()})
 
     def received(self,path,result):
+        if result.get('billing_offline') or result.get('topups_available') is False:
+            self.qr.clear()
+            self.topup.setEnabled(False);self.renew.setEnabled(False)
+            self.payment_info.setText('Server thanh toán đang lỗi. Tạm khóa nạp tiền; chỉ dùng số dư đã xác nhận còn lại.')
         if path=='/api/billing/order/status':
             order=result['order_status']
             if not self.current_order or self.current_order['id']!=order['id']:return
@@ -242,7 +249,8 @@ class BillingDialog(QDialog):
             self.summary.setText('Admin miễn phí; không trừ ví.' if w.get('exempt') else
                 f"Tài khoản: {w['owner']} · Số dư {money(w['balance_vnd'])} · Khả dụng {money(w['available_vnd'])}\n"
                 f"Giữ chỗ / đối soát: {money(w['held_vnd'])}\n"+maintenance)
-            self.topup.setEnabled(result.get('enabled',False) and not self.is_admin);self.renew.setEnabled(result.get('enabled',False) and not self.is_admin and self.service_fee>0)
+            can_pay=result.get('enabled',False) and result.get('topups_available',True) and not result.get('billing_offline',False) and not self.is_admin
+            self.topup.setEnabled(can_pay);self.renew.setEnabled(can_pay and self.service_fee>0)
         if 'orders' in result:
             states={'pending':'Chờ chuyển khoản','paid':'Đã nhận','expired':'Hết hạn'}
             rows=[]
