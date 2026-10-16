@@ -25,7 +25,7 @@ from assistant import initialize_runtime
 initialize_runtime()
 
 from assistant.config import ROOT, load_config
-from assistant.failover import ai_request,forget_backup
+from assistant.failover import ai_request
 from assistant.locking import execution_lock
 from assistant.modules import ModuleManager, MODULES, ALLOWED_MODELS, CHAT_MODELS, MEDIA_VARIANTS, media_model_dir
 from assistant.storage import Store
@@ -797,8 +797,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if getattr(self,'exit_when_idle',False):self.close()
 
     def on_event(self, event):
-        if event.get('type')=='status' and 'server dự phòng' in event.get('text',''):
-            self.refresh_ai_identity()
         self.remote_progress(event)
         if event['type']=='app_countdown':
             seconds=event['seconds'];self.cancel_countdown_button.setVisible(seconds>0)
@@ -1696,14 +1694,12 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def refresh_ai_identity(self):
         if not hasattr(self,'ai_identity_label'):return
         from assistant.model_identity import model_identity_text
-        from assistant.failover import active_backup
         session=getattr(self,'server_session',None) or {}
-        backup=active_backup(session) if session else None
-        endpoint=(backup or session).get('endpoint') or self.cfg.get('server_url','')
+        endpoint=session.get('endpoint') or self.cfg.get('server_url','')
         states=getattr(self,'ai_server_models',{}).get(endpoint,{})
         name=self.model.currentText()
         self.ai_identity_label.setText(model_identity_text(name,REMOTE_MODELS.get(name,'local'),
-            self.cfg,endpoint,bool(backup),states))
+            self.cfg,endpoint,False,states))
 
     def model_changed(self,name):
         provider=REMOTE_MODELS.get(name,'local')
@@ -2508,9 +2504,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         for label in (self.account_name_label,self.account_username_label,self.account_email_label,self.account_phone_label):label.setTextFormat(Qt.TextFormat.PlainText)
         self.account_register_button=self.button(box,'Đăng ký',self.register_dialog)
         self.account_login_button=self.button(box,'Đăng nhập',self.login_dialog)
-        self.button(box,'Kết nối AI dự phòng',self.backup_login_dialog)
-        self.button(box,'Cấu hình API dự phòng',self.backup_provider_dialog)
-        self.button(box,'Tắt AI dự phòng',forget_backup)
         self.account_remember=QCheckBox('Ghi nhớ đăng nhập');self.account_remember.setChecked(True);box.addWidget(self.account_remember)
         self.account_edit_button=self.button(box,'Chỉnh sửa thông tin cá nhân',self.edit_personal_info)
         self.account_password_button=self.button(box,'Đổi mật khẩu',self.change_password_dialog)
@@ -2749,192 +2742,8 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
         if self.server_session:self.account_menu()
         else:self.login_dialog()
 
-    def backup_login_dialog(self):
-        if self.busy():return
-        if not self.server_session:
-            QMessageBox.information(self,'AI dự phòng','Đăng nhập tài khoản chính trước.');return
-        from assistant.failover import save_backup,load_backup
-        from assistant.backup_provider import backup_server_choices
-        primary={k:self.server_session[k] for k in ('endpoint','username')}
-        saved=load_backup(primary) or {}
-        dialog=QDialog(self);dialog.setWindowTitle('AI dự phòng — đăng nhập riêng')
-        form=QFormLayout(dialog);endpoint=QComboBox();endpoint.setEditable(True)
-        endpoint.addItems(backup_server_choices(primary['endpoint'],saved.get('endpoint','')))
-        username=QLineEdit(saved.get('username',''));password=QLineEdit()
-        password.setEchoMode(QLineEdit.EchoMode.Password)
-        main_server=QLabel(primary['endpoint']);main_server.setWordWrap(True);form.addRow('Server chính hiện tại:',main_server)
-        form.addRow(QLabel('Chỉ chuyển yêu cầu AI. Không đồng bộ lịch sử hay thanh toán.'))
-        form.addRow('Chọn / nhập server dự phòng:',endpoint);form.addRow('Tài khoản dự phòng:',username);form.addRow('Mật khẩu:',password)
-        configure=QPushButton('Cấu hình API dự phòng / Kiểm tra AI')
-        configure.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_provider_dialog)))
-        form.addRow(configure)
-        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(dialog.accept);buttons.rejected.connect(dialog.reject);form.addRow(buttons)
-        if dialog.exec()!=QDialog.DialogCode.Accepted:return
-        primary={k:self.server_session[k] for k in ('endpoint','username')}
-        target=endpoint.currentText().strip().rstrip('/');name=username.text().strip();secret=password.text()
-        if target==primary['endpoint']:
-            QMessageBox.warning(self,'AI dự phòng','Chọn server khác server chính.');return
-        def task(emit):
-            from assistant.accounts import request_account
-            value=request_account(target,'/api/login',{'username':name,'key':secret,'device_id':self.device_id})
-            user=value.get('user',{})
-            save_backup(primary,{'endpoint':target,'username':user.get('username') or value.get('username') or name,'key':value.get('session_token') or secret})
-            return value
-        self.work(task,lambda value:QMessageBox.information(self,'AI dự phòng','Đã lưu đăng nhập dự phòng được mã hóa. AI tự chuyển khi server chính lỗi.'))
 
-    def backup_provider_dialog(self):
-        if self.busy() or not self.server_session:return
-        from assistant.failover import load_backup
-        primary={k:self.server_session[k] for k in ('endpoint','username')}
-        session=load_backup(primary)
-        if not session:
-            self.custom_backup_api_dialog();return
-        dialog=QDialog(self);dialog.setWindowTitle('Cấu hình API dự phòng');dialog.resize(560,360)
-        form=QFormLayout(dialog);target=QLabel(session['endpoint']);target.setWordWrap(True);form.addRow('Server đích:',target)
-        main_server=QLabel(primary['endpoint']);main_server.setWordWrap(True);form.addRow('Server chính:',main_server)
-        change_server=QPushButton('Chọn / đổi server dự phòng')
-        change_server.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.backup_login_dialog)))
-        form.addRow(change_server)
-        custom_api=QPushButton('API tùy chỉnh / Node.js — nhập URL và kiểm tra')
-        custom_api.clicked.connect(lambda:(dialog.reject(),QTimer.singleShot(0,self.custom_backup_api_dialog)))
-        form.addRow(custom_api)
-        form.addRow(QLabel('Lưu khóa cần quyền Admin trên server dự phòng. Để trống để giữ khóa cũ.'))
-        provider=QComboBox();models={'nvidia':self.cfg.get('nvidia_model',''),'deepseek':self.cfg.get('deepseek_model',''),'gemini':self.cfg.get('gemini_model',''),'groq':'openai/gpt-oss-120b','openai':self.cfg.get('openai_model',''),'openrouter':self.cfg.get('openrouter_model','openai/gpt-4.1-mini'),'cloudflare':''}
-        for name in models:provider.addItem(PROVIDER_NAMES.get(name,name),name)
-        key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password);key.setMaxLength(4096)
-        model=QLineEdit();model.setMaxLength(160);message=QLabel('Chưa kiểm tra AI.');message.setWordWrap(True)
-        form.addRow('Nhà cung cấp:',provider);form.addRow('Khóa API:',key);form.addRow('Model của server dự phòng:',model);form.addRow(message)
-        controls=QHBoxLayout();buttons=[]
-        def refresh():
-            name=provider.currentData();model.setText(models[name]);key.clear()
-            key.setEnabled(name!='cloudflare');model.setEnabled(name!='cloudflare')
-            message.setText('Cloudflare dùng binding AI; không nhập khóa API. Model dùng cấu hình Worker.' if name=='cloudflare' else 'Để trống khóa để giữ khóa đã lưu.')
-        provider.currentIndexChanged.connect(refresh);refresh()
-        def request(action):
-            if self.busy():return
-            name=provider.currentData();api_key=key.text().strip();selected=model.text().strip()
-            if action=='models' and name=='cloudflare':
-                message.setText('Cloudflare dùng model theo cấu hình Worker.');return
-            if action=='save' and name=='cloudflare':
-                message.setText('Cloudflare không cần lưu khóa ở đây. Thêm binding AI trong Cloudflare rồi bấm Kiểm tra AI.');return
-            if action=='save' and not api_key and not selected:
-                message.setText('Nhập khóa API hoặc model để lưu.');return
-            for button in buttons:button.setEnabled(False)
-            provider.setEnabled(False);key.setEnabled(False);model.setEnabled(False)
-            change_server.setEnabled(False)
-            message.setText('Đang '+('kiểm tra AI (có thể tính phí API)…' if action=='test' else 'kết nối server dự phòng…'))
-            def task(emit):
-                from assistant.backup_provider import backup_provider_request
-                try:return {'value':backup_provider_request(session,action,name,api_key,'' if action=='models' else selected)}
-                except Exception as error:return {'error':str(error).replace(api_key,'[ẨN]') if api_key else str(error)}
-            def done(result):
-                if not dialog.isVisible():return
-                for button in buttons:button.setEnabled(True)
-                provider.setEnabled(True);key.setEnabled(name!='cloudflare');model.setEnabled(name!='cloudflare')
-                change_server.setEnabled(True)
-                if result.get('error'):message.setText('Chưa thành công: '+result['error']);return
-                value=result['value']
-                if action=='models':
-                    catalog=value.get('models',[])
-                    catalog=sorted(set(m for m in catalog if isinstance(m,str) and re.fullmatch(r'[A-Za-z0-9._/:-]{1,160}',m))) if isinstance(catalog,list) else []
-                    if not catalog:message.setText('Server dự phòng chưa trả danh sách model. Có thể nhập mã vào ô Model rồi Kiểm tra AI.');return
-                    chosen,ok=QInputDialog.getItem(dialog,'Model '+PROVIDER_NAMES.get(name,name)+' · server dự phòng',
-                        'Chọn hoặc nhập mã model chat; embedding/reranker không dùng để trò chuyện:',catalog,catalog.index(selected) if selected in catalog else 0,True)
-                    if ok:
-                        model.setText(chosen.strip())
-                        message.setText('Đã lấy '+str(len(catalog))+' model từ server dự phòng. Chọn mới chưa được lưu: bấm Kiểm tra AI rồi Lưu API dự phòng.')
-                elif action=='status':
-                    states=value.get('providers',{})
-                    if not hasattr(self,'ai_server_models'):self.ai_server_models={}
-                    self.ai_server_models[session['endpoint']]={k:v.get('model','') for k,v in states.items()}
-                    self.refresh_ai_identity()
-                    for ident,item in states.items():
-                        if ident in models and item.get('model'):models[ident]=item['model']
-                    model.setText(models[name]);message.setText('Khóa trên server dự phòng: '+('đã có' if states.get(name,{}).get('configured') else 'chưa có')+'. Chưa kiểm tra phản hồi AI.')
-                elif action=='save':
-                    key.clear();message.setText('Đã lưu API trên server dự phòng. Bấm Kiểm tra AI để xác minh.');models[name]=selected
-                    if not hasattr(self,'ai_server_models'):self.ai_server_models={}
-                    self.ai_server_models.setdefault(session['endpoint'],{})[name]=selected
-                    self.refresh_ai_identity()
-                elif not str(value.get('answer') or '').strip():message.setText(value.get('message') or 'API phản hồi nhưng chưa có nội dung AI. Chưa xác nhận dự phòng hoạt động.')
-                else:message.setText('AI dự phòng đã trả lời thành công tại '+session['endpoint']+'. Nếu vừa thay đổi khóa/model, bấm Lưu API để áp dụng.')
-            self.work(task,done)
-        for label,action in [('Chọn / nhập thêm model','models'),('Xem trạng thái','status'),('Lưu API dự phòng','save'),('Kiểm tra AI','test')]:
-            button=QPushButton(label);button.clicked.connect(lambda checked=False,a=action:request(a));controls.addWidget(button);buttons.append(button)
-        form.addRow(controls)
-        close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
-        QTimer.singleShot(0,lambda:request('status') if dialog.isVisible() else None)
-        dialog.exec()
 
-    def custom_backup_api_dialog(self):
-        if self.busy() or not self.server_session:return
-        from assistant.custom_backup_api import load, save, validate, chat
-        primary={k:self.server_session[k] for k in ('endpoint','username')}
-        saved=load(primary) or {}
-        dialog=QDialog(self);dialog.setWindowTitle('API tùy chỉnh dự phòng — OpenAI compatible');dialog.resize(640,360)
-        form=QFormLayout(dialog)
-        note=QLabel('Gọi trực tiếp từ máy này. Nhập khóa xác thực server Node.js (.env), không nhập token phiên ChatGPT. Khóa lưu bằng DPAPI theo tài khoản Windows.');note.setWordWrap(True);form.addRow(note)
-        url=QLineEdit(saved.get('url',''));url.setPlaceholderText('http://127.0.0.1:3040 hoặc https://api.ten-mien-cua-ban')
-        key=QLineEdit();key.setEchoMode(QLineEdit.EchoMode.Password);key.setMaxLength(4096)
-        key.setPlaceholderText('Để trống giữ khóa đã lưu' if saved else 'CHATGPT2API_AUTH_KEY của server')
-        model=QLineEdit(saved.get('model',''));model.setPlaceholderText('Nhập model server hỗ trợ');model.setMaxLength(160)
-        enabled=QCheckBox('Dùng làm dự phòng khi dịch vụ AI hiện tại lỗi kết nối/quá tải');enabled.setChecked(saved.get('enabled',False))
-        direct=QCheckBox('Dùng API này ngay cho chat và thao tác AI — không chờ server chính lỗi');direct.setChecked(saved.get('use_direct',False))
-        message=QLabel('Chưa kiểm tra API. /health thành công chưa chứng minh chat hoạt động.');message.setWordWrap(True)
-        form.addRow('URL API:',url);form.addRow('Khóa server:',key);form.addRow('Model:',model);form.addRow(enabled);form.addRow(direct);form.addRow(message)
-        row=QHBoxLayout();test=QPushButton('Kiểm tra chat');store=QPushButton('Lưu cấu hình');row.addWidget(test);row.addWidget(store);form.addRow(row)
-        launch=QPushButton('Khởi động server Node.js');form.addRow(launch)
-        def start_node():
-            import os, socket, subprocess
-            if os.name!='nt':
-                message.setText('Khởi động server cục bộ yêu cầu Windows.');return
-            local=os.environ.get('LOCALAPPDATA')
-            launcher=Path(local)/'ChatAI'/'NodeServer'/'start-local.ps1' if local else None
-            if launcher is None or not launcher.is_file():
-                message.setText('Chưa tìm thấy server đã cài. Chạy scripts/setup-local-node-server.ps1 -Start trước.');return
-            try:
-                with socket.create_connection(('127.0.0.1',3040),timeout=0.3):
-                    message.setText('Cổng 3040 đã có dịch vụ chạy. Bấm Kiểm tra chat để xác nhận API.');return
-            except OSError:pass
-            try:
-                subprocess.Popen(['powershell.exe','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',str(launcher)],
-                                 cwd=str(launcher.parent),creationflags=subprocess.CREATE_NEW_CONSOLE)
-                message.setText('Đã mở cửa sổ khởi động server. Giữ cửa sổ đó mở; chờ server lắng nghe rồi bấm Kiểm tra chat.')
-            except OSError:
-                message.setText('Không mở được PowerShell để khởi động server.')
-        launch.clicked.connect(start_node)
-        def profile():
-            entered=key.text().strip()
-            if not entered and url.text().strip().rstrip('/')!=saved.get('url'):
-                raise ValueError('URL đã đổi: nhập khóa của server mới.')
-            return validate({'url':url.text(),'api_key':entered or saved.get('api_key',''),
-                'model':model.text(),'enabled':enabled.isChecked(),'use_direct':direct.isChecked()})
-        def persist():
-            nonlocal saved
-            try:
-                value=profile();save(primary,value);saved=value;key.clear()
-                key.setPlaceholderText('Để trống giữ khóa đã lưu')
-                message.setText('Đã lưu: dùng API tùy chỉnh trực tiếp cho yêu cầu AI mới.' if value['use_direct'] else 'Đã lưu trên máy này. Dự phòng '+('đã bật.' if value['enabled'] else 'chưa bật; có thể kiểm tra riêng.'))
-            except Exception as error:message.setText(str(error))
-        def check():
-            if self.busy():return
-            try:value=profile()
-            except Exception as error:message.setText(str(error));return
-            for control in (url,key,model,enabled,direct,test,store):control.setEnabled(False)
-            message.setText('Đang gửi một yêu cầu chat thử…')
-            def task(emit):
-                try:return {'value':chat(value,[{'role':'user','content':'Chỉ trả lời OK.'}],{'num_predict':64,'temperature':0},30)}
-                except Exception as error:return {'error':str(error).replace(value['api_key'],'[ẨN]')}
-            def done(result):
-                if not dialog.isVisible():return
-                for control in (url,key,model,enabled,direct,test,store):control.setEnabled(True)
-                if result.get('error'):message.setText('Chưa thành công: '+result['error'])
-                else:message.setText('API trả lời: '+result['value']['answer'][:300]+' — bấm Lưu để áp dụng.')
-            self.work(task,done)
-        test.clicked.connect(check);store.clicked.connect(persist)
-        close=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);close.rejected.connect(dialog.reject);form.addRow(close)
-        dialog.exec()
 
     def login_dialog(self):
         if self.server_session:
@@ -3702,8 +3511,6 @@ class Window(QMainWindow, RemoteMixin, SupportMixin, ProfileMixin, CodeMixin, Ad
     def account_menu(self):
         menu=QMenu(self)
         if self.server_session:menu.addAction('Kết nối điện thoại',self.remote_connect_dialog)
-        menu.addAction('AI dự phòng',self.backup_login_dialog)
-        menu.addAction('Cấu hình API dự phòng',self.backup_provider_dialog)
         if self.server_session:
             menu.addAction(self.server_session.get('fullname') or self.server_session['username']).setEnabled(False)
             if admin_session(self.server_session):

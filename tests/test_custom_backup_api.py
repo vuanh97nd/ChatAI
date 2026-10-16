@@ -53,43 +53,10 @@ class CustomBackupTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): next(iterator)
             self.assertEqual(call.call_count, 1)
 
-    def test_json_failover_only_for_provider_outages(self):
-        with patch('assistant.failover.active_backup', return_value=None), patch('assistant.failover.load_backup', return_value=None), patch('assistant.failover.request_account', side_effect=AccountAPIError('down', 503)), patch('assistant.custom_backup_api.fallback', return_value={'success': True, 'answer': 'OK'}) as call:
-            self.assertEqual(ai_request(self.primary, '/api/provider/model', {'messages': []})['answer'], 'OK')
-            self.assertEqual(call.call_args.args[0], self.primary)
-        for error in [AccountAPIError('denied', 401), AccountAPIError('billing', 429, code='QUOTA_EXHAUSTED')]:
-            with patch('assistant.failover.active_backup', return_value=None), patch('assistant.failover.load_backup', return_value=None), patch('assistant.failover.request_account', side_effect=error), patch('assistant.custom_backup_api.fallback') as call:
-                with self.assertRaises(AccountAPIError): ai_request(self.primary, '/api/provider/model', {'messages': []})
-                call.assert_not_called()
-
-    def test_direct_chat_skips_worker_and_preserves_json_instruction(self):
-        profile = dict(self.profile, use_direct=True)
-        with patch('assistant.failover.active_backup', return_value=None), patch('assistant.custom_backup_api.load', return_value=profile), patch('assistant.custom_backup_api.chat', return_value={'success':True,'answer':'{"tool":""}'}) as request, patch('assistant.failover.ai_request') as remote:
-            client=ServerApiClient(self.primary,'nvidia')
-            result=client.chat('nvidia',[{'role':'user','content':'task'}],format={'type':'object'})
-            self.assertEqual(result['message']['content'],'{"tool":""}')
-            self.assertIn('JSON schema', request.call_args.args[1][0]['content'])
-            remote.assert_not_called()
-
-    def test_chat_keeps_original_scope_when_worker_backup_is_active(self):
-        backup={'endpoint':'https://backup.example','username':'other','key':'backup-key'}
-        with patch('assistant.failover.active_backup',return_value=backup), patch('assistant.custom_backup_api.load',return_value=None) as load_config, patch('assistant.failover.ai_request',return_value={'success':True,'answer':'OK'}) as request:
-            client=ServerApiClient(self.primary,'nvidia')
-            client.chat('nvidia',[])
-            self.assertEqual(load_config.call_args.args[0],{k:self.primary[k] for k in ('endpoint','username')})
-            self.assertEqual(request.call_args.args[0],self.primary)
-            self.assertEqual(request.call_args.args[2]['key'],'main-secret')
-
-    def test_node_precedes_worker_backup_after_outage(self):
-        with patch('assistant.failover.active_backup',return_value=None), patch('assistant.failover.load_backup',return_value={'endpoint':'https://backup.example','username':'other','key':'backup-key'}), patch('assistant.failover.request_account',side_effect=AccountAPIError('busy',503)) as worker, patch('assistant.custom_backup_api.fallback',return_value={'success':True,'answer':'Node OK'}):
-            self.assertEqual(ai_request(self.primary,'/api/provider/model',{'messages':[]})['answer'],'Node OK')
-            self.assertEqual(worker.call_count,1)
-
-    def test_direct_stream_does_not_contact_worker(self):
-        with patch('assistant.failover.active_backup',return_value=None), patch('assistant.custom_backup_api.load',return_value=dict(self.profile,use_direct=True)), patch('assistant.custom_backup_api.stream_answer',return_value=iter([('text','OK')])) as stream, patch('assistant.cloud.urlopen') as worker:
-            self.assertEqual(list(ServerApiClient(self.primary,'nvidia').stream_answer('nvidia',[])),[('text','OK')])
-            stream.assert_called_once()
-            worker.assert_not_called()
+    def test_legacy_custom_configuration_is_not_loaded(self):
+        with patch('assistant.custom_backup_api._dpapi') as decrypt:
+            self.assertIsNone(load({'endpoint':'https://main.example','username':'owner'}))
+            decrypt.assert_not_called()
 
 
 if __name__ == '__main__': unittest.main()

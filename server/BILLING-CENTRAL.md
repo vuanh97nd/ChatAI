@@ -180,3 +180,14 @@ không phải bảo đảm số liệu đang tức thời trong lúc AI chạy.
 
 Không đưa các bản sao SQL hay khóa lên GitHub. Không cần thay BILLING_LINK_KEY
 hoặc cấu hình lại ngân hàng/SePay cho thay đổi client này.
+
+## AI chỉ dùng server chính
+
+Client mới không còn các mục Kết nối AI dự phòng/Cấu hình API dự phòng/Tắt AI
+Dự phòng. Chat JSON, streaming và đọc tài liệu không tự chuyển sang Worker
+thanh toán hoặc API Node.js/tùy chỉnh khi chính lỗi. Cấu hình AI dự phòng cũ
+đã lưu không được nạp lại; không xóa dữ liệu ví hay khóa API trên các Worker.
+Cấu hình nhà cung cấp AI trên server chính vẫn dùng bình thường.
+
+Đây là thay đổi client; không cần deploy Worker hoặc chạy migration thanh toán
+cho riêng thay đổi này. Restart Desktop sau cập nhật; Android cần APK mới.

@@ -32,15 +32,8 @@ def validate(profile):
 
 
 def load(primary, enabled_only=False):
-    try:
-        value = json.loads(_dpapi(credentials_path().with_name('custom-backup.dpapi').read_bytes(), True))
-        owner=value.get('primary',{})
-        if owner.get('username') != primary.get('username') or str(owner.get('endpoint','')).rstrip('/') != str(primary.get('endpoint','')).rstrip('/'):
-            return None
-        profile = validate(value['profile'])
-        return profile if not enabled_only or profile.get('enabled') or profile.get('use_direct') else None
-    except (OSError, ValueError, RuntimeError, KeyError, TypeError):
-        return None
+    # Legacy settings remain encrypted on disk but can no longer route online AI.
+    return None
 
 
 def save(primary, profile):

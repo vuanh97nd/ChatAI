@@ -189,23 +189,8 @@ class ChatApi {
 
   Future<Map<String, dynamic>> modelAnswer(Map<String, dynamic> payload,
       {void Function(String)? onText, bool Function()? cancelled}) async {
-    final target = backup;
-    if (usingBackup && target != null) {
-      return target.modelAnswer(payload, onText: onText, cancelled: cancelled);
-    }
-    var received = false;
-    try {
-      return await _primaryModelAnswer(payload, onText: onText == null ? null : (text) {
-        received = true;
-        onText(text);
-      }, cancelled: cancelled);
-    } catch (error) {
-      final available = serverUnavailable(error);
-      if (received || target == null || !available || cancelled?.call() == true) rethrow;
-      usingBackup = true;
-      onFailover?.call('Đang dùng AI dự phòng. Lịch sử vẫn thuộc server chính.');
-      return target.modelAnswer(payload, onText: onText, cancelled: cancelled);
-    }
+    usingBackup = false;
+    return _primaryModelAnswer(payload, onText: onText, cancelled: cancelled);
   }
 
   Future<Map<String, dynamic>> _primaryModelAnswer(Map<String, dynamic> payload,
@@ -280,7 +265,7 @@ class ChatApi {
       onStage?.call('Đang tra cứu Bing…');
       Map<String, dynamic> search;
       try {
-        search = await (usingBackup && backup != null ? backup! : this).post('/api/chat/search', {'text': query});
+        search = await post('/api/chat/search', {'text': query});
       } on ApiException {
         if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
         return 'Hiện tôi chưa lấy được nguồn từ Bing nên chưa thể xác minh thông tin mới. '

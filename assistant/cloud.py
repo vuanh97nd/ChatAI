@@ -56,24 +56,7 @@ def parse_events(lines):
 
 
 def cloud_events(endpoint, body, opener=urlopen):
-    from .failover import active_backup,load_backup,mark_unavailable
-    session={'endpoint':endpoint,'username':body.get('username','')}
-    active=active_backup(session) if body.get('username') else None
-    target=active or session
-    payload=dict(body)
-    if active:payload.update(username=active['username'],key=active['key'])
-    received=False
-    try:
-        for event in _primary_cloud_events(target['endpoint'],payload,opener):
-            received=True
-            yield event
-    except CloudError as error:
-        backup=load_backup(session) if body.get('username') and not active else None
-        available=error.code=='SERVER_UNAVAILABLE'
-        if received or not backup or not available:raise
-        mark_unavailable(session)
-        yield 'status',{'text':'Đang dùng AI ở server dự phòng.'}
-        yield from _primary_cloud_events(backup['endpoint'],dict(body,username=backup['username'],key=backup['key']),opener)
+    yield from _primary_cloud_events(endpoint,body,opener)
 
 
 def _primary_cloud_events(endpoint, body, opener=urlopen):
@@ -350,21 +333,10 @@ class ServerApiClient:
         self.session=dict(session);self.provider=provider;self.model=provider;self.on_status=on_status;self.cancel_event=cancel_event
         self._primary_session=dict(session)
         self.timeout=max(5,int(timeout));self.retry_limit=max(1,int(retry_limit))
-        from .failover import active_backup
-        backup=active_backup(self.session)
-        if backup:
-            self.session=dict(backup)
-            if self.on_status:self.on_status('Đang dùng AI ở server dự phòng.')
     def list(self):return {'models':[{'model':self.model},{'model':'document-small'}]}
     def stream_answer(self,model,messages,**kwargs):
         # Streaming for every OpenAI-compatible provider (the Worker relays their SSE as is);
         # only Gemini's native endpoint answers as one JSON body.
-        from .custom_backup_api import load, stream_answer as custom_stream
-        local=load({k:self._primary_session[k] for k in ('endpoint','username')})
-        if local and local.get('use_direct'):
-            if self.on_status:self.on_status('Đang dùng trực tiếp API Node.js / tùy chỉnh: '+local['model'])
-            yield from custom_stream(local,messages,kwargs.get('options',{}),self.timeout,self.cancel_event)
-            return
         if CUSTOM_PROVIDER_TYPES.get(self.provider,self.provider)=='gemini':
             yield 'text',self.chat(model,messages,**kwargs)['message']['content'];return
         endpoint=self.session['endpoint']
@@ -421,40 +393,12 @@ class ServerApiClient:
             try:detail=json.loads(error.read(20000))
             except (ValueError,UnicodeDecodeError):detail={}
             if not isinstance(detail,dict):detail={}
-            if not received_output and not (self.cancel_event is not None and self.cancel_event.is_set()) and error.code in (429,500,502,503,504,530) and detail.get('code')!='QUOTA_EXHAUSTED':
-                from .custom_backup_api import load, stream_answer as custom_stream
-                custom=load({k:self._primary_session[k] for k in ('endpoint','username')},enabled_only=True)
-                if custom:
-                    if self.on_status:self.on_status('Đang dùng API tùy chỉnh dự phòng.')
-                    yield from custom_stream(custom,messages,options,self.timeout,self.cancel_event)
-                    return
-                from .failover import load_backup,mark_unavailable
-                backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
-                if backup:
-                    mark_unavailable(self.session)
-                    if self.on_status:self.on_status('Đang dùng AI ở server dự phòng.')
-                    yield from ServerApiClient(backup,self.provider,cancel_event=self.cancel_event,timeout=self.timeout).stream_answer(model,messages,**kwargs)
-                    return
             message=str(detail.get('message') or 'Server HTTP '+str(error.code))
             message=message.replace(str(self.session['key']),'[ẨN]')
             if error.code==403:
                 message+=' · Worker từ chối truy cập. Nếu đăng nhập vẫn hoạt động, kiểm tra Security Events trên Cloudflare cho /api/provider/model; lỗi này chưa chứng minh key DeepSeek sai.'
             raise CloudError(message,detail.get('code','')) from None
         except (URLError,TimeoutError,HTTPException,ConnectionError):
-            if not received_output and not (self.cancel_event is not None and self.cancel_event.is_set()):
-                from .custom_backup_api import load, stream_answer as custom_stream
-                custom=load({k:self._primary_session[k] for k in ('endpoint','username')},enabled_only=True)
-                if custom:
-                    if self.on_status:self.on_status('Đang dùng API tùy chỉnh dự phòng.')
-                    yield from custom_stream(custom,messages,options,self.timeout,self.cancel_event)
-                    return
-            from .failover import load_backup,mark_unavailable
-            backup=load_backup({'endpoint':self.session['endpoint'],'username':self.session['username']})
-            if not received_output and backup and not (self.cancel_event is not None and self.cancel_event.is_set()):
-                mark_unavailable(self.session)
-                if self.on_status:self.on_status('Mất kết nối server chính; đang dùng AI dự phòng.')
-                yield from ServerApiClient(backup,self.provider,cancel_event=self.cancel_event,timeout=self.timeout).stream_answer(model,messages,**kwargs)
-                return
             raise CloudError('Không kết nối được AI hoặc quá thời gian chờ.') from None
         finally:record('ai.request_total',time.monotonic()-started)
 
@@ -463,14 +407,6 @@ class ServerApiClient:
         options=kwargs.get('options',{})
         if kwargs.get('format'):
             messages=[{'role':'system','content':'Trả đúng một JSON hợp lệ, không Markdown. JSON schema: '+json.dumps(kwargs['format'],ensure_ascii=False)},*messages]
-        from .custom_backup_api import load, chat as custom_chat
-        local=load({k:self._primary_session[k] for k in ('endpoint','username')})
-        if local and local.get('use_direct'):
-            if self.cancel_event is not None and self.cancel_event.is_set():raise CloudError('Đã dừng yêu cầu.')
-            if self.on_status:self.on_status('Đang dùng trực tiếp API Node.js / tùy chỉnh: '+local['model'])
-            request=lambda:custom_chat(local,messages,options,self.timeout)
-            result=cancellable_request(request,self.cancel_event,self.on_status) if self.cancel_event is not None else request()
-            return {'message':{'role':'assistant','content':result['answer']},'truncated':bool(result.get('truncated')),'usage':{}}
         body={
             'username':self._primary_session['username'],'key':self._primary_session['key'],'provider':self.provider,
             'messages':messages,'small':model=='document-small','format':kwargs.get('format'),
