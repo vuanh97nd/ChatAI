@@ -32,17 +32,17 @@ def integrate(source,fragment):
 
 
 def main():
-    fragment=(ROOT/'server/fragments/billing-central.js').read_text()
+    fragment=(ROOT/'server/fragments/billing-central.js').read_text(encoding='utf-8-sig')
     results={}
     for relative in ('server/worker.js','work.js'):
-        path=ROOT/relative;source=path.read_text();result=integrate(source,fragment)
-        subprocess.run(['node','--input-type=module','--check'],input=result,text=True,check=True,capture_output=True)
+        path=ROOT/relative;source=path.read_text(encoding='utf-8-sig');result=integrate(source,fragment)
+        subprocess.run(['node','--input-type=module','--check'],input=result,text=True,encoding='utf-8',check=True,capture_output=True)
         if result!=source:results[relative]=result
     backup=ROOT/'data'/'billing-worker-backups'/datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     for relative,result in results.items():
         path=ROOT/relative;copy=backup/relative
         copy.parent.mkdir(parents=True,exist_ok=True);copy.write_bytes(path.read_bytes())
-        path.write_text(result)
+        path.write_text(result,encoding='utf-8')
     print('Workers prepared and syntax checked:',len(results),'changed. No cloud deployment or real wallet modification.')
 
 
