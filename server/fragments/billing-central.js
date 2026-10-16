@@ -303,6 +303,14 @@ async function billingMigrateLedger(env,actor,body){
   return reply({success:false,code:'BILLING_MIGRATION_UNCONFIRMED',cause,reference,message:'Chưa xác nhận chuyển sổ. Nguyên nhân: '+cause+'. Giữ freeze và request_id cũ; không xóa dữ liệu nguồn.'},503);
  }
 }
+function billingSafeConnectionDetail(error,env){
+ // Only the authenticated admin diagnostic exposes this bounded runtime message.
+ let detail=String(error?.message||'Unknown connection error');
+ for(const [name,value] of Object.entries(env)){
+  if(/key|secret|token|password/i.test(name)&&typeof value==='string'&&value)detail=detail.split(value).join('[REDACTED]');
+ }
+ return detail.replace(/https?:\/\/[^\s]+/gi,'[URL]').replace(/[\x00-\x1f\x7f]/g,' ').slice(0,600);
+}
 async function billingCentralCheck(env,actor){
  if(!administrator(actor))return fail('Admin required.',403);
  const checks={role:env.BILLING_ROLE||'local',freeze:env.BILLING_MIGRATION_FREEZE==='true',
@@ -316,7 +324,7 @@ async function billingCentralCheck(env,actor){
   let cause=null;
   if(!connected)cause=status===401?'BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH':status===404?'BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING':'BILLING_PEER_HTTP_'+status;
   return reply({success:true,connected,checks,peer_http_status:status,cause});
- }catch(error){return reply({success:true,connected:false,checks,cause:error.billingCause||'BILLING_LINK_CONFIGURATION_INVALID'});}
+ }catch(error){return reply({success:true,connected:false,checks,cause:error.billingCause||'BILLING_LINK_CONFIGURATION_INVALID',connection_detail:billingSafeConnectionDetail(error,env)});}
 }
 async function billingImportLedger(env,source,payload){
  if(env.BILLING_MIGRATION_FREEZE!=='true')return fail('Authority must be frozen before importing ledger.',409);

@@ -36,6 +36,7 @@ def main():
         for name,value in result.get('checks',{}).items():print(name,':',value)
         print('Peer HTTP:',result.get('peer_http_status'))
         print('Cause:',result.get('cause'))
+        if result.get('connection_detail'):print('Connection detail:',result['connection_detail'])
         print('No balances or orders were transferred.')
         return
     print(result.get('message','Migration response received.'))

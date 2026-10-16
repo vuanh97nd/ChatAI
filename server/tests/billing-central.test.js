@@ -53,10 +53,11 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    const response=await worker.fetch(new Request(origin+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,username,key:username==='admin'?env.ADMIN_KEY:'fixture-alice-password'})}),env,{});
    return {status:response.status,value:await response.json()};
   };
-  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false,nonJson=false;
+  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false,nonJson=false,connectionError=null;
   globalThis.fetch=async(input,options)=>{
    const url=String(input);
    if(url.startsWith(backupOrigin)){
+    if(connectionError)throw connectionError;
     if(offline)throw new TypeError('fixture outage');
     if(nonJson)return new Response('<html>blocked</html>',{status:403,headers:{'Content-Type':'text/html'}});
     assert.ok(!options.body.includes(main.ADMIN_KEY));assert.ok(!options.body.includes('fixture-alice-password'));assert.ok(!options.body.includes(main.DEEPSEEK_API_KEY));
@@ -81,6 +82,10 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    backup.BILLING_ROLE='local';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING');backup.BILLING_ROLE='authority';
    nonJson=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NON_JSON_HTTP_403');nonJson=false;
    offline=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NETWORK');offline=false;
+   connectionError=new TypeError('Fetch failed: '+link+' '+main.ADMIN_KEY+' https://peer.example/private?token=hidden');
+   check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NETWORK');assert.match(check.value.connection_detail,/Fetch failed/);
+   for(const secret of [link,main.ADMIN_KEY,'token=hidden'])assert.ok(!JSON.stringify(check.value).includes(secret));
+   connectionError=null;
    // Initialize only the primary account. No matching backup login/password exists.
    await call(main,mainOrigin,'/api/billing/status');
    main.DB.raw.prepare("INSERT INTO users(username,key,tier,expires_at,created_at) VALUES('alice','fixture-alice-password','pro','Vĩnh viễn',?)").run(new Date().toISOString());
