@@ -39,3 +39,59 @@ class PrimaryAIConflictTests(unittest.TestCase):
 
     def test_syntax_error_stops_before_writing(self):
         with self.assertRaises(SyntaxError):integrate('def broken(\n')
+
+
+class MultiFilePrimaryAIConflictTests(unittest.TestCase):
+    def test_backend_conflicts_use_primary_only_change_and_keep_unrelated_code(self):
+        from scripts.resolve_primary_ai_cherry_pick import resolve_markers
+        source="local_feature=123\n<<<<<<< HEAD\ndef ai_request():\n    return backup()\n=======\ndef ai_request():\n    return primary()\n>>>>>>> 60d9921 (Remove AI backup)\nkeep_payments=True\n"
+        result=resolve_markers(source)
+        compile(result,'assistant/failover.py','exec')
+        self.assertIn('return primary()',result)
+        self.assertNotIn('return backup()',result)
+        self.assertIn('local_feature=123',result)
+        self.assertIn('keep_payments=True',result)
+
+    def test_preflight_error_does_not_write_or_stage_any_file(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from scripts.resolve_primary_ai_cherry_pick import repair
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'assistant').mkdir()
+            desktop=root/'desktop_ui.py';desktop.write_text('<<<<<<< HEAD\nx=1\n=======\nx=2\n>>>>>>> 60d9921 (Remove AI backup)\n')
+            backend=root/'assistant/failover.py';backend.write_text('def broken(\n')
+            original=desktop.read_bytes()
+            def git(args,**kwargs):
+                if args[1]=='diff-tree':return b'desktop_ui.py\nassistant/failover.py\n'
+                return b'desktop_ui.py\nassistant/failover.py\n'
+            with patch('scripts.resolve_primary_ai_cherry_pick.subprocess.check_output',side_effect=git),patch('scripts.resolve_primary_ai_cherry_pick.subprocess.check_call') as stage:
+                with self.assertRaises(SyntaxError):repair(root)
+                stage.assert_not_called()
+            self.assertEqual(desktop.read_bytes(),original)
+            self.assertFalse((root/'data').exists())
+
+    def test_success_backs_up_and_resolves_desktop_and_backend_together(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from scripts.resolve_primary_ai_cherry_pick import repair
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);(root/'assistant').mkdir()
+            desktop=root/'desktop_ui.py';desktop.write_text('class Window:\n    def setup(self):\n<<<<<<< HEAD\n        self.backup_login_dialog()\n        self.keep_local()\n=======\n        self.keep_local()\n>>>>>>> 60d9921 (Remove AI backup)\n')
+            backend=root/'assistant/failover.py';backend.write_text('<<<<<<< HEAD\ndef ai_request():\n    return backup()\n=======\ndef ai_request():\n    return primary()\n>>>>>>> 60d9921 (Remove AI backup)\n')
+            originals={p:p.read_bytes() for p in (desktop,backend)}
+            def git(args,**kwargs):
+                if args[1]=='diff-tree':return b'desktop_ui.py\nassistant/failover.py\n'
+                if args[1]=='rev-parse':return b'.git/CHERRY_PICK_HEAD\n'
+                return b''
+            with patch('scripts.resolve_primary_ai_cherry_pick.subprocess.check_output',side_effect=git),patch('scripts.resolve_primary_ai_cherry_pick.subprocess.check_call') as stage:
+                repair(root)
+                self.assertEqual(stage.call_args.args[0],['git','add','--','assistant/failover.py','desktop_ui.py'])
+            for path,original in originals.items():
+                self.assertNotIn('>>>>>>>',path.read_text())
+                compile(path.read_text(),str(path),'exec')
+                backup=list((root/'data').glob('primary-ai-conflict-*'))[0]/path.relative_to(root)
+                self.assertEqual(backup.read_bytes(),original)
+            self.assertIn('self.keep_local()',desktop.read_text())
+            self.assertIn('return primary()',backend.read_text())
