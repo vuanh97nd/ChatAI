@@ -4,13 +4,28 @@ on:
     branches: [main]
     paths: ['mobile/**', '.github/workflows/android-apk.yml']
   workflow_dispatch:
+    inputs:
+      repair_update_manifest:
+        description: Restore the known previous update manifest only if missing or from the rejected APK
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
-  group: android-apk-${{ github.ref }}
+  group: android-apk-${{ github.ref }}-${{ inputs.repair_update_manifest && 'repair' || 'build' }}
   cancel-in-progress: true
 jobs:
+  repair_update_manifest:
+    if: ${{ inputs.repair_update_manifest }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore previous compatible update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python mobile/tool/repair_update_manifest.py
   android:
+    if: ${{ !inputs.repair_update_manifest }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
