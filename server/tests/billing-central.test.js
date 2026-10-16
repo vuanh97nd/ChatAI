@@ -53,10 +53,12 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    const response=await worker.fetch(new Request(origin+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,username,key:username==='admin'?env.ADMIN_KEY:'fixture-alice-password'})}),env,{});
    return {status:response.status,value:await response.json()};
   };
-  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false,nonJson=false,connectionError=null;
+  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false,nonJson=false,connectionError=null,redirectPeer=false;
   globalThis.fetch=async(input,options)=>{
    const url=String(input);
    if(url.startsWith(backupOrigin)){
+    assert.equal(options.redirect,'manual','Workers supports manual redirects; signed requests must never follow redirects');
+    if(redirectPeer)return new Response(null,{status:302,headers:{Location:'https://untrusted.example/'}});
     if(connectionError)throw connectionError;
     if(offline)throw new TypeError('fixture outage');
     if(nonJson)return new Response('<html>blocked</html>',{status:403,headers:{'Content-Type':'text/html'}});
@@ -80,6 +82,7 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    main.BILLING_PUBLIC_ORIGIN='';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_PUBLIC_ORIGIN_INVALID');main.BILLING_PUBLIC_ORIGIN=mainOrigin;
    main.BILLING_LINK_KEY='fixture-wrong-key-more-than-32-characters';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH');main.BILLING_LINK_KEY=link;
    backup.BILLING_ROLE='local';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING');backup.BILLING_ROLE='authority';
+   redirectPeer=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_REDIRECT_REFUSED');redirectPeer=false;
    nonJson=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NON_JSON_HTTP_403');nonJson=false;
    offline=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NETWORK');offline=false;
    connectionError=new TypeError('Fetch failed: '+link+' '+main.ADMIN_KEY+' https://peer.example/private?token=hidden');
