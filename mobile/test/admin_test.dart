@@ -9,7 +9,7 @@ void main() {
   test('credit timeout survives page recreation and uses one operation ID', () async {
     final storage = <String, String>{}, ids = <String>[];
     var count = 0;
-    final api = ChatApi(client: MockClient((request) async {
+    final api = ChatApi(endpoint:'https://primary.example',client: MockClient((request) async {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['username'], 'admin'); expect(body['target'], 'alice');
       ids.add(body['request_id'] as String);

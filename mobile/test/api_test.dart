@@ -58,7 +58,7 @@ void main() {
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
     final answer = await api.answer('nvidia', [{'role': 'user', 'content': 'Latest API?'}], []);
-    expect(answer, contains('chưa lấy được nguồn từ Bing'));
+    expect(answer, contains('chưa lấy được nguồn trên mạng'));
     expect(answer, contains('chưa có dữ liệu thời gian thực'));
     expect(calls, 2);
   });

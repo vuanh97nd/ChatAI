@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import * as root from '../../work.js';
 import * as server from '../worker.js';
 function database(){const raw=new DatabaseSync(':memory:');return {raw,prepare(sql){return {args:[],bind(...args){this.args=args;return this;},async run(){return raw.prepare(sql).run(...this.args);},async first(){return raw.prepare(sql).get(...this.args)||null;}};},async batch(items){return Promise.all(items.map(i=>i.run()));}};}
-function wav(){const b=Buffer.alloc(44+6400);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVE',8);b.write('fmt ',12);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(16000,24);b.writeUInt32LE(32000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(6400,40);return b;}
+function wav(){const b=Buffer.alloc(44+12800);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVE',8);b.write('fmt ',12);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(16000,24);b.writeUInt32LE(32000,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(12800,40);for(let i=44;i<b.length;i+=2)b.writeInt16LE(Math.round(2000*Math.sin((i-44)*Math.PI/40)),i);return b;}
 for(const [name,mod] of [['root',root],['server',server]]){
  test(`${name}: Whisper receives Vietnamese WAV and consumes one quota reservation`,async()=>{
   const db=database();let calls=0;
@@ -14,6 +14,11 @@ for(const [name,mod] of [['root',root],['server',server]]){
    assert.equal(result.status,200);assert.equal((await result.json()).text,'Xin chào');assert.equal(calls,1);
    assert.equal(db.raw.prepare('SELECT used FROM cloud_daily').get().used,1);
   }finally{db.raw.close();}
+ });
+ test(`${name}: silence never reaches Whisper or consumes quota`,async()=>{
+  let calls=0;const silent=wav();silent.fill(0,44);
+  const result=await mod.transcribeAudio({AI:{run:async()=>{calls++;}}},{username:'alice'},{audio:silent.toString('base64')});
+  assert.equal(result.status,422);assert.equal(calls,0);
  });
  test(`${name}: invalid audio is rejected before upstream call`,async()=>{
   let calls=0;const env={AI:{run:async()=>{calls++;}}};

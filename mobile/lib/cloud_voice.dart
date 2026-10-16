@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'speech_transcript.dart';
 
 Uint8List pcmWave(Uint8List pcm) {
   final result = Uint8List(44 + pcm.length);
@@ -75,11 +76,13 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     try {
       await recorder.stop().timeout(const Duration(seconds: 5)); await audioSub?.cancel(); await levelSub?.cancel();
       final pcm = audio?.takeBytes() ?? Uint8List(0); audio = null;
-      if (pcm.length < 3200) throw Exception('Đoạn thu quá ngắn. Hãy nói rồi bấm gửi.');
+      if (pcm.length < 3200 || !hasSpeechEnergy(pcm)) throw Exception('Chưa nghe rõ lời nói. Hãy nói gần micro rồi bấm gửi.');
       final result = await api.post('/api/voice/transcribe', {'audio': base64Encode(pcmWave(pcm))})
         .timeout(const Duration(seconds: 45));
       if (run != generation) return;
-      words?.call(result['text'] as String); status?.call('done');
+      final text=cleanRecognizedSpeech(result['text'] as String);
+      if(text.isEmpty) throw Exception('Chưa nhận được lời nói rõ ràng. Vui lòng thu lại.');
+      words?.call(text); status?.call('done');
     } catch (e) { if (run == generation) failure?.call('$e'); }
     finally { if (run == generation) transcribing = false; }
   }
