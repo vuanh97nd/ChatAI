@@ -1,0 +1,9 @@
+{
+  "file": "ChatAI-1.0.0-build49-4e3b401.apk",
+  "version": "1.0.0",
+  "build": "49",
+  "commit": "4e3b401cc7b6bdc83b9c590d74c780e97ec7f015",
+  "sha256": "a23872384980c3f7be581c7c513123bd83fe123339399819747907af39268132",
+  "signature_verification": "Verifies\nVerified using v1 scheme (JAR signing): false\nVerified using v2 scheme (APK Signature Scheme v2): true\nVerified using v3 scheme (APK Signature Scheme v3): false\nVerified using v3.1 scheme (APK Signature Scheme v3.1): false\nVerified using v3.2 scheme (APK Signature Scheme v3.2): false\nVerified using v4 scheme (APK Signature Scheme v4): false\nVerified for SourceStamp: false\nNumber of signers: 1\nV2 Signer: certificate DN: C=US, O=Android, CN=Android Debug\nV2 Signer: certificate SHA-256 digest: 16c911a4b2be0fe4e8ab7cf474f2247e94875330b84706b173f69f587f5c9b8f\nV2 Signer: certificate SHA-1 digest: 5bdda87b4a0cbe822380166079b71bba7c5484d6\nV2 Signer: certificate MD5 digest: 9c85e64e9cdc29c7ad374bf1b7b90704\nV2 Signer: key algorithm: RSA\nV2 Signer: key size (bits): 2048\nV2 Signer: public key SHA-256 digest: 894af0f803c6b925873af7acb7464d2a35cceed2c596aa0bef13722dc7101a92\nV2 Signer: public key SHA-1 digest: 382d6e4dd79b2c1ca0cc116d2f6eb4def23d49a7\nV2 Signer: public key MD5 digest: 3f9957c9dd28100758a25b48db5d9794\n",
+  "run": "https://github.com/vuanh97nd/ChatAI/actions/runs/38917201752"
+}

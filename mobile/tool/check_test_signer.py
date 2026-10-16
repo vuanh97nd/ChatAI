@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 
-EXPECTED='16c911a4b2be0fe4e8ab7cf474f2247e94875330b84706b173f69f587f5c9b8f'
+EXPECTED='924eef2c1d8c1f4085aebb72fb8bbbacaec63a0c88a8680ebee6c1defc8218d9'
 
 
 def main():
@@ -13,7 +13,7 @@ def main():
     fingerprint=hashlib.sha256(certificate).hexdigest()
     print('Cached test signer SHA-256:',fingerprint)
     if fingerprint!=EXPECTED:
-        raise SystemExit('Cached signer differs from published build 49. Refusing to publish an incompatible update.')
+        raise SystemExit('Cached signer differs from the fixed test identity. Refusing to build with an unknown key.')
     with open(os.environ['GITHUB_ENV'],'a') as output:
         output.write('CHATAI_DEBUG_KEYSTORE='+str(path)+'\n')
         output.write('CHATAI_EXPECTED_SIGNER_SHA256='+EXPECTED+'\n')

@@ -76,5 +76,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --target "$GITHUB_SHA" --title "Chat AI Android" --notes "APK Android đã qua kiểm thử và xác minh."
-          gh release upload android-latest mobile/build/verified-apk/* --clobber
+          python mobile/tool/publish_android.py
