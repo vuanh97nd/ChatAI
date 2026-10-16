@@ -28,6 +28,20 @@ def integrate(source,fragment):
                               "const user=env.BILLING_IDENTITIES?.[body.target]||await db.prepare('SELECT * FROM users WHERE username=?').bind(body.target).first();")
         source=source.replace("const user=admin?await db.prepare('SELECT * FROM users WHERE username=?').bind(target).first():actor;",
                               "const user=admin?(env.BILLING_IDENTITIES?.[target]||await db.prepare('SELECT * FROM users WHERE username=?').bind(target).first()):actor;")
+    anchor="   if(path===centralBillingPath)return respond(await billingCentralAPI(env,request,body,raw));\n"
+    if 'await billingClientSession(env,actor,body)' not in source:
+        addition="""   if(path==='/api/account/billing-session'){
+    if(request.method!=='POST')return respond(fail('POST required.',405));
+    const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập lại để thanh toán.',401));
+    if(!await throttle(env.DB,actor.username,'billing-session',30))return respond(fail('Vui lòng chờ.',429));
+    return respond(await billingClientSession(env,actor,body));
+   }
+   if(env.BILLING_ROLE==='authority'&&typeof body.billing_session==='string'&&(path.startsWith('/api/billing/')||path.startsWith('/api/admin/billing/')))return respond(await billingDirectClientAPI(env,request,path,body));
+"""
+        if source.count(anchor)!=1:raise ValueError('Unknown direct billing router')
+        source=source.replace(anchor,anchor+addition)
+    source=source.replace("const billing=await adminBillingTotals(env,(rows.results||[]).map(u=>u.username));", "const billing=body.billing_direct===true&&env.BILLING_ROLE==='primary'?new Map():await adminBillingTotals(env,(rows.results||[]).map(u=>u.username));")
+    source=source.replace("const billing=(await adminBillingTotals(env,[target])).get(target);", "const billing=body.billing_direct===true&&env.BILLING_ROLE==='primary'?null:(await adminBillingTotals(env,[target])).get(target);")
     return source.rstrip()+'\n\n'+MARKER+fragment.rstrip()+'\n'
 
 

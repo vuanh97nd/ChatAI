@@ -131,3 +131,52 @@ tạm ngắt liên kết dự phòng → nạp/QR bị từ chối, chi từ h�
 hết hạn mức → không gọi model; nối lại → đối soát đúng một lần.
 
 Code và kiểm thử cục bộ không đồng nghĩa đã triển khai/chuyển sổ production.
+
+## Clients gọi thanh toán trực tiếp (hai server hoạt động song song)
+
+Desktop và Android mới gọi ví/QR/kiểm tra đơn/cấu hình/nạp thủ công/đối soát
+thẳng `https://chatai-backup.vuanh97nd1.workers.dev`. AI, tài khoản và các API
+khác tiếp tục gọi chính. Không thử lại giao dịch thanh toán qua chính khi dự phòng lỗi.
+
+`POST /api/account/billing-session` trên chính xác thực tài khoản và cấp phiên
+HMAC dành riêng cho thanh toán, hạn 5 phút, ràng buộc nguồn/đích và vai trò.
+Client giữ phiên trong RAM, dùng lại tới gần hết hạn, tách cache theo tài khoản
+và nhóm tài khoản admin đang xem. Không gửi mật khẩu/session đăng nhập chính,
+ADMIN_KEY hoặc BILLING_LINK_KEY tới dự phòng. Phiên có thể còn hiệu lực tối đa
+5 phút sau khi khóa/thu hồi đăng nhập; không lưu phiên này xuống đĩa.
+
+Một lần xác thực trên chính phục vụ nhiều lượt xem ví/poll QR trên dự phòng;
+không phải mỗi poll lại đi qua chính. Không gắn khóa liên kết vào client. Server
+đích được client kiểm tra đúng địa chỉ đã tin cậy, không theo URL tùy ý trả về.
+Admin chỉ được tác động các danh tính đã được chính ký trong phạm vi phiên.
+Tài khoản không ánh xạ được hiển thị chưa xác định thanh toán, không giả số dư 0.
+
+Danh sách/chi tiết tài khoản từ client mới gửi `billing_direct=true`: chính bỏ
+truy vấn tổng thanh toán; client ghép tổng trực tiếp từ dự phòng. Dự phòng lỗi
+không ngăn quản lý tài khoản. Các client cũ vẫn dùng proxy cũ để tránh gián đoạn
+trong lúc nâng cấp; chỉ client mới được giảm lượt gọi thanh toán vào chính.
+
+Đo và giữ hạn mức cho lượt AI vẫn ở chính, đồng bộ sử dụng sang dự phòng bằng
+liên kết nội bộ hiện có. Luồng này cần thiết để bảo toàn tiền đã cấp trước và
+cho AI tiếp tục bằng số dư đã xác nhận khi dự phòng mất kết nối. Đây không phải
+phương án loại bỏ mọi xử lý tính phí khỏi chính. Lịch sử phí trên dự phòng có
+thể chậm tới lần đồng bộ sau; trường `ai_sync_at` là thời điểm bản chụp gần nhất,
+không phải bảo đảm số liệu đang tức thời trong lúc AI chạy.
+
+### Cập nhật không chuyển sổ lần nữa
+
+1. Cập nhật source từ commit triển khai direct billing; không sửa/xóa dữ liệu ví.
+2. Deploy code mới trên cả hai Worker, giữ nguyên bindings/secrets/role/mapping.
+   GitHub Actions hiện chỉ deploy chính. Với dự phòng, đăng nhập tài khoản chứa
+   `chatai-backup`, mở Edit code và thay nội dung bằng `work.js`, rồi Deploy.
+3. Khởi động lại Desktop từ checkout mới. Android cần build/cài APK mới.
+4. Không chạy lại migration hoặc bật/tắt freeze chỉ vì nâng cấp này.
+5. Kiểm tra ví và QR bằng tài khoản người dùng; xem Logs dự phòng để thấy
+   `/api/billing/status`, `/api/billing/order/status`. Chính chỉ nhận cấp phiên
+   định kỳ thay cho mọi lượt ví/poll. Kiểm tra AI vẫn gọi chính.
+6. Khi dự phòng lỗi, client báo lỗi thanh toán/ẩn QR, không chuyển về ví cũ;
+   AI vẫn áp dụng giới hạn tiền đã cấp trước. Phiên hết hạn được xóa khỏi cache;
+   không tự retry một giao dịch có kết quả chưa rõ.
+
+Không đưa các bản sao SQL hay khóa lên GitHub. Không cần thay BILLING_LINK_KEY
+hoặc cấu hình lại ngân hàng/SePay cho thay đổi client này.

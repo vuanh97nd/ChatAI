@@ -115,7 +115,7 @@ void main() {
       return jsonResponse('{"success":true}', 200);
     }));
     addTearDown(api.close); api.session = Session('owner', 'session:owner', 'Owner');
-    await api.post('/api/billing/status', {'username': 'other', 'key': 'other'});
+    await api.post('/api/account/profile/get', {'username': 'other', 'key': 'other'});
   });
   test('registration immediately logs in', () async {
     final paths = <String>[];

@@ -1497,6 +1497,13 @@ export default {
    }
    await ensureRuntimeSchema(env.DB);
    if(path===centralBillingPath)return respond(await billingCentralAPI(env,request,body,raw));
+   if(path==='/api/account/billing-session'){
+    if(request.method!=='POST')return respond(fail('POST required.',405));
+    const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập lại để thanh toán.',401));
+    if(!await throttle(env.DB,actor.username,'billing-session',30))return respond(fail('Vui lòng chờ.',429));
+    return respond(await billingClientSession(env,actor,body));
+   }
+   if(env.BILLING_ROLE==='authority'&&typeof body.billing_session==='string'&&(path.startsWith('/api/billing/')||path.startsWith('/api/admin/billing/')))return respond(await billingDirectClientAPI(env,request,path,body));
    if(env.MEMORY_SYNC_PEER&&env.MEMORY_SYNC_KEY)await memorySyncReady(env);
    if(path==='/api/internal/memory-sync/export')return respond(await memorySyncExport(env,request,body));
    if(path==='/api/admin/memory-sync/run'){
@@ -1769,14 +1776,14 @@ export async function accountAdminAPI(env,actor,path,body){
   const params=['%'+query+'%','%'+query+'%','%'+query+'%',filter,filter,filter,filter];
   const total=await db.prepare('SELECT COUNT(*) AS total FROM users u'+where).bind(...params).first();
   const rows=await db.prepare("SELECT u.username,u.fullname,u.email,u.tier,u.expires_at,u.created_at,u.updated_at,u.account_status,u.deleted_at,u.total_usage_seconds,u.last_seen_at,p.phone,p.updated_at AS profile_updated_at,(SELECT MAX(s.last_seen_at) FROM support_sessions s WHERE s.username=u.username) AS presence_at FROM users u LEFT JOIN account_profiles p ON p.username=u.username"+where+' ORDER BY u.updated_at DESC,u.username LIMIT ? OFFSET ?').bind(...params,limit,offset).all();
-  const billing=await adminBillingTotals(env,(rows.results||[]).map(u=>u.username));
+  const billing=body.billing_direct===true&&env.BILLING_ROLE==='primary'?new Map():await adminBillingTotals(env,(rows.results||[]).map(u=>u.username));
   const users=(rows.results||[]).map(u=>({...u,billing:billing.get(u.username),role:'user',is_online:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000,activity_status:u.account_status==='active'&&Date.parse(u.presence_at)>Date.now()-90000?'online':u.last_seen_at||u.presence_at?'offline':'unknown',created_at:u.created_at||null,can_restore:u.account_status==='deleted'&&Date.parse(u.deleted_at)>=Date.now()-30*86400000}));
   return reply({success:true,users,total:total.total,offset,limit});
  }
  const target=String(body.target||'').trim();if(!validUser(target))return fail('Không được thay đổi tài khoản hệ thống hoặc tên tài khoản không hợp lệ.');
  const user=await db.prepare('SELECT * FROM users WHERE username=?').bind(target).first();if(!user)return fail('Không tìm thấy tài khoản.',404);
  if(action==='detail'){
-  const billing=(await adminBillingTotals(env,[target])).get(target);
+  const billing=body.billing_direct===true&&env.BILLING_ROLE==='primary'?null:(await adminBillingTotals(env,[target])).get(target);
   const profile=await db.prepare('SELECT phone,avatar,updated_at FROM account_profiles WHERE username=?').bind(target).first();
   const rows=await db.prepare('SELECT action,details,created_at FROM admin_audit WHERE target=? ORDER BY id DESC LIMIT 50').bind(target).all();
   return reply({success:true,user:{billing,username:user.username,fullname:user.fullname,email:user.email||'',phone:profile?.phone||'',avatar:profile?.avatar||'',tier:user.tier,expires_at:user.expires_at,account_status:user.account_status,deleted_at:user.deleted_at,created_at:user.created_at||null,updated_at:user.updated_at,profile_updated_at:profile?.updated_at||null,last_seen_at:user.last_seen_at},audit:rows.results||[]});
@@ -2825,6 +2832,7 @@ async function centralBillingSchema(db){
   db.prepare('CREATE TABLE IF NOT EXISTS billing_decisions(id TEXT PRIMARY KEY,tokens INTEGER NOT NULL,note TEXT NOT NULL,actor TEXT NOT NULL)'),
   db.prepare('CREATE TABLE IF NOT EXISTS billing_spend_state(owner TEXT PRIMARY KEY,granted INTEGER NOT NULL DEFAULT 0,intent TEXT,actor TEXT NOT NULL,synced INTEGER NOT NULL DEFAULT 0,ledger_owner TEXT NOT NULL)'),
   db.prepare('CREATE TABLE IF NOT EXISTS billing_spend_synced(id TEXT PRIMARY KEY,state TEXT NOT NULL,tokens INTEGER,charged INTEGER NOT NULL)'),
+  db.prepare('CREATE TABLE IF NOT EXISTS billing_source_snapshots(source TEXT NOT NULL,owner TEXT NOT NULL,held INTEGER NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(source,owner))'),
   db.prepare('CREATE TABLE IF NOT EXISTS billing_source_cache(id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL,updated INTEGER NOT NULL)')
   ,db.prepare('CREATE TABLE IF NOT EXISTS billing_central_imports(id TEXT PRIMARY KEY,source TEXT NOT NULL,fingerprint TEXT NOT NULL,created INTEGER NOT NULL,configured INTEGER NOT NULL DEFAULT 0)')
  ]).catch(error=>{centralBillingSchemas.delete(db);throw error;});
@@ -2902,7 +2910,8 @@ async function billingSyncSpend(env,actor,allocate=true){
  const spentRow=await spend.prepare('SELECT COALESCE(SUM(charged),0) AS spent FROM billing_usage WHERE owner=?').bind(actor.username).first();
  const rows=(await spend.prepare(`SELECT u.*,COALESCE(p.price,4000) AS price FROM billing_usage u LEFT JOIN billing_usage_prices p ON p.id=u.id
   LEFT JOIN billing_spend_synced s ON s.id=u.id WHERE u.owner=? AND (s.id IS NULL OR s.state<>u.state OR s.charged<>u.charged OR s.tokens IS NOT u.tokens) ORDER BY u.created,u.id LIMIT 100`).bind(actor.username).all()).results||[];
- const response=await billingCentralCall(env,'sync',actor,{intent:local.intent,seen_granted:local.granted,spent:spentRow.spent,allocate:allocate&&!administrator(actor),rows});
+ const snapshot=await spend.prepare('SELECT held FROM billing_wallets WHERE owner=?').bind(actor.username).first();
+ const response=await billingCentralCall(env,'sync',actor,{held:snapshot?.held||0,intent:local.intent,seen_granted:local.granted,spent:spentRow.spent,allocate:allocate&&!administrator(actor),rows});
  if(response.status!==200||!response.result.success)throw new Error('Central billing synchronization refused');
  const data=response.result;
  if(!Number.isSafeInteger(data.granted)||data.granted<local.granted)throw new Error('Invalid grant');
@@ -2983,6 +2992,7 @@ async function billingAuthoritySync(env,source,actor,payload){
   db.prepare('INSERT OR IGNORE INTO billing_settlements(source,owner) VALUES(?,?)').bind(source,actor.username),
   db.prepare('UPDATE billing_wallets SET balance=balance+COALESCE((SELECT spent FROM billing_settlements WHERE source=? AND owner=?),0)-?,held=held+COALESCE((SELECT spent FROM billing_settlements WHERE source=? AND owner=?),0)-? WHERE owner=? AND COALESCE((SELECT spent FROM billing_settlements WHERE source=? AND owner=?),0)<=?').bind(source,actor.username,payload.spent,source,actor.username,payload.spent,actor.username,source,actor.username,payload.spent),
   db.prepare('UPDATE billing_settlements SET spent=max(spent,?) WHERE source=? AND owner=?').bind(payload.spent,source,actor.username),
+  db.prepare('INSERT INTO billing_source_snapshots VALUES(?,?,?,?) ON CONFLICT(source,owner) DO UPDATE SET held=excluded.held,updated=excluded.updated').bind(source,actor.username,Number.isSafeInteger(payload.held)&&payload.held>=0?payload.held:0,Date.now()),
   db.prepare(`INSERT OR IGNORE INTO billing_allocations(id,source,owner,amount,created)
    SELECT ?,?,?,max(0,balance-held),? FROM billing_wallets WHERE owner=? AND ?=1 AND ?=(SELECT COALESCE(SUM(amount),0) FROM billing_allocations WHERE source=? AND owner=?)`).bind(payload.intent,source,actor.username,Date.now(),actor.username,payload.allocate===true?1:0,payload.seen_granted,source,actor.username),
   db.prepare('UPDATE billing_wallets SET held=held+COALESCE((SELECT amount FROM billing_allocations WHERE id=? AND credited=0),0) WHERE owner=?').bind(payload.intent,actor.username),
@@ -3205,4 +3215,72 @@ async function adminBillingTotals(env,owners,now=Date.now()){
   for(const [owner,value] of values)map.set(owner,{...value,billing_offline:true,counting_scope:'Verified delegated funds and local usage; authority unavailable'});
   return map;
  }
+}
+
+// Short-lived client billing sessions: identity only; never a primary password.
+async function billingClientSession(env,actor,body){
+ const cfg=billingTopology(env);if(cfg?.role!=='primary')return fail('Direct billing requires the primary server.',409);
+ await ensureAdminSchema(env.DB);
+ const targets=body.targets||[];
+ if(!Array.isArray(targets)||targets.length>100||targets.some(n=>typeof n!=='string'||!validUser(n)))return fail('Invalid billing targets.');
+ if(targets.length&&!administrator(actor))return fail('Admin required.',403);
+ const identities={};
+ for(const name of new Set(targets)){
+  const user=await env.DB.prepare('SELECT username,created_at,updated_at,account_status FROM users WHERE username=?').bind(name).first();
+  // Deleted identities remain inspectable by admin, but missing/unmapped names cannot receive funds.
+  if(user&&user.account_status!=='deleted'){try{identities[name]=billingMappedActor(env,user);}catch{/* No mapped billing identity. */}}
+ }
+ const now=Date.now(),claims={v:1,source:new URL(env.BILLING_PUBLIC_ORIGIN).origin,aud:cfg.peer,issued:now,expires:now+300000,actor:billingMappedActor(env,actor),identities};
+ const encoded=b64(new TextEncoder().encode(JSON.stringify(claims)));
+ const token=encoded+'.'+await billingLinkMac(cfg.key,'billing-client-v1:'+encoded);
+ return reply({success:true,billing_endpoint:cfg.peer,billing_session:token,expires_at:claims.expires});
+}
+async function billingDirectClientAPI(env,request,path,body){
+ const cfg=billingTopology(env);if(cfg?.role!=='authority')return fail('Not a billing authority.',404);
+ if(request.method!=='POST')return fail('POST required.',405);
+ const token=body.billing_session;
+ if(typeof token!=='string'||token.length>100000)return fail('Billing session required.',401);
+ const parts=token.split('.');if(parts.length!==2||!same(parts[1],await billingLinkMac(cfg.key,'billing-client-v1:'+parts[0])))return fail('Invalid billing session.',401);
+ let claims;try{claims=JSON.parse(new TextDecoder().decode(unb64(parts[0])));}catch{return fail('Invalid billing session.',401);}
+ if(claims.v!==1||claims.source!==cfg.peer||claims.aud!==new URL(request.url).origin||!Number.isSafeInteger(claims.issued)||!Number.isSafeInteger(claims.expires)||claims.expires-claims.issued!==300000||claims.issued>Date.now()+30000)return fail('Invalid billing session scope.',401);
+ if(claims.expires<=Date.now())return reply({success:false,code:'BILLING_SESSION_EXPIRED',message:'Phiên thanh toán đã hết hạn.'},401);
+ const actor=claims.actor;
+ if(!actor||(!validUser(actor.username)&&actor.username!=='admin')||!['user','system'].includes(actor.role)||actor.is_system!==(actor.role==='system')||actor.is_system&&actor.username!=='admin')return fail('Invalid billing identity.',403);
+ const allowed=new Set(['/api/billing/status','/api/billing/order','/api/billing/order/status','/api/admin/billing/status','/api/admin/billing/config/get','/api/admin/billing/config/save','/api/admin/billing/fee/save','/api/admin/billing/credit','/api/admin/billing/reconcile','/api/admin/billing/totals']);
+ if(!allowed.has(path))return fail('Direct billing route not found.',404);
+ if(path.startsWith('/api/admin/')&&!administrator(actor))return fail('Admin required.',403);
+ if(env.BILLING_MIGRATION_FREEZE==='true')return billingError('Thanh toán đang tạm dừng.',503,'BILLING_MIGRATION_FREEZE');
+ await ensureAdminSchema(env.DB);await billingSchema(env.DB);await centralBillingSchema(env.DB);
+ if(!await throttle(env.DB,actor.username,'billing-direct',120))return fail('Vui lòng chờ.',429);
+ const clean={...body};for(const key of ['username','key','billing_session'])delete clean[key];
+ const identities=claims.identities||{},mapped={};
+ for(const identity of Object.values(identities))mapped[identity.username]=identity;
+ if(clean.target){
+  if(!administrator(actor)||!Object.hasOwn(identities,clean.target))return fail('Không có quyền truy cập ví này.',403);
+  clean.target=identities[clean.target].username;
+ }
+ if(path==='/api/admin/billing/totals'){
+  if(!Array.isArray(clean.owners)||clean.owners.length>100||clean.owners.some(n=>typeof n!=='string'||!validUser(n)))return fail('Invalid billing owners.',403);
+  const scoped=clean.owners.filter(n=>Object.hasOwn(identities,n));
+  const totals=await localAdminBillingTotals(env,scoped.map(n=>identities[n].username));
+  return reply({success:true,totals:Object.fromEntries(clean.owners.map(n=>[n,Object.hasOwn(identities,n)?totals.get(identities[n].username):{billing_unavailable:true}]))});
+ }
+ if(path==='/api/billing/status'&&administrator(actor)){clean.target=actor.username;mapped[actor.username]=actor;}
+ const response=await billingAPI({...env,BILLING_IDENTITIES:mapped},actor,path,clean,request);
+ if(path==='/api/billing/status'&&response.ok){
+  const result=await response.json();
+  if(result.wallet){
+   const grant=await env.DB.prepare('SELECT COALESCE(SUM(amount),0) AS granted FROM billing_allocations WHERE source=? AND owner=?').bind(claims.source,actor.username).first();
+   const settlement=await env.DB.prepare('SELECT spent FROM billing_settlements WHERE source=? AND owner=?').bind(claims.source,actor.username).first();
+   const snapshot=await env.DB.prepare('SELECT held,updated FROM billing_source_snapshots WHERE source=? AND owner=?').bind(claims.source,actor.username).first();
+   const outstanding=Math.max(0,grant.granted-(settlement?.spent||0)),w=result.wallet;
+   w.held=Math.max(0,w.held-outstanding)+Math.min(outstanding,snapshot?.held||0);
+   w.held_vnd=w.held/1000;w.available_vnd=(w.balance-w.held)/1000;
+   result.ai_sync_at=snapshot?.updated||null;result.ai_allocated_vnd=outstanding/1000;
+  }
+  result.billing_server=new URL(request.url).origin;result.topups_available=true;result.direct_billing=true;
+  result.message='Số dư và lịch sử từ server thanh toán; phí AI cập nhật sau khi đồng bộ. Tiền giữ có thể gồm hạn mức đã cấp cho AI.';
+  return reply(result);
+ }
+ return response;
 }

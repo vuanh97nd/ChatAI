@@ -173,7 +173,7 @@ class _AdminPageState extends State<AdminPage> {
             for (final item in users) Builder(builder: (_) {
               final u = item as Map<String, dynamic>, b = u['billing'] as Map<String, dynamic>? ?? {};
               return Card(child: Column(children: [ListTile(title: Text('${u['fullname']} · ${u['username']}'),
-                subtitle: Text('${u['email']} · ${u['account_status']}\n${b['month_tokens'] ?? 0} token tháng này · ${money((b['balance_vnd'] as num?) ?? 0)}'),
+                subtitle: Text('${u['email']} · ${u['account_status']}\n' + (b['billing_unavailable'] == true ? 'Chưa kết nối thanh toán' : '${b['month_tokens'] ?? 0} token tháng này · ${money((b['balance_vnd'] as num?) ?? 0)}')),
                 onTap: busy ? null : () => inspect(u['username'] as String)),
                 Wrap(children: [
                   if (u['account_status'] != 'deleted') ...[
