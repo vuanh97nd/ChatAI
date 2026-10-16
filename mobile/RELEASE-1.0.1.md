@@ -13,8 +13,12 @@
   empty/filtered transcript.
 - Keeps parallel direct billing and primary-only online AI routing.
 
-Build via `.github/workflows/android-apk.yml`, pinned Flutter 3.35.7. Reuses the
-existing test signing identity so the artifact can update previous test APKs.
+Build via `.github/workflows/android-apk.yml`, pinned Flutter 3.35.7. Explicitly
+binds and verifies the fixed cached test signing identity. The published build
+49 used another certificate, so new test builds cannot update it in place
+without its original private signing key. Incompatible signing identities are
+published separately as prereleases and do not replace the automatic update
+manifest. Do not uninstall an existing app before preserving its local data.
 A Worker code deployment is required for structured Open-Meteo results and the
 server-side silence guard. The client-side intent and transcript fixes work with
 older deployed Workers. No billing migration or wallet reset is required.
