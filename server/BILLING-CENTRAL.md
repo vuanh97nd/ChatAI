@@ -77,6 +77,20 @@ Sau khi đã sao lưu, đặt `BILLING_MIGRATION_FREEZE=true` và cấu hình ro
 ở cả hai Worker. Tạm dừng gọi AI/giao dịch, đợi các lượt đang chạy kết thúc.
 Giữ freeze đến khi chuyển sổ đã được kiểm tra xong.
 
+Kiểm tra liên kết trước (không chuyển tiền hay đơn):
+
+```powershell
+& '.\runtime\python\python.exe' '.\scripts\migrate_billing_to_backup.py' --check
+```
+
+`Connected: True` xác nhận liên kết ký được dự phòng chấp nhận. Kết quả không
+in khóa. Nếu lỗi: `BILLING_PUBLIC_ORIGIN_INVALID` là địa chỉ nguồn thiếu/sai;
+`BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH` là khóa hoặc nguồn không khớp;
+`BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING` là dự phòng thiếu role/mã;
+`BILLING_LINK_NON_JSON_HTTP_403` là HTTP 403 không trả JSON (kiểm tra Security
+Events); `BILLING_LINK_NETWORK/TIMEOUT` là lỗi kết nối/chờ. Đừng bỏ freeze
+hoặc đổi ID chuyển sổ để xử lý lỗi liên kết.
+
 Chạy trên máy Windows có phiên admin **server chính** đã lưu trong Chat AI:
 
 ```powershell
