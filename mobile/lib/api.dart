@@ -262,7 +262,9 @@ class ChatApi {
     final live = autoSearch ? liveSearchPlan(messages) : null;
     if (live?.askLocation == true) return 'Bạn muốn xem thời tiết ở tỉnh/thành phố nào?';
     final now = DateTime.now().toUtc().add(const Duration(hours: 7));
-    (payload['messages'] as List<dynamic>).insert(0, {'role':'system', 'content':'Thời điểm hiện tại theo giờ Việt Nam (UTC+7): ${now.toIso8601String()}. Không dùng kiến thức cũ để khẳng định thời tiết hoặc tin tức hiện tại.'});
+    final system=(payload['messages'] as List<dynamic>).first as Map<String,dynamic>;
+    final localTime=now.toIso8601String().replaceFirst(RegExp(r'Z$'),'+07:00');
+    system['content']='${system['content']}\nThời điểm hiện tại theo giờ Việt Nam (UTC+7): $localTime. Không dùng kiến thức cũ để khẳng định thời tiết hoặc tin tức hiện tại.';
     var result = live != null ? <String,dynamic>{'answer':jsonEncode({'action':'web_search','query':live.query})}
       : await modelAnswer(payload, onText: onText, cancelled: cancelled);
     if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');

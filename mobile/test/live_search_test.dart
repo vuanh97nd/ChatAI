@@ -26,10 +26,10 @@ void main(){
    paths.add(r.url.path);final body=jsonDecode(r.body) as Map<String,dynamic>;
    if(r.url.path=='/api/chat/search'){
     expect(body['weather_location'],'Hà Nội');
-    return http.Response(jsonEncode({'success':true,'answer':'28 °C; 2026-10-16T18:00','sources':[{'title':'Weather source','url':'https://example.org/weather'}]}),200);
+    return http.Response.bytes(utf8.encode(jsonEncode({'success':true,'answer':'28 °C; 2026-10-16T18:00','sources':[{'title':'Weather source','url':'https://example.org/weather'}]})),200,headers:{'content-type':'application/json; charset=utf-8'});
    }
    expect(jsonEncode(body['messages']),contains('28 °C'));
-   return http.Response(jsonEncode({'success':true,'answer':'Nhiệt độ tại Hà Nội là 28 °C theo dữ liệu lúc 18:00 [1].'}),200);
+   return http.Response.bytes(utf8.encode(jsonEncode({'success':true,'answer':'Nhiệt độ tại Hà Nội là 28 °C theo dữ liệu lúc 18:00 [1].'})),200,headers:{'content-type':'application/json; charset=utf-8'});
   }));
   addTearDown(api.close);api.session=Session('alice','session:test','Alice');
   final result=await api.answer('gemini',[{'role':'user','content':'Thời tiết Hà Nội hôm nay?'}],[]);
