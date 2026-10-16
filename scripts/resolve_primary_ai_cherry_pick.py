@@ -6,6 +6,13 @@ from datetime import datetime
 from pathlib import Path
 
 REMOVED = {'backup_login_dialog', 'backup_provider_dialog', 'custom_backup_api_dialog'}
+REMOVED_CALLBACKS = REMOVED | {'forget_backup'}
+
+def removed_reference(node):
+    return (isinstance(node, ast.Attribute) and node.attr in REMOVED_CALLBACKS or
+            isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in REMOVED_CALLBACKS)
+
+
 MARKERS = re.compile(r'^(?:<<<<<<<|=======|>>>>>>>|\|\|\|\|\|\|\|)', re.M)
 
 
@@ -33,13 +40,13 @@ def integrate(source):
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in REMOVED:
             ranges.append((min([node.lineno] + [d.lineno for d in node.decorator_list])-1, node.end_lineno))
-        elif isinstance(node, ast.Expr) and any(isinstance(child, ast.Attribute) and child.attr in REMOVED for child in ast.walk(node)):
+        elif isinstance(node, ast.Expr) and any(removed_reference(child) for child in ast.walk(node)):
             ranges.append((node.lineno-1, node.end_lineno))
     lines = source.splitlines(True)
     excluded = {index for start, end in ranges for index in range(start, end)}
     result = ''.join(line for index, line in enumerate(lines) if index not in excluded)
     parsed = ast.parse(result)
-    if any(isinstance(node, ast.Attribute) and node.attr in REMOVED for node in ast.walk(parsed)):
+    if any(removed_reference(node) for node in ast.walk(parsed)):
         raise ValueError('Unknown references to removed dialogs. No file was changed.')
     compile(result, 'desktop_ui.py', 'exec')
     return result

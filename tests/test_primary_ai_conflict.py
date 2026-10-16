@@ -95,3 +95,31 @@ class MultiFilePrimaryAIConflictTests(unittest.TestCase):
                 self.assertEqual(backup.read_bytes(),original)
             self.assertIn('self.keep_local()',desktop.read_text())
             self.assertIn('return primary()',backend.read_text())
+
+
+class RemovedBackupCallbackTests(unittest.TestCase):
+    def test_startup_settings_never_binds_removed_global_callback(self):
+        # The import was already removed by the cherry-pick, but the local UI
+        # kept a global callback. Compile alone cannot catch this NameError.
+        source='''class Window:
+    def __init__(self):
+        self.buttons=[]
+        self.build_settings()
+    def button(self,box,label,callback):
+        self.buttons.append((label,callback))
+    def build_settings(self):
+        box=object()
+        self.button(box,'Tắt AI dự phòng',forget_backup)
+        self.button(box,'Kết nối AI dự phòng',self.backup_login_dialog)
+        self.button(box,'Thanh toán',self.open_billing)
+    def backup_login_dialog(self):
+        pass
+    def open_billing(self):
+        return 'payments intact'
+'''
+        result=integrate(source)
+        namespace={};exec(compile(result,'desktop_ui.py','exec'),namespace)
+        window=namespace['Window']()
+        self.assertEqual([label for label,callback in window.buttons],['Thanh toán'])
+        self.assertEqual(window.buttons[0][1](),'payments intact')
+        self.assertNotIn('forget_backup',result)
