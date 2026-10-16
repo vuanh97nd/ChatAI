@@ -53,11 +53,12 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
    const response=await worker.fetch(new Request(origin+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,username,key:username==='admin'?env.ADMIN_KEY:'fixture-alice-password'})}),env,{});
    return {status:response.status,value:await response.json()};
   };
-  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false;
+  const original=globalThis.fetch;let offline=false,modelCalls=0,lastEnvelope,dropGrant=false,unknownUsage=false,nonJson=false;
   globalThis.fetch=async(input,options)=>{
    const url=String(input);
    if(url.startsWith(backupOrigin)){
     if(offline)throw new TypeError('fixture outage');
+    if(nonJson)return new Response('<html>blocked</html>',{status:403,headers:{'Content-Type':'text/html'}});
     assert.ok(!options.body.includes(main.ADMIN_KEY));assert.ok(!options.body.includes('fixture-alice-password'));assert.ok(!options.body.includes(main.DEEPSEEK_API_KEY));
     lastEnvelope={url,options};
     const response=await worker.fetch(new Request(url,options),backup,{});
@@ -72,6 +73,14 @@ for(const [name,worker] of [['dashboard',dashboard],['server',server]]){
   };
   try{
    assert.equal((await call(backup,backupOrigin,'/api/admin/billing/config/save',{config:{enabled:true,service_fee:0,token_price:4000,bank:'VCB',account:'0123456789',name:'FIXTURE',secret:'fixture-webhook-secret-more-than-32'}})).status,200);
+   let check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.connected,true);
+   assert.ok(!JSON.stringify(check.value).includes(link));
+   assert.equal(backup.DB.raw.prepare('SELECT count(*) AS n FROM billing_wallets').get().n,0,'diagnostics never create a wallet');
+   main.BILLING_PUBLIC_ORIGIN='';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_PUBLIC_ORIGIN_INVALID');main.BILLING_PUBLIC_ORIGIN=mainOrigin;
+   main.BILLING_LINK_KEY='fixture-wrong-key-more-than-32-characters';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH');main.BILLING_LINK_KEY=link;
+   backup.BILLING_ROLE='local';check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING');backup.BILLING_ROLE='authority';
+   nonJson=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NON_JSON_HTTP_403');nonJson=false;
+   offline=true;check=await call(main,mainOrigin,'/api/admin/billing/central-check');assert.equal(check.value.cause,'BILLING_LINK_NETWORK');offline=false;
    // Initialize only the primary account. No matching backup login/password exists.
    await call(main,mainOrigin,'/api/billing/status');
    main.DB.raw.prepare("INSERT INTO users(username,key,tier,expires_at,created_at) VALUES('alice','fixture-alice-password','pro','Vĩnh viễn',?)").run(new Date().toISOString());

@@ -2860,16 +2860,26 @@ async function billingLinkMac(key,text){
 }
 async function billingCentralCall(env,action,actor,payload={}){
  const cfg=billingTopology(env);if(cfg?.role!=='primary')throw new Error('Not a billing primary');
- const origin=new URL(String(env.BILLING_PUBLIC_ORIGIN)).origin;
+ let publicURL;
+ try{
+  publicURL=new URL(String(env.BILLING_PUBLIC_ORIGIN));
+  if(publicURL.protocol!=='https:'||publicURL.username||publicURL.password||publicURL.search||publicURL.hash||publicURL.pathname!=='/')throw new Error('Invalid origin');
+ }catch{throw Object.assign(new Error('Invalid BILLING_PUBLIC_ORIGIN'),{billingCause:'BILLING_PUBLIC_ORIGIN_INVALID'});}
+ const origin=publicURL.origin;
  const envelope={action,actor:actor?billingMappedActor(env,actor):null,payload,source:origin,created:Date.now(),nonce:crypto.randomUUID()};
  const raw=JSON.stringify(envelope),signature=await billingLinkMac(cfg.key,raw);
- const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),8000);
+ const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),action==='import'?45000:8000);
  try{
   // Never follow redirects or forward a user's password/session/API key.
   const response=await fetch(cfg.peer+centralBillingPath,{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Signature':signature},body:raw,redirect:'error',signal:abort.signal});
-  const text=await response.text();if(text.length>2000000)throw new Error('Oversized billing response');
-  const result=JSON.parse(text);
+  const text=await response.text();if(text.length>2000000)throw Object.assign(new Error('Oversized billing response'),{billingCause:'BILLING_RESPONSE_TOO_LARGE'});
+  let result;
+  try{result=JSON.parse(text);}
+  catch{throw Object.assign(new Error('Billing peer did not return JSON'),{billingCause:'BILLING_LINK_NON_JSON_HTTP_'+response.status});}
   return {status:response.status,result};
+ }catch(error){
+  if(!error.billingCause)error.billingCause=abort.signal.aborted?'BILLING_LINK_TIMEOUT':'BILLING_LINK_NETWORK';
+  throw error;
  }finally{clearTimeout(timer);}
 }
 async function billingRemoteConfig(env){
@@ -3054,6 +3064,7 @@ async function billingDelegatedProvider(env,actor,path,body){
  return response;
 }
 async function billingAPI(env,actor,path,body,request){
+ if(path==='/api/admin/billing/central-check')return billingCentralCheck(env,actor);
  const topology=billingTopology(env);
  if(topology?.role==='primary'&&path==='/api/admin/billing/central-migration')return billingMigrateLedger(env,actor,body);
  if(topology&&env.BILLING_MIGRATION_FREEZE==='true')return billingError('Đang chuyển sổ thanh toán. Tạm dừng giao dịch.',503,'BILLING_MIGRATION_FREEZE');
@@ -3098,7 +3109,26 @@ async function billingMigrateLedger(env,actor,body){
  try{
   const {status,result}=await billingCentralCall(env,'import',actor,{id:body.request_id,tables,config});
   return reply(result,status);
- }catch{return billingError('Chưa xác nhận chuyển sổ. Giữ chế độ freeze; thử lại cùng request_id, không xóa dữ liệu nguồn.',503,'BILLING_MIGRATION_UNCONFIRMED');}
+ }catch(error){
+  const cause=error.billingCause||'BILLING_LINK_CONFIG_OR_REQUEST';
+  const reference=crypto.randomUUID();console.error('billing_migration_unconfirmed',reference,cause);
+  return reply({success:false,code:'BILLING_MIGRATION_UNCONFIRMED',cause,reference,message:'Chưa xác nhận chuyển sổ. Nguyên nhân: '+cause+'. Giữ freeze và request_id cũ; không xóa dữ liệu nguồn.'},503);
+ }
+}
+async function billingCentralCheck(env,actor){
+ if(!administrator(actor))return fail('Admin required.',403);
+ const checks={role:env.BILLING_ROLE||'local',freeze:env.BILLING_MIGRATION_FREEZE==='true',
+  authority_url_set:Boolean(env.BILLING_AUTHORITY_URL),public_origin_set:Boolean(env.BILLING_PUBLIC_ORIGIN),
+  link_key_present:typeof env.BILLING_LINK_KEY==='string'&&env.BILLING_LINK_KEY.length>=32};
+ try{
+  const cfg=billingTopology(env);checks.authority_url_valid=cfg?.role==='primary';
+  if(cfg?.role!=='primary')return reply({success:true,connected:false,checks,cause:'BILLING_PRIMARY_ROLE_MISSING'});
+  const {status,result}=await billingCentralCall(env,'config',null);
+  const connected=status===200&&result.success===true&&typeof result.config?.enabled==='boolean';
+  let cause=null;
+  if(!connected)cause=status===401?'BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH':status===404?'BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING':'BILLING_PEER_HTTP_'+status;
+  return reply({success:true,connected,checks,peer_http_status:status,cause});
+ }catch(error){return reply({success:true,connected:false,checks,cause:error.billingCause||'BILLING_LINK_CONFIGURATION_INVALID'});}
 }
 async function billingImportLedger(env,source,payload){
  if(env.BILLING_MIGRATION_FREEZE!=='true')return fail('Authority must be frozen before importing ledger.',409);
