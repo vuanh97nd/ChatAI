@@ -2871,7 +2871,8 @@ async function billingCentralCall(env,action,actor,payload={}){
  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),action==='import'?45000:8000);
  try{
   // Never follow redirects or forward a user's password/session/API key.
-  const response=await fetch(cfg.peer+centralBillingPath,{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Signature':signature},body:raw,redirect:'error',signal:abort.signal});
+  const response=await fetch(cfg.peer+centralBillingPath,{method:'POST',headers:{'Content-Type':'application/json','X-Billing-Signature':signature},body:raw,redirect:'manual',signal:abort.signal});
+  if(response.status>=300&&response.status<400)throw Object.assign(new Error('Billing peer redirect refused'),{billingCause:'BILLING_LINK_REDIRECT_REFUSED'});
   const text=await response.text();if(text.length>2000000)throw Object.assign(new Error('Oversized billing response'),{billingCause:'BILLING_RESPONSE_TOO_LARGE'});
   let result;
   try{result=JSON.parse(text);}
