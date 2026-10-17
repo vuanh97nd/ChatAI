@@ -38,7 +38,7 @@ void main() {
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
   });
   testWidgets('turning off effects produces a settled scene without recurring frames', (tester) async {
-    await tester.pumpWidget(MaterialApp(home:AmbientScene(effects:VisualEffects.off,child:const Scaffold(body:Text('Ready'))))));
+    await tester.pumpWidget(MaterialApp(home:AmbientScene(effects:VisualEffects.off,child:const Scaffold(body:Text('Ready')))));
     await tester.pumpAndSettle(); expect(tester.binding.hasScheduledFrame,isFalse);
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
   });

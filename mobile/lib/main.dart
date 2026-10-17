@@ -806,7 +806,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (!mounted) return;
       if (index == 0 || index == 3) { selectPage(index == 0 ? 0 : 3); return; }
       if (index == 1) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim()))); }
-      if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
+      else if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
     }, destinations: const [NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
       NavigationDestination(icon: Icon(Icons.checklist_outlined), label: 'Công việc'),
       NavigationDestination(icon: Icon(Icons.collections_outlined), label: 'Sáng tạo'),

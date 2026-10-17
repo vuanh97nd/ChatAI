@@ -53,11 +53,24 @@ class _AmbientSceneState extends State<AmbientScene> with SingleTickerProviderSt
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); motion.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
-    Positioned.fill(child: IgnorePointer(child: RepaintBoundary(child: AnimatedBuilder(animation: motion, builder: (_, child) => CustomPaint(
-      painter: _AuroraPainter(motion.value, Theme.of(context).brightness == Brightness.dark, widget.effects))))),
-    widget.child,
-  ]);
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      Positioned.fill(
+        child: IgnorePointer(
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: motion,
+              builder: (_, child) => CustomPaint(
+                painter: _AuroraPainter(motion.value, Theme.of(context).brightness == Brightness.dark, widget.effects),
+              ),
+            ),
+          ),
+        ),
+      ),
+      widget.child,
+    ],
+  );
 }
 class _AuroraPainter extends CustomPainter {
   final double phase;
