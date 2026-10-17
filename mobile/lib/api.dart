@@ -267,7 +267,7 @@ class ChatApi {
       ], 'max_tokens': 4096, 'temperature': 0.2,
     };
     if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
-    final question = messages.where((m) => m['role'] == 'user').lastOrNull?['content'] ?? '';
+    final question = (messages.where((m) => m['role'] == 'user').lastOrNull?['content'] ?? '').split('\n').first.trim();
     var live = autoSearch ? liveSearchPlan(messages) : null;
     NearbyPosition? position;
     if (autoSearch && (live?.askLocation == true || (live == null && asksNearby(question)))) {
