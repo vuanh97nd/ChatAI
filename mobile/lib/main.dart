@@ -12,6 +12,7 @@ import 'api.dart';
 import 'visual_style.dart';
 import 'task_page.dart';
 import 'task_intent.dart';
+import 'sound_effects.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
 import 'voice.dart';
@@ -47,6 +48,7 @@ Widget buildInfoButton(BuildContext context) => IconButton(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    SoundEffects.enabled.value = await storage.read(key: 'sound_effects') != 'false';
     final effects = await storage.read(key: 'visual_effects');
     for (final mode in VisualEffects.values) { if (mode.name == effects) visualEffects.value = mode; }
     final saved = await storage.read(key: 'theme_mode');
@@ -197,6 +199,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (input.text.trim().isNotEmpty || attachments.isNotEmpty) return;
     await voice.stop();
     if (!mounted) return;
+    SoundEffects.suspended = true;
+    try {
     await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => VoiceChatPage(api: api,
       answer: (words) async {
         input.text = words;
@@ -207,6 +211,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         }
         return messages.last['content']!;
       })));
+    } finally { SoundEffects.suspended = false; }
   }
   Future<void> dictate() async {
     if (voice.listening) { await voice.finishListening(); return; }
@@ -340,6 +345,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     await voice.stop();
     final pending = <String, String>{'role': 'user', 'content': text};
     changed(() { messages.add(pending); input.clear(); });
+    unawaited(SoundEffects.play(AppSound.sent));
     int? streamingIndex;
     bool userSaved = false;
     try {
@@ -373,6 +379,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           messages[streamingIndex!]['content'] = answer;
         }
         attachments.clear(); });
+      if (foreground && !voice.speaking && !voice.listening) unawaited(SoundEffects.play(AppSound.reply));
       try {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
           'role': 'assistant', 'content': answer, 'client_id': uuid.v4()});
@@ -405,11 +412,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       guestPending ??= {'id': uuid.v4(), 'text': text, 'messages': [...history, {'role': 'user', 'content': text}]};
       await storage.write(key: 'guest_pending', value: jsonEncode(guestPending));
       changed(() { messages.add({'role': 'user', 'content': text}); replyStatus = 'Đang suy nghĩ…'; });
+      unawaited(SoundEffects.play(AppSound.sent));
       final result = await api.guestAnswer(guestToken, guestPending!['id'] as String,
         (guestPending!['messages'] as List<dynamic>).map((m) => {'role': m['role'] as String, 'content': m['content'] as String}).toList());
       await storage.delete(key: 'guest_pending'); guestPending = null;
       changed(() { messages.add({'role': 'assistant', 'content': result['answer'] as String, 'provider': 'nvidia'});
         input.clear(); guestRemaining = (result['remaining'] as num).toInt(); });
+      if (foreground) unawaited(SoundEffects.play(AppSound.reply));
     } catch (e) {
       changed(() {
         if (messages.isNotEmpty && messages.last['role'] == 'user' && messages.last['content'] == input.text.trim()) messages.removeLast();

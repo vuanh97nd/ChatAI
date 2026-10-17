@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api.dart';
+import 'sound_effects.dart';
 
 class MediaPage extends StatefulWidget {
   final ChatApi api;
@@ -52,7 +53,7 @@ class _MediaPageState extends State<MediaPage> {
       if (!video) {
         final value = await widget.api.post('/api/media/image', {'prompt': text});
         final bytes = base64Decode(value['image'] as String);
-        if (mounted) setState(() { image = bytes; message = 'Ảnh đã tạo xong.'; });
+        if (mounted) { setState(() { image = bytes; message = 'Ảnh đã tạo xong.'; }); unawaited(SoundEffects.play(AppSound.created)); }
       } else {
         // Retain the request identifier across uncertain submissions.
         final id = const Uuid().v4();

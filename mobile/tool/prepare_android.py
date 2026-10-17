@@ -146,6 +146,30 @@ class MainActivity: FlutterActivity() {
         pendingAssist = false
       } else { result.notImplemented() }
     }
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/sound_effects").setMethodCallHandler { call, result ->
+      if (call.method != "play") { result.notImplemented() }
+      else {
+        val manager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+        if (manager.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL || manager.mode != android.media.AudioManager.MODE_NORMAL || isFinishing) {
+          result.success(null)
+        } else {
+          try {
+            val tone = when (call.arguments as? String) {
+              "sent" -> android.media.ToneGenerator.TONE_PROP_BEEP
+              "reply" -> android.media.ToneGenerator.TONE_PROP_ACK
+              "created" -> android.media.ToneGenerator.TONE_PROP_BEEP2
+              else -> -1
+            }
+            if (tone >= 0) {
+              val player = android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 12)
+              player.startTone(tone, 100)
+              android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ player.release() }, 250)
+            }
+          } catch (_: Exception) { /* Device sound is optional. */ }
+          result.success(null)
+        }
+      }
+    }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/app_identity").setMethodCallHandler { call, result ->
       if (call.method != "signerSha256") { result.notImplemented() }
       else {
