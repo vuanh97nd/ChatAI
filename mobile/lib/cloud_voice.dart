@@ -80,7 +80,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   void Function(String)? status, failure, words;
   bool recording = false, transcribing = false, heardSound = false;
   int generation = 0;
-  double noiseFloor = -60;
+  double noiseFloor = -50;
   int voicedFrames = 0;
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) async {
@@ -93,7 +93,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   Future<void> listen(String locale, void Function(String) words) async {
     final run = ++generation;
-    this.words = words; audio = BytesBuilder(copy: false); heardSound = false; noiseFloor = -60; voicedFrames = 0;
+    this.words = words; audio = BytesBuilder(copy: false); heardSound = false; noiseFloor = -50; voicedFrames = 0;
     final stream = await recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1));
     if (run != generation) { await recorder.stop(); return; }
