@@ -35,10 +35,13 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   Future<void> speak(String text) async {
     final run = ++speechRun;
-    if (!useCloudSpeech || !cloudSpeechAvailable) { await super.speak(text); return; }
+    if (!useCloudSpeech || !cloudSpeechAvailable) { onSpeechMode?.call(!useCloudSpeech ? 'Giọng trên điện thoại' : 'Giọng điện thoại · API chưa cấu hình'); await super.speak(text); return; }
+    onSpeechMode?.call('Giọng AI trực tuyến');
+    var localForTurn = false;
     try {
       for (final chunk in speechChunks(text, 1200)) {
         if (run != speechRun) return;
+        if (localForTurn) { await super.speak(chunk); continue; }
         final session = api.session;
         if (session == null) throw ApiException('Đăng nhập để dùng giọng đọc AI.', 401);
         final result = await api.client.post(api.server.resolve('/api/voice/speak'),
@@ -50,6 +53,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
             final value = jsonDecode(utf8.decode(result.bodyBytes));
             if (value['code'] == 'TTS_NOT_CONFIGURED') cloudSpeechAvailable = false;
           }
+          localForTurn = true;
+          onSpeechMode?.call(cloudSpeechAvailable ? 'Giọng điện thoại · API tạm lỗi' : 'Giọng điện thoại · API chưa cấu hình');
           // Fall back for this remaining chunk only; never repeat spoken audio.
           await super.speak(chunk);
           continue;
@@ -72,7 +77,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   Future<void> stopSpeaking() async { speechRun++; await speaker.stop(); await super.stopSpeaking(); }
 
-  CloudVoiceEngine(this.api);
+  final void Function(String)? onSpeechMode;
+  CloudVoiceEngine(this.api, {this.onSpeechMode});
   StreamSubscription<Uint8List>? audioSub;
   StreamSubscription<Amplitude>? levelSub;
   Timer? limit, silence;

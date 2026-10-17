@@ -17,6 +17,7 @@ class VoiceChatPage extends StatefulWidget {
 class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserver {
   late final VoiceController voice;
   String draft = '', response = '', phase = 'Sẵn sàng', failure = '';
+  String speechMode = 'Giọng AI trực tuyến';
   bool showContent = true;
   bool useCloudSpeech = true;
   bool processing = false, paused = false, closed = false;
@@ -25,7 +26,9 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    voice = VoiceController(engine: CloudVoiceEngine(widget.api))..addListener(changed);
+    voice = VoiceController(engine: CloudVoiceEngine(widget.api, onSpeechMode: (value) {
+      if (mounted && !closed) setState(() => speechMode = value);
+    }))..addListener(changed);
     WidgetsBinding.instance.addPostFrameCallback((_) => listen());
   }
   @override
@@ -87,7 +90,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
           await pause();
           if (!mounted) return;
           (voice.engine as CloudVoiceEngine).useCloudSpeech = value;
-          setState(() => useCloudSpeech = value);
+          setState(() { useCloudSpeech = value; speechMode = value ? 'Giọng AI trực tuyến' : 'Giọng trên điện thoại'; });
         }, itemBuilder: (_) => [
           CheckedPopupMenuItem(value: true, checked: useCloudSpeech, child: const Text('Giọng AI · có thể tính phí API')),
           CheckedPopupMenuItem(value: false, checked: !useCloudSpeech, child: const Text('Giọng trên điện thoại')),
@@ -104,7 +107,9 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         VoiceRobot(speaking: voice.speaking, listening: voice.listening,
           thinking: processing && !voice.speaking, paused: paused || failure.isNotEmpty),
         const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
+        Text(speechMode, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 12),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
         if (showContent && draft.isNotEmpty) Text('Bạn: $draft', textAlign: TextAlign.center),
         if (voice.listening && !processing)
