@@ -23,3 +23,8 @@ test('uncertain video submission is retained and never resubmitted',async()=>{
  assert.equal((await mediaAPI(env,{username:'alice'},'/api/media/video/create',input,send)).status,502);
  const result=await mediaAPI(env,{username:'alice'},'/api/media/video/create',input,send);assert.equal((await result.json()).status,'unconfirmed');assert.equal(calls,1);db.raw.close();
 });
+test('definite provider rejection can be checked without allowing duplicate charges',async()=>{
+ const db=database(),env={DB:db,OPENAI_API_KEY:'test-key'},input={prompt:'A wave',request_id:'12345678-1234-1234-1234-123456789abc'};
+ await mediaAPI(env,{username:'alice'},'/api/media/video/create',input,async()=>new Response('',{status:403}));
+ const status=await mediaAPI(env,{username:'alice'},'/api/media/video/status',{id:input.request_id});assert.equal((await status.json()).status,'failed');db.raw.close();
+});

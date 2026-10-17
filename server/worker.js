@@ -2873,7 +2873,7 @@ export async function mediaAPI(env,actor,path,body,send=fetch){
  if(!key)return fail('Quản trị viên cần lưu OpenAI API key trên server chính để tạo video.',503);
  const upstream=async(url,options={})=>{
   const response=await send('https://api.openai.com/v1/videos'+url,{...options,headers:{...options.headers,Authorization:'Bearer '+key},redirect:'manual',signal:AbortSignal.timeout(120000)});
-  if(!response.ok){await response.body?.cancel();throw new Error('Dịch vụ video từ chối yêu cầu (HTTP '+response.status+'). Kiểm tra quyền Sora, hạn mức và API key.');}
+  if(!response.ok){await response.body?.cancel();const error=new Error('Dịch vụ video từ chối yêu cầu (HTTP '+response.status+'). Kiểm tra quyền Sora, hạn mức và API key.');error.mediaRejected=[400,401,403,404,422,429].includes(response.status);throw error;}
   return response;
  };
  if(path==='/api/media/video/create'){
@@ -2889,9 +2889,10 @@ export async function mediaAPI(env,actor,path,body,send=fetch){
    if(typeof value.id!=='string'||!/^video_[a-zA-Z0-9_-]+$/.test(value.id))throw new Error('Dịch vụ trả mã video không hợp lệ.');
    await db.prepare('UPDATE media_jobs SET provider_id=?,status=? WHERE id=?').bind(value.id,'queued',id).run();
    return reply({success:true,id,status:'queued'});
-  }catch(error){await db.prepare('UPDATE media_jobs SET status=? WHERE id=?').bind('unconfirmed',id).run();return fail(String(error.message||'Chưa xác nhận tạo video. Không tự gửi lại để tránh tính phí trùng.'),502);}
+  }catch(error){await db.prepare('UPDATE media_jobs SET status=? WHERE id=?').bind(error.mediaRejected?'failed':'unconfirmed',id).run();return fail(String(error.message||'Chưa xác nhận tạo video. Không tự gửi lại để tránh tính phí trùng.'),502);}
  }
  const job=await db.prepare('SELECT * FROM media_jobs WHERE id=? AND owner=?').bind(String(body.id||''),owner).first();
+ if(job&&!job.provider_id&&path==='/api/media/video/status')return reply({success:true,id:job.id,status:job.status,progress:0});
  if(!job?.provider_id)return fail('Video chưa được xác nhận. Không tự tạo lại; kiểm tra trên tài khoản OpenAI.',409);
  if(path==='/api/media/video/status'){
   const value=await (await upstream('/'+encodeURIComponent(job.provider_id))).json();
