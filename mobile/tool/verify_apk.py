@@ -27,6 +27,9 @@ def main():
     badging = subprocess.check_output([str(tools / 'aapt'), 'dump', 'badging', str(apk)], text=True)
     name, code = check_manifest(badging, version)
     signature = subprocess.check_output([str(tools / 'apksigner'), 'verify', '--verbose', '--print-certs', str(apk)], text=True)
+    expected = os.environ.get('CHATAI_EXPECTED_SIGNER_SHA256')
+    if expected and not re.search(r'certificate SHA-256 digest: '+re.escape(expected),signature):
+        raise ValueError('APK does not use the verified update signing identity; refusing publication.')
     commit = os.environ['GITHUB_SHA']
     output = ROOT / 'build/verified-apk'
     output.mkdir(parents=True, exist_ok=True)

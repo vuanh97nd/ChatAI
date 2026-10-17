@@ -4,13 +4,28 @@ on:
     branches: [main]
     paths: ['mobile/**', '.github/workflows/android-apk.yml']
   workflow_dispatch:
+    inputs:
+      repair_update_manifest:
+        description: Restore the known previous update manifest only if missing or from the rejected APK
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
-  group: android-apk-${{ github.ref }}
+  group: android-apk-${{ github.ref }}-${{ inputs.repair_update_manifest && 'repair' || 'build' }}
   cancel-in-progress: true
 jobs:
+  repair_update_manifest:
+    if: ${{ inputs.repair_update_manifest }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore previous compatible update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python mobile/tool/repair_update_manifest.py
   android:
+    if: ${{ !inputs.repair_update_manifest }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -19,6 +34,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Restore test signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: chatai-android-debug-signing-v1
+      - name: Prepare test signing identity
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+      - name: Check published update signing identity
+        run: python mobile/tool/check_test_signer.py
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.7'
@@ -45,17 +73,6 @@ jobs:
             gh release view android-diagnostics >/dev/null 2>&1 || gh release create android-diagnostics --target "$GITHUB_SHA" --prerelease --title "Android build diagnostics" --notes "Flutter test log only; no APK."
             gh release upload android-diagnostics mobile/flutter-test.log --clobber
           fi
-      - name: Restore test signing identity
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: chatai-android-debug-signing-v1
-      - name: Prepare test signing identity
-        run: |
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
-          fi
       - name: Build installable test APK
         working-directory: mobile
         run: |
@@ -74,5 +91,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view android-latest >/dev/null 2>&1 || gh release create android-latest --target "$GITHUB_SHA" --title "Chat AI Android" --notes "APK Android đã qua kiểm thử và xác minh."
-          gh release upload android-latest mobile/build/verified-apk/* --clobber
+          python mobile/tool/publish_android.py

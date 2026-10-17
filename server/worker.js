@@ -160,6 +160,26 @@ export async function runMemorySync(env,send=fetch){
  await env.DB.prepare('INSERT INTO memory_sync_schedule(id,next_scope) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET next_scope=excluded.next_scope').bind(resume).run();
  return result;
 }
+export async function requestWeatherSearch(location,send=fetch){
+ location=String(location||'').trim();
+ if(!location||location.length>120||/[\x00-\x1f]/.test(location))throw new Error('Cần tỉnh/thành phố để tra thời tiết.');
+ const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),20000);
+ const get=async url=>{const response=await send(url,{signal:abort.signal,headers:{Accept:'application/json'}});if(!response.ok)throw new Error('Không lấy được dữ liệu thời tiết.');const text=await response.text();if(text.length>200000)throw new Error('Dữ liệu thời tiết quá lớn.');return JSON.parse(text);};
+ try{
+  const geoURL=new URL('https://geocoding-api.open-meteo.com/v1/search');geoURL.searchParams.set('name',location);geoURL.searchParams.set('count','5');geoURL.searchParams.set('language','vi');geoURL.searchParams.set('format','json');
+  const geo=await get(geoURL.href),places=(geo.results||[]).filter(p=>Number.isFinite(p.latitude)&&Math.abs(p.latitude)<=90&&Number.isFinite(p.longitude)&&Math.abs(p.longitude)<=180);
+  if(!places.length)throw new Error('Chưa xác định được địa điểm. Hãy ghi rõ tỉnh/thành phố và quốc gia.');
+  const place=places[0];
+  const url=new URL('https://api.open-meteo.com/v1/forecast');url.searchParams.set('latitude',place.latitude);url.searchParams.set('longitude',place.longitude);url.searchParams.set('timezone','auto');url.searchParams.set('forecast_days','3');
+  url.searchParams.set('current','temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m');
+  url.searchParams.set('daily','temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code');
+  const data=await get(url.href);
+  if(!data.current||!Number.isFinite(data.current.temperature_2m)||typeof data.current.time!=='string')throw new Error('Nguồn chưa có số liệu thời tiết hiện tại.');
+  const resolved=[place.name,place.admin1,place.country].filter(Boolean).join(', ');
+  return {success:true,source:'open_meteo',searched_at:new Date().toISOString(),answer:'Dữ liệu thời tiết Open-Meteo (mô hình dự báo, không phải số đo trạm tại chỗ). Địa điểm nguồn xác định: '+resolved+'. Nếu khác địa điểm được hỏi, yêu cầu người dùng làm rõ; không tự đổi địa điểm. Giờ theo múi giờ của địa điểm.\n'+JSON.stringify({timezone:data.timezone,current:data.current,current_units:data.current_units,daily:data.daily,daily_units:data.daily_units}),sources:[{title:'Open-Meteo — '+resolved,url:url.href}]};
+ }finally{clearTimeout(timer);}
+}
+
 export async function requestWebSearch(env,query,send=fetch){
  query=String(query||'').trim();
  if(!query||query.length>600||query.split(/\s+/).length>75)throw new Error('Câu hỏi tra cứu cần từ 1 đến 600 ký tự, tối đa 75 từ.');
@@ -666,7 +686,7 @@ const referenceWorker = {async fetch(request,env){
     const query=String(body.text||'').trim();
     if(!query||query.length>2000)return fail('Câu hỏi tra cứu phải có từ 1 đến 2000 ký tự.');
     if(!await throttle(db,account,'chat/search',600))return fail('Vui lòng đợi một chút trước khi tra cứu tiếp.',429);
-    try{return reply(await requestWebSearch(env,query));}
+    try{return reply((body.weather_location?await requestWeatherSearch(body.weather_location):await requestWebSearch(env,query)));}
     catch(error){return fail(error.message||'Chưa kết nối được dịch vụ tra cứu mạng.',503);}
    }
    if(path==='/api/chat/ai'||path==='/api/ai/consult'){
@@ -1519,6 +1539,11 @@ export default {
     return respond(await mobileGuestAPI(env,path,body));
    }
 
+   if(path.startsWith('/api/media/')){
+    if(request.method!=='POST')return respond(fail('POST required.',405));
+    const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để tạo ảnh/video.',401));
+    return respond(await mediaAPI(env,actor,path,body));
+   }
    if(path==='/api/voice/transcribe'){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -2797,6 +2822,14 @@ export async function mobileGuestAPI(env,path,body,execute=providerAPI){
  }
 }
 
+export function cleanSpeechTranscript(text){
+ let value=String(text||'').normalize('NFC').trim();
+ const folded=value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
+ const caption=/(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?dang k[yi]\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*/g;
+ for(const match of [...folded.matchAll(caption)].reverse())value=value.slice(0,match.index)+' '+value.slice(match.index+match[0].length);
+ value=value.replace(/\s+/g,' ').trim();
+ return /^la\s*la\s*school[.!?]*$/i.test(value)?'':value;
+}
 export async function transcribeAudio(env,actor,body){
  if(typeof env.AI?.run!=='function')return fail('Chưa có Workers AI binding tên AI.',503);
  const encoded=body.audio;
@@ -2805,15 +2838,73 @@ export async function transcribeAudio(env,actor,body){
  const view=new DataView(audio.buffer);
  const tag=(offset)=>String.fromCharCode(...audio.slice(offset,offset+4));
  if(audio.length<44||audio.length>960044||tag(0)!=='RIFF'||tag(8)!=='WAVE'||tag(12)!=='fmt '||view.getUint32(16,true)!==16||view.getUint16(20,true)!==1||view.getUint16(22,true)!==1||view.getUint32(24,true)!==16000||view.getUint16(34,true)!==16||tag(36)!=='data'||view.getUint32(40,true)!==audio.length-44||view.getUint32(4,true)!==audio.length-8||(audio.length-44)%2)return fail('Cần WAV PCM 16 kHz, mono, 16 bit, tối đa 30 giây.',400);
+ let activeFrames=0;
+ for(let offset=44;offset+640<=audio.length;offset+=640){let energy=0;for(let i=offset;i<offset+640;i+=2){const sample=view.getInt16(i,true)/32768;energy+=sample*sample;}if(energy/320>0.00001225)activeFrames++;}
+ if(activeFrames<13)return fail('Chưa nghe rõ lời nói. Hãy nói gần micro rồi thu lại.',422);
  const limit=await reserveCloud(env,actor.username);if(limit)return limit;
  let timer;
  try{
   const result=await Promise.race([env.AI.run('@cf/openai/whisper-large-v3-turbo',{audio:encoded,language:'vi',task:'transcribe'}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),40000);})]);
-  const text=typeof result?.text==='string'?result.text.trim():'';
+  const text=typeof result?.text==='string'?cleanSpeechTranscript(result.text):'';
   if(!text)return fail('Chưa nhận được lời nói. Thu lại trong nơi yên tĩnh.',422);
   return reply({success:true,text:text.slice(0,12000)});
  }catch{return fail('Chưa nhận dạng được âm thanh. Kiểm tra mô hình Whisper và hạn mức Workers AI rồi thử lại.',503);}
  finally{clearTimeout(timer);}
+}
+
+// Authenticated primary-only media generation. Provider keys never reach clients.
+export async function mediaAPI(env,actor,path,body,send=fetch){
+ if(env.BILLING_ROLE==='authority')return fail('Tạo ảnh/video dùng server chính.',503);
+ const db=env.DB;
+ await db.prepare('CREATE TABLE IF NOT EXISTS media_jobs (id TEXT PRIMARY KEY,owner TEXT NOT NULL,provider_id TEXT,status TEXT NOT NULL,created INTEGER NOT NULL)').run();
+ await initializeProviderStore(env);
+ const stored=await readProviderConfig(env,'openai');
+ const key=stored.key||env.OPENAI_API_KEY;
+ if(path==='/api/media/capabilities')return reply({success:true,image_available:Boolean(env.AI),video_available:Boolean(key)});
+ const owner=actor.username;
+ if(path==='/api/media/image'){
+  const prompt=String(body.prompt||'').trim();if(!prompt||prompt.length>2000)return fail('Nhập mô tả ảnh tối đa 2000 ký tự.');
+  if(!env.AI)return fail('Server chưa bật Workers AI.',503);
+  if(!await throttle(db,owner,'media-image',3))return fail('Mỗi tài khoản tối đa 3 ảnh/phút.',429);
+  const result=await env.AI.run('@cf/black-forest-labs/flux-1-schnell',{prompt,num_steps:4});
+  if(typeof result?.image!=='string'||result.image.length>20000000)return fail('Dịch vụ chưa trả ảnh hợp lệ.',502);
+  return reply({success:true,image:result.image,mime:'image/jpeg'});
+ }
+ if(!key)return fail('Quản trị viên cần lưu OpenAI API key trên server chính để tạo video.',503);
+ const upstream=async(url,options={})=>{
+  const response=await send('https://api.openai.com/v1/videos'+url,{...options,headers:{...options.headers,Authorization:'Bearer '+key},redirect:'manual',signal:AbortSignal.timeout(120000)});
+  if(!response.ok){await response.body?.cancel();throw new Error('Dịch vụ video từ chối yêu cầu (HTTP '+response.status+'). Kiểm tra quyền Sora, hạn mức và API key.');}
+  return response;
+ };
+ if(path==='/api/media/video/create'){
+  const prompt=String(body.prompt||'').trim(),id=String(body.request_id||'');
+  if(!prompt||prompt.length>2000||! /^[a-f0-9-]{36}$/i.test(id))return fail('Mô tả hoặc mã yêu cầu không hợp lệ.');
+  const old=await db.prepare('SELECT * FROM media_jobs WHERE id=?').bind(id).first();
+  if(old){if(old.owner!==owner)return fail('Không tìm thấy video.',404);return reply({success:true,id,status:old.status});}
+  if(!await throttle(db,owner,'media-video',1))return fail('Mỗi tài khoản tối đa 1 yêu cầu video/phút.',429);
+  await db.prepare('INSERT INTO media_jobs(id,owner,status,created) VALUES(?,?,?,?)').bind(id,owner,'submitting',Date.now()).run();
+  try{
+   const form=new FormData();form.set('model','sora-2');form.set('prompt',prompt);form.set('seconds','4');form.set('size','720x1280');
+   const value=await (await upstream('',{method:'POST',body:form})).json();
+   if(typeof value.id!=='string'||!/^video_[a-zA-Z0-9_-]+$/.test(value.id))throw new Error('Dịch vụ trả mã video không hợp lệ.');
+   await db.prepare('UPDATE media_jobs SET provider_id=?,status=? WHERE id=?').bind(value.id,'queued',id).run();
+   return reply({success:true,id,status:'queued'});
+  }catch(error){await db.prepare('UPDATE media_jobs SET status=? WHERE id=?').bind('unconfirmed',id).run();return fail(String(error.message||'Chưa xác nhận tạo video. Không tự gửi lại để tránh tính phí trùng.'),502);}
+ }
+ const job=await db.prepare('SELECT * FROM media_jobs WHERE id=? AND owner=?').bind(String(body.id||''),owner).first();
+ if(!job?.provider_id)return fail('Video chưa được xác nhận. Không tự tạo lại; kiểm tra trên tài khoản OpenAI.',409);
+ if(path==='/api/media/video/status'){
+  const value=await (await upstream('/'+encodeURIComponent(job.provider_id))).json();
+  const status=['queued','in_progress','completed','failed'].includes(value.status)?value.status:'unknown';
+  await db.prepare('UPDATE media_jobs SET status=? WHERE id=?').bind(status,job.id).run();
+  return reply({success:true,id:job.id,status,progress:Number(value.progress)||0});
+ }
+ if(path==='/api/media/video/content'){
+  if(job.status!=='completed')return fail('Video chưa hoàn tất.',409);
+  const result=await upstream('/'+encodeURIComponent(job.provider_id)+'/content');
+  return new Response(result.body,{headers:{'Content-Type':'video/mp4','Cache-Control':'no-store','Content-Disposition':'attachment; filename="ChatAI.mp4"'}});
+ }
+ return fail('Không tìm thấy chức năng media.',404);
 }
 
 // BEGIN CENTRAL BILLING V1

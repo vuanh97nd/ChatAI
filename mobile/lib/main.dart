@@ -9,7 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
-import 'backup_provider_page.dart';
+import 'media_page.dart';
 import 'voice.dart';
 import 'cloud_voice.dart';
 import 'voice_chat.dart';
@@ -25,7 +25,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.0.0');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.1.0');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -246,15 +246,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         changed(() => guestRemaining = (status['remaining'] as num).toInt());
       }
     } catch (e) {
-      if (api.session != null && api.backup != null && serverUnavailable(e)) {
-        api.usingBackup = true;
-        final local = await storage.read(key: 'offline:$backupKey');
-        if (local != null) {
-          final saved = jsonDecode(local) as Map<String, dynamic>;
-          conversation = saved['conversation'] as String?;
-          messages = (saved['messages'] as List).map((row) => Map<String, String>.from(row as Map)).toList();
-        }
-      }
       changed(() => error = '$e');
     }
     finally { changed(() => loading = false); }
@@ -303,68 +294,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     changed(() { loading = false; error = null; });
     await guard(refresh);
   }
-  String get backupKey => 'backup:${api.server.origin}:${api.session?.username}';
   Future<void> restoreBackup() async {
+    // Old AI fallback credentials are no longer restored; billing is separate.
     api.backup = null; api.usingBackup = false;
-    if (api.session == null) return;
-    final raw = await storage.read(key: backupKey);
-    if (raw == null) return;
-    final value = jsonDecode(raw) as Map<String, dynamic>;
-    api.backup = ChatApi(client: api.client, endpoint: value['endpoint'] as String)
-      ..session = Session.fromJson(value['session'] as Map<String, dynamic>);
   }
-  Future<void> openBackupProviders() async {
-    final target = api.backup;
-    if (target == null) { changed(() => error = 'Kết nối tài khoản dự phòng trước.'); return; }
-    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => BackupProviderPage(api: target,
-      primaryServer: api.server.origin, onChangeServer: () { if (mounted) unawaited(connectBackup()); })));
-  }
-  Future<void> connectBackup() async {
-    if (api.session == null) { await openLogin(); return; }
-    final endpoint = TextEditingController(text: api.backup?.server.origin ?? defaultBackupServer);
-    final name = TextEditingController(text: api.backup?.session?.username ?? ''), password = TextEditingController();
-    final accepted = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: const Text('Kết nối AI dự phòng'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Đăng nhập riêng. Chỉ chuyển yêu cầu AI; không đồng bộ lịch sử hay thanh toán.'),
-        Text('Server chính: ${api.server.origin}'),
-        DropdownButton<String>(value: null, hint: const Text('Chọn server dự phòng'), isExpanded: true,
-          items: [for (final url in {defaultBackupServer, defaultServer}.where((url) => Uri.parse(url).origin != api.server.origin))
-            DropdownMenuItem(value: url, child: Text(url))],
-          onChanged: (value) { if (value != null) endpoint.text = value; }),
-        TextField(controller: endpoint, decoration: const InputDecoration(labelText: 'Server HTTPS')),
-        TextField(controller: name, decoration: const InputDecoration(labelText: 'Tài khoản dự phòng')),
-        TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Mật khẩu')),
-      ])), actions: [
-        if (api.backup != null) TextButton(onPressed: () {
-          Navigator.pop(c, false);
-          unawaited(openBackupProviders());
-        }, child: const Text('Cấu hình API / Kiểm tra AI')),
-        TextButton(onPressed: () async {
-          final navigator = Navigator.of(c);
-          await storage.delete(key: backupKey);
-          api.backup = null; api.usingBackup = false;
-          navigator.pop(false);
-        }, child: const Text('Tắt dự phòng')),
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy')),
-        FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Kết nối')),
-      ]));
-    final url = endpoint.text.trim(), user = name.text, secret = password.text;
-    // Controllers may still be attached during the dialog's closing animation.
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    endpoint.dispose(); name.dispose(); password.dispose();
-    if (accepted != true || !mounted) return;
-    await guard(() async {
-      final candidate = ChatApi(client: api.client, endpoint: url);
-      if (candidate.server.origin == api.server.origin) throw ApiException('Chọn server khác server chính.');
-      final owner = backupKey;
-      await candidate.login(user, secret, device);
-      await storage.write(key: owner, value: jsonEncode({'endpoint': url, 'session': candidate.session!.toJson()}));
-      api.backup = candidate; api.usingBackup = false;
-      changed(() => error = 'Đã kết nối AI dự phòng.');
-    });
-  }
-
   Future<void> signOut() async {
     poll?.cancel(); await voice.stop();
     try { await disableAccountNotifications(api); } catch (_) {}
@@ -392,26 +325,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     int? streamingIndex;
     bool userSaved = false;
     try {
-      var localOnly = api.usingBackup && api.backup != null;
-      if (!localOnly) {
-        try {
-          if (conversation == null) {
-            final result = await api.post('/api/conversations/create', {'title': text});
-            conversation = (result['conversation'] as Map<String, dynamic>)['id'] as String;
-          }
-          await api.post('/api/conversations/append', {'conversation_id': conversation,
-            'role': 'user', 'content': text, 'client_id': uuid.v4()});
-          userSaved = true;
-        } catch (e) {
-          if (api.backup == null || !serverUnavailable(e)) rethrow;
-          // The primary write may have completed. Do not replay it on either server.
-          api.usingBackup = true; localOnly = true;
-          changed(() => replyStatus = 'Đang dùng AI dự phòng; lịch sử tạm lưu trên máy.');
-        }
+      if (conversation == null) {
+        final result = await api.post('/api/conversations/create', {'title': text});
+        conversation = (result['conversation'] as Map<String, dynamic>)['id'] as String;
       }
-      if (localOnly) {
-        await storage.write(key: 'offline:$backupKey', value: jsonEncode({'conversation': conversation, 'messages': messages}));
-      }
+      await api.post('/api/conversations/append', {'conversation_id': conversation,
+        'role': 'user', 'content': text, 'client_id': uuid.v4()});
+      userSaved = true;
       final history = messages.length > 24 ? messages.sublist(messages.length - 24) : messages;
       if (stop.isCompleted) throw Exception('Đã dừng chờ.');
       final answer = await Future.any<String>([api.answer(provider, history, memories,
@@ -435,15 +355,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           messages[streamingIndex!]['content'] = answer;
         }
         attachments.clear(); });
-      localOnly = localOnly || api.usingBackup;
       try {
-        if (localOnly) {
-          await storage.write(key: 'offline:$backupKey', value: jsonEncode({'conversation': conversation, 'messages': messages}));
-          changed(() => error = 'Đang dùng AI dự phòng. Hội thoại này tạm lưu trên máy, chưa đồng bộ lên đám mây.');
-        } else {
         await api.post('/api/conversations/append', {'conversation_id': conversation,
           'role': 'assistant', 'content': answer, 'client_id': uuid.v4()});
-        }
       } catch (_) {
         changed(() => error = 'Đã có câu trả lời nhưng chưa lưu lên server. Hãy sao chép để giữ lại.');
       }
@@ -613,6 +527,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             label: Text(a.name), onDeleted: sending ? null : () => changed(() => attachments.remove(a)))),
         ])),
         Row(children: [
+          IconButton(tooltip: 'Tạo ảnh/video', onPressed: api.session == null || sending ? null : () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MediaPage(api: api))), icon: const Icon(Icons.auto_awesome)),
           IconButton(tooltip: 'Đính kèm file', onPressed: sending || working ? null : pickAttachment, icon: const Icon(Icons.add)),
           Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
@@ -801,10 +716,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             try { await storage.write(key: 'theme_mode', value: mode.name); }
             catch (_) { changed(() => error = 'Chưa lưu được lựa chọn giao diện.'); }
           }),
-        if (api.backup != null) ListTile(leading: const Icon(Icons.key_outlined),
-          title: const Text('Cấu hình API dự phòng'), onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openBackupProviders()); }),
-        ListTile(leading: const Icon(Icons.cloud_sync_outlined), title: const Text('AI dự phòng'),
-          onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(connectBackup()); }),
         ListTile(leading: const Icon(Icons.system_update_outlined),
           title: const Text('Cập nhật ứng dụng'),
           onTap: () {

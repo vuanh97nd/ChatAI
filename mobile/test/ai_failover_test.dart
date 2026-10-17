@@ -5,22 +5,18 @@ import 'package:http/testing.dart';
 import 'package:chatai_mobile/api.dart';
 
 void main() {
-  test('outage switches AI with separate credentials; history writes stay primary', () async {
+  test('saved fallback is ignored and AI stays on primary during outage', () async {
     final requests = <http.Request>[];
     final client = MockClient((request) async {
       requests.add(request);
-      if (request.url.host == 'primary.example') return http.Response('{"success":false,"message":"D1 limit"}', 503);
-      expect(jsonDecode(request.body)['key'], 'backup-token');
-      return http.Response('{"success":true,"answer":"OK"}', 200);
+      return http.Response('{"success":false,"message":"D1 limit"}', 503);
     });
     final api = ChatApi(client: client, endpoint: 'https://primary.example')..session = Session('owner', 'primary-token', '');
     api.backup = ChatApi(client: client, endpoint: 'https://backup.example')..session = Session('backup-owner', 'backup-token', '');
-    expect((await api.modelAnswer({'provider': 'gemini'}))['answer'], 'OK');
-    expect(api.usingBackup, isTrue);
-    await api.modelAnswer({'provider': 'gemini'});
-    expect(requests.last.url.host, 'backup.example');
-    await expectLater(api.post('/api/conversations/append', {}), throwsA(isA<ApiException>()));
-    expect(requests.last.url.host, 'primary.example');
+    api.usingBackup = true;
+    await expectLater(api.modelAnswer({'provider': 'gemini'}), throwsA(isA<ApiException>()));
+    expect(requests.length, 1); expect(requests.single.url.host, 'primary.example');
+    expect(api.usingBackup, isFalse);
     client.close();
   });
   test('auth and billing errors do not switch', () async {

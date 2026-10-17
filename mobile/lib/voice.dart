@@ -1,3 +1,4 @@
+import 'speech_transcript.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -171,10 +172,11 @@ class VoiceController extends ChangeNotifier {
         throw Exception('Chưa có nhận dạng tiếng Việt. Cài hoặc bật tiếng Việt trong dịch vụ giọng nói Android.');
       }
       await engine.listen(vietnamese.first, (words) {
-        if (!_disposed && run == _generation && words.trim().isNotEmpty) {
+        final cleaned=cleanRecognizedSpeech(words);
+        if (!_disposed && run == _generation && cleaned.isNotEmpty) {
           receivedWords = true;
           _recognitionWatchdog?.cancel();
-          onWords(words);
+          onWords(cleaned);
         }
       }).timeout(const Duration(seconds: 15), onTimeout: () => throw Exception('Dịch vụ nhận dạng không mở được mic. Kiểm tra quyền micro, dịch vụ nhận dạng và kết nối mạng rồi thử lại.'));
       if (run == _generation && !_disposed && error == null) {

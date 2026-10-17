@@ -87,6 +87,14 @@ def configure(android):
                         'signingConfig = signingConfigs.findByName("chataiRelease")')
     marker = '    buildTypes {'
     signing = '''    signingConfigs {
+        if (System.getenv("CHATAI_DEBUG_KEYSTORE") != null) {
+            getByName("debug") {
+                storeFile = file(System.getenv("CHATAI_DEBUG_KEYSTORE"))
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         if (System.getenv("ANDROID_KEYSTORE") != null) {
             create("chataiRelease") {
                 storeFile = file(System.getenv("ANDROID_KEYSTORE"))
