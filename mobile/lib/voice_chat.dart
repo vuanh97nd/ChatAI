@@ -113,11 +113,11 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
         if (showContent && draft.isNotEmpty) Text('Bạn: $draft', textAlign: TextAlign.center),
         if (voice.listening && !processing)
-          FilledButton.icon(onPressed: voice.finishListening, icon: const Icon(Icons.send), label: const Text('Gửi câu nói')),
+          FilledButton.icon(onPressed: voice.finishListening, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (!processing && !voice.listening && draft.trim().isNotEmpty)
-          FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Gửi câu nói')),
+          FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (voice.listening && draft.isEmpty && !processing)
-          const Text('Hãy nói câu hỏi. Chữ nhận dạng sẽ hiện ở đây.', textAlign: TextAlign.center),
+          const Text('Hãy nói câu hỏi. Tôi sẽ tự trả lời khi bạn ngừng nói.', textAlign: TextAlign.center),
         if (showContent && response.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: SelectableText(response)),
         if (failure.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: Text(failure, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (failure.isNotEmpty) Wrap(alignment: WrapAlignment.center, children: [
