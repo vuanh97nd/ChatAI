@@ -72,12 +72,14 @@ void main() {
     expect(find.text('Recent chat'), findsOneWidget);
     expect(find.text('Quản trị'), findsNothing);
     await tester.scrollUntilVisible(find.text('Bộ nhớ'), -160, scrollable: drawerScroll);
+    await Scrollable.ensureVisible(tester.element(find.text('Bộ nhớ')), alignment: .5); await tester.pumpAndSettle();
     await tester.tap(find.text('Bộ nhớ')); await tester.pumpAndSettle();
     expect(find.text('Test memory'), findsOneWidget);
     await tester.tap(find.byType(BackButton)); await tester.pumpAndSettle();
     expect(find.byType(ChatWelcome), findsOneWidget);
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Thông báo'), -160, scrollable: drawerScroll);
+    await Scrollable.ensureVisible(tester.element(find.text('Thông báo')), alignment: .5); await tester.pumpAndSettle();
     await tester.tap(find.text('Thông báo')); await tester.pumpAndSettle();
     expect(find.text('Test notice'), findsOneWidget);
     await tester.tap(find.byType(BackButton)); await tester.pumpAndSettle();
