@@ -58,3 +58,26 @@ test('automatic speech selects Gemini if only Gemini is configured',async()=>{
   assert.match(url,/googleapis/);return Response.json({candidates:[]});
  });assert.equal(response.status,502);db.raw.close();
 });
+
+test('Vietnamese image subject is translated before FLUX and preserved in its prompt',async()=>{
+ const {mediaAPI:serverMedia}=await import('../worker.js');
+ for(const handler of [mediaAPI,serverMedia]){
+  const db=database(),calls=[];
+  try{
+   const env={DB:db,AI:{run:async(model,input)=>{
+    calls.push({model,input});
+    if(model.includes('qwen')){assert.equal(input.messages[1].content,'tạo ảnh con mèo');return {response:'A cat'};}
+    assert.equal(input.prompt,'A cat');return {image:'aGVsbG8='};
+   }}};
+   const response=await handler(env,{username:'alice'},'/api/media/image',{prompt:'tạo ảnh con mèo'});
+   assert.equal(response.status,200);assert.equal(calls.length,2);assert.ok(calls[1].model.includes('flux'));
+  }finally{db.raw.close();}
+ }
+});
+test('failed image translation never generates an unrelated image',async()=>{
+ const db=database();let calls=0;
+ try{
+  const response=await mediaAPI({DB:db,AI:{run:async()=>{calls++;return {response:''};}}},{username:'alice'},'/api/media/image',{prompt:'tạo ảnh con mèo'});
+  assert.equal(response.status,503);assert.equal((await response.json()).code,'IMAGE_PROMPT_TRANSLATION_FAILED');assert.equal(calls,1);
+ }finally{db.raw.close();}
+});
