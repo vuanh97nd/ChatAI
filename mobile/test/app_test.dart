@@ -62,7 +62,7 @@ void main() {
     }));
     await tester.pumpWidget(testApp(home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
-    expect(find.byType(NavigationBar), findsNothing);
+    expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.byType(LoginPage), findsNothing);
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
     final drawerScroll = find.descendant(of: find.byKey(const ValueKey('drawer-history')),
@@ -105,7 +105,7 @@ void main() {
   testWidgets('empty chat welcomes users with the shared logo without a login form', (tester) async {
     await tester.pumpWidget(testApp(home: Scaffold(body: ChatWelcome())));
     expect(find.text('Xin chào bạn!'), findsOneWidget);
-    expect(find.text('Tôi có thể giúp gì cho bạn?'), findsOneWidget);
+    expect(find.text('Biến ý tưởng thành kết quả cùng Chat AI'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect((tester.widget<Image>(find.byType(Image)).image as AssetImage).assetName, 'assets/chat_ai.png');
   });
