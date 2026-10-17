@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'voice.dart';
 import 'cloud_voice.dart';
 import 'api.dart';
+import 'voice_robot.dart';
 
 /// Text-only conversation: never dispatches computer or payment operations.
 class VoiceChatPage extends StatefulWidget {
@@ -87,11 +88,8 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Image.asset('assets/chat_ai.png', width: 88, height: 88,
-            semanticLabel: 'Logo Chat AI'),
-        ),
+        VoiceRobot(speaking: voice.speaking, listening: voice.listening,
+          thinking: processing && !voice.speaking, paused: paused || failure.isNotEmpty),
         const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 20),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
