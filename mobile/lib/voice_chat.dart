@@ -19,7 +19,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   String draft = '', response = '', phase = 'Sẵn sàng', failure = '';
   String speechMode = 'Giọng AI trực tuyến';
   bool showContent = true;
-  bool useCloudSpeech = true;
+  String selectedVoice = 'auto';
   bool processing = false, paused = false, closed = false;
   int generation = 0;
   @override
@@ -84,16 +84,21 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Trò chuyện giọng nói'), actions: [
-      PopupMenuButton<bool>(tooltip: 'Chọn giọng đọc', initialValue: useCloudSpeech,
+      PopupMenuButton<String>(tooltip: 'Chọn giọng đọc', initialValue: selectedVoice,
         icon: const Icon(Icons.record_voice_over),
         onSelected: (value) async {
           await pause();
           if (!mounted) return;
-          (voice.engine as CloudVoiceEngine).useCloudSpeech = value;
-          setState(() { useCloudSpeech = value; speechMode = value ? 'Giọng AI trực tuyến' : 'Giọng trên điện thoại'; });
+          final engine = voice.engine as CloudVoiceEngine;
+          engine.useCloudSpeech = value != 'phone';
+          engine.speechProvider = value == 'phone' ? 'auto' : value;
+          engine.cloudSpeechAvailable = true;
+          setState(() { selectedVoice = value; speechMode = value == 'phone' ? 'Giọng trên điện thoại' : 'Giọng AI trực tuyến'; });
         }, itemBuilder: (_) => [
-          CheckedPopupMenuItem(value: true, checked: useCloudSpeech, child: const Text('Giọng AI · có thể tính phí API')),
-          CheckedPopupMenuItem(value: false, checked: !useCloudSpeech, child: const Text('Giọng trên điện thoại')),
+          CheckedPopupMenuItem(value: 'auto', checked: selectedVoice == 'auto', child: const Text('Giọng AI tự chọn · có thể tính phí')),
+          CheckedPopupMenuItem(value: 'openai', checked: selectedVoice == 'openai', child: const Text('Giọng OpenAI')),
+          CheckedPopupMenuItem(value: 'gemini', checked: selectedVoice == 'gemini', child: const Text('Giọng Gemini')),
+          CheckedPopupMenuItem(value: 'phone', checked: selectedVoice == 'phone', child: const Text('Giọng trên điện thoại')),
         ]),
     ]),
     body: SafeArea(child: Column(children: [

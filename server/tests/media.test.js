@@ -41,3 +41,20 @@ test('neural speech uses Vietnamese instructions and returns private audio',asyn
 test('speech without provider key supports explicit local fallback',async()=>{
  const db=database();const response=await synthesizeSpeech({DB:db},{username:'alice'},{text:'Xin chào'},()=>{throw Error('Must not call provider');});assert.equal((await response.json()).code,'TTS_NOT_CONFIGURED');db.raw.close();
 });
+test('Gemini Vietnamese speech is wrapped in playable 24kHz WAV',async()=>{
+ const db=database();const result=await synthesizeSpeech({DB:db,GEMINI_API_KEY:'test-gemini'},{username:'alice'},{text:'Xin chào',speech_provider:'gemini'},async(url,options)=>{
+  assert.match(url,/gemini-2.5-flash-preview-tts:generateContent$/);assert.equal(options.headers['x-goog-api-key'],'test-gemini');
+  assert.deepEqual(JSON.parse(options.body).generationConfig.responseModalities,['AUDIO']);
+  return Response.json({candidates:[{content:{parts:[{inlineData:{mimeType:'audio/L16;codec=pcm;rate=24000',data:'AQIDBA=='}}]}}]});
+ });
+ assert.equal(result.headers.get('Content-Type'),'audio/wav');assert.equal(result.headers.get('X-ChatAI-Speech-Provider'),'gemini');
+ const bytes=Buffer.from(await result.arrayBuffer());assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.readUInt32LE(24),24000);assert.equal(bytes.readUInt32LE(40),4);assert.deepEqual([...bytes.subarray(44)],[1,2,3,4]);db.raw.close();
+});
+test('unsupported speech provider never calls an API',async()=>{
+ const response=await synthesizeSpeech({}, {username:'alice'}, {text:'Xin chào',speech_provider:'deepseek'},()=>{throw Error('Do not call');});assert.equal((await response.json()).code,'TTS_UNSUPPORTED');
+});
+test('automatic speech selects Gemini if only Gemini is configured',async()=>{
+ const db=database();const response=await synthesizeSpeech({DB:db,GEMINI_API_KEY:'test-gemini'},{username:'alice'},{text:'Xin chào'},async(url)=>{
+  assert.match(url,/googleapis/);return Response.json({candidates:[]});
+ });assert.equal(response.status,502);db.raw.close();
+});

@@ -3007,19 +3007,44 @@ export async function mediaAPI(env,actor,path,body,send=fetch){
 
 export async function synthesizeSpeech(env,actor,body,send=fetch){
  if(env.BILLING_ROLE==='authority')return fail('Giọng đọc AI dùng server chính.',503);
- const text=String(body.text||'').trim();
+ const text=String(body.text||'').trim(),requested=String(body.speech_provider||'auto');
  if(!text||text.length>2200)return fail('Mỗi đoạn đọc cần 1–2200 ký tự.');
+ if(!['auto','openai','gemini'].includes(requested))return reply({success:false,code:'TTS_UNSUPPORTED',message:'Nhà cung cấp này chưa có giọng tiếng Việt được tích hợp.'},400);
  await initializeProviderStore(env);
- const saved=await readProviderConfig(env,'openai'),key=saved.key||env.OPENAI_API_KEY;
- if(!key)return reply({success:false,code:'TTS_NOT_CONFIGURED',message:'Chưa cấu hình OpenAI cho giọng đọc AI.'},503);
+ let provider,key;
+ for(const name of requested==='auto'?['openai','gemini']:[requested]){
+  const saved=await readProviderConfig(env,name);key=saved.key||env[name.toUpperCase()+'_API_KEY'];
+  if(key){provider=name;break;}
+ }
+ if(!key)return reply({success:false,code:'TTS_NOT_CONFIGURED',message:'Chưa có key cho dịch vụ giọng đọc đã chọn. Lưu OpenAI hoặc Gemini key trên server chính.'},503);
  if(!await throttle(env.DB,actor.username,'voice-speech',15))return fail('Đã đạt giới hạn giọng đọc AI trong phút này.',429);
- const result=await send('https://api.openai.com/v1/audio/speech',{
-  method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
-  body:JSON.stringify({model:'gpt-4o-mini-tts',voice:'coral',input:text,response_format:'mp3',
-   instructions:'Speak Vietnamese naturally, warmly and clearly, like a helpful person in a conversation. Use a normal conversational pace, natural pauses and intonation. Do not sing. Read only the supplied text.'}),
-  redirect:'manual',signal:AbortSignal.timeout(60000)});
- if(!result.ok){await result.body?.cancel();return fail('Chưa tạo được giọng đọc AI (HTTP '+result.status+').',502);}
- return new Response(result.body,{headers:{'Content-Type':'audio/mpeg','Cache-Control':'no-store'}});
+ const options={method:'POST',redirect:'manual',signal:AbortSignal.timeout(60000)};
+ let result;
+ if(provider==='openai'){
+  result=await send('https://api.openai.com/v1/audio/speech',{...options,
+   headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+   body:JSON.stringify({model:'gpt-4o-mini-tts',voice:'coral',input:text,response_format:'mp3',
+    instructions:'Speak Vietnamese naturally, warmly and clearly, like a helpful person in a conversation. Use a normal conversational pace, natural pauses and intonation. Do not sing. Read only the supplied text.'})});
+ }else{
+  result=await send('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',{...options,
+   headers:{'x-goog-api-key':key,'Content-Type':'application/json'},
+   body:JSON.stringify({contents:[{parts:[{text:'Đọc bằng tiếng Việt tự nhiên, ấm áp, rõ ràng, ngắt nghỉ đúng câu. Chỉ đọc nội dung sau:\n'+text}]}],
+    generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:'Kore'}}}}})});
+ }
+ if(!result.ok){await result.body?.cancel();return fail('Chưa tạo được giọng đọc '+provider+' (HTTP '+result.status+').',502);}
+ const headers={'Content-Type':'audio/mpeg','Cache-Control':'no-store','X-ChatAI-Speech-Provider':provider};
+ if(provider==='openai')return new Response(result.body,{headers});
+ const raw=await result.text();if(raw.length>8000000)return fail('Đoạn âm thanh quá lớn.',502);
+ let value;try{value=JSON.parse(raw);}catch{return fail('Dịch vụ giọng đọc trả dữ liệu không hợp lệ.',502);}
+ const audio=value.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data)?.inlineData;
+ if(!audio||!/^audio\/L16\b/i.test(audio.mimeType||'')||!/(?:^|;)\s*rate=24000(?:;|$)/i.test(audio.mimeType||''))return fail('Gemini chưa trả âm thanh PCM 24 kHz hợp lệ.',502);
+ let pcm;try{pcm=Uint8Array.from(atob(audio.data),c=>c.charCodeAt(0));}catch{return fail('Âm thanh Gemini không hợp lệ.',502);}
+ if(!pcm.length||pcm.length%2)return fail('Âm thanh Gemini không hợp lệ.',502);
+ const wav=new Uint8Array(44+pcm.length),view=new DataView(wav.buffer);
+ for(const [offset,tag] of [[0,'RIFF'],[8,'WAVE'],[12,'fmt '],[36,'data']])wav.set(new TextEncoder().encode(tag),offset);
+ view.setUint32(4,wav.length-8,true);view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+ view.setUint32(24,24000,true);view.setUint32(28,48000,true);view.setUint16(32,2,true);view.setUint16(34,16,true);view.setUint32(40,pcm.length,true);wav.set(pcm,44);
+ return new Response(wav,{headers:{...headers,'Content-Type':'audio/wav'}});
 }
 
 // BEGIN CENTRAL BILLING V1

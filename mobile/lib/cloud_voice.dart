@@ -31,6 +31,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   final AudioPlayer speaker = AudioPlayer();
   bool cloudSpeechAvailable = true;
   bool useCloudSpeech = true;
+  String speechProvider = 'auto';
   int speechRun = 0;
   @override
   Future<void> speak(String text) async {
@@ -45,8 +46,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
         final session = api.session;
         if (session == null) throw ApiException('Đăng nhập để dùng giọng đọc AI.', 401);
         final result = await api.client.post(api.server.resolve('/api/voice/speak'),
-          headers: {'Content-Type': 'application/json', 'Accept': 'audio/mpeg, application/json', 'User-Agent': 'ChatAI-Android/1.1.2'},
-          body: jsonEncode({'username': session.username, 'key': session.key, 'text': chunk})).timeout(const Duration(seconds: 70));
+          headers: {'Content-Type': 'application/json', 'Accept': 'audio/*, application/json', 'User-Agent': 'ChatAI-Android/1.1.2'},
+          body: jsonEncode({'username': session.username, 'key': session.key, 'text': chunk, 'speech_provider': speechProvider})).timeout(const Duration(seconds: 70));
         if (run != speechRun) return;
         if (result.statusCode != 200 || !(result.headers['content-type'] ?? '').startsWith('audio/')) {
           if (result.statusCode == 503) {
@@ -59,11 +60,13 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
           await super.speak(chunk);
           continue;
         }
+        final actualProvider = result.headers['x-chatai-speech-provider'];
+        onSpeechMode?.call(actualProvider == 'gemini' ? 'Giọng AI · Gemini' : 'Giọng AI · OpenAI');
         final complete = Completer<void>();
         final subscription = speaker.onPlayerComplete.listen((_) { if (!complete.isCompleted) complete.complete(); });
         final deadline = DateTime.now().add(const Duration(minutes: 3));
         try {
-          await speaker.play(BytesSource(result.bodyBytes, mimeType: 'audio/mpeg'));
+          await speaker.play(BytesSource(result.bodyBytes, mimeType: result.headers['content-type']?.split(';').first ?? 'audio/mpeg'));
           while (!complete.isCompleted && run == speechRun) {
             if (DateTime.now().isAfter(deadline)) throw TimeoutException('Phát giọng đọc quá lâu.');
             await Future.any<void>([complete.future, Future<void>.delayed(const Duration(milliseconds: 100))]);
