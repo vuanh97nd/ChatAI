@@ -12,7 +12,7 @@ ThemeData futuristicTheme(Brightness brightness) {
   return ThemeData(useMaterial3: true, colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
     appBarTheme: AppBarTheme(backgroundColor: dark ? const Color(0xd910142c) : const Color(0xd9f5f5ff),
       surfaceTintColor: Colors.transparent, centerTitle: false, elevation: 0,
-      titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: scheme.onSurface)),
+      titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w700, color: scheme.onSurface)),
     cardTheme: CardThemeData(color: dark ? const Color(0xb319203e) : const Color(0xd9ffffff), elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: scheme.primary.withValues(alpha: .18)))),
     inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: scheme.surfaceContainerHighest.withValues(alpha: .4),

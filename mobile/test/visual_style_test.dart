@@ -35,6 +35,10 @@ void main() {
         child: AmbientScene(effects:VisualEffects.full,child:child!))),
       home:Home(api:api,voiceEngine:FakeVoice(),updateCheck:() async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
+    if (Platform.environment['CHAT_AI_UI_PREVIEW'] == 'true') {
+      await tester.runAsync(() => precacheImage(const AssetImage('assets/chat_ai.png'), tester.element(find.byType(Home))));
+      await tester.pumpAndSettle();
+    }
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(tester.takeException(),isNull);
     await tester.tap(find.text('Viết nội dung')); await tester.pumpAndSettle();
