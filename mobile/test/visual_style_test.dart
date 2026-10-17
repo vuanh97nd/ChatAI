@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +15,15 @@ import 'voice_test.dart' show FakeVoice;
 
 void main() {
   testWidgets('dark home fits a small screen and prompt chips populate the composer', (tester) async {
+    if (Platform.environment['CHAT_AI_UI_PREVIEW'] == 'true') {
+      await tester.runAsync(() async {
+        final font = File('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf');
+        if (font.existsSync()) {
+          await (FontLoader('Roboto')..addFont(Future.value(ByteData.sublistView(font.readAsBytesSync())))).load();
+        }
+        await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+      });
+    }
     tester.view.physicalSize = const Size(390,844); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     FlutterSecureStorage.setMockInitialValues({'session:${Uri.parse(defaultServer).origin}': jsonEncode(Session('alice','token','Alice').toJson())});
