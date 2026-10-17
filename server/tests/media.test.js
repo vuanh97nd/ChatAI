@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {mediaAPI} from '../../work.js';
+import {mediaAPI,synthesizeSpeech} from '../../work.js';
 function database(){const raw=new DatabaseSync(':memory:');raw.exec('CREATE TABLE support_rate(key TEXT PRIMARY KEY,hits INTEGER,bucket INTEGER)');return {raw,prepare(sql){return {args:[],bind(...a){this.args=a;return this;},async run(){return raw.prepare(sql).run(...this.args);},async first(){return raw.prepare(sql).get(...this.args)||null;}};}};}
 test('billing authority cannot generate media',async()=>{assert.equal((await mediaAPI({BILLING_ROLE:'authority'},{username:'a'},'/api/media/image',{})).status,503);});
 test('authenticated non-admin can generate images, subject to rate limit',async()=>{
@@ -27,4 +27,17 @@ test('definite provider rejection can be checked without allowing duplicate char
  const db=database(),env={DB:db,OPENAI_API_KEY:'test-key'},input={prompt:'A wave',request_id:'12345678-1234-1234-1234-123456789abc'};
  await mediaAPI(env,{username:'alice'},'/api/media/video/create',input,async()=>new Response('',{status:403}));
  const status=await mediaAPI(env,{username:'alice'},'/api/media/video/status',{id:input.request_id});assert.equal((await status.json()).status,'failed');db.raw.close();
+});
+
+test('neural speech uses Vietnamese instructions and returns private audio',async()=>{
+ const db=database();let calls=0;
+ const result=await synthesizeSpeech({DB:db,OPENAI_API_KEY:'test-key'},{username:'alice'},{text:'Xin chào'},async(url,options)=>{
+  calls++;assert.equal(url,'https://api.openai.com/v1/audio/speech');
+  const input=JSON.parse(options.body);assert.equal(input.model,'gpt-4o-mini-tts');assert.match(input.instructions,/Vietnamese/);assert.equal(input.input,'Xin chào');
+  return new Response(new Uint8Array([1,2,3]));
+ });
+ assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'no-store');assert.equal(result.headers.get('Content-Type'),'audio/mpeg');assert.equal(calls,1);db.raw.close();
+});
+test('speech without provider key supports explicit local fallback',async()=>{
+ const db=database();const response=await synthesizeSpeech({DB:db},{username:'alice'},{text:'Xin chào'},()=>{throw Error('Must not call provider');});assert.equal((await response.json()).code,'TTS_NOT_CONFIGURED');db.raw.close();
 });

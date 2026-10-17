@@ -5,6 +5,8 @@ import 'package:record/record.dart';
 import 'api.dart';
 import 'voice.dart';
 import 'speech_transcript.dart';
+import 'tts_text.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 Uint8List pcmWave(Uint8List pcm) {
   final result = Uint8List(44 + pcm.length);
@@ -26,6 +28,49 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   bool get recordsAudio => true;
   final ChatApi api;
   final AudioRecorder recorder = AudioRecorder();
+  final AudioPlayer speaker = AudioPlayer();
+  bool cloudSpeechAvailable = true;
+  int speechRun = 0;
+  @override
+  Future<void> speak(String text) async {
+    final run = ++speechRun;
+    if (!cloudSpeechAvailable) { await super.speak(text); return; }
+    try {
+      for (final chunk in speechChunks(text, 1200)) {
+        if (run != speechRun) return;
+        final session = api.session;
+        if (session == null) throw ApiException('Đăng nhập để dùng giọng đọc AI.', 401);
+        final result = await api.client.post(api.server.resolve('/api/voice/speak'),
+          headers: {'Content-Type': 'application/json', 'Accept': 'audio/mpeg, application/json', 'User-Agent': 'ChatAI-Android/1.1.2'},
+          body: jsonEncode({'username': session.username, 'key': session.key, 'text': chunk})).timeout(const Duration(seconds: 70));
+        if (run != speechRun) return;
+        if (result.statusCode != 200 || !(result.headers['content-type'] ?? '').startsWith('audio/')) {
+          if (result.statusCode == 503) {
+            final value = jsonDecode(utf8.decode(result.bodyBytes));
+            if (value['code'] == 'TTS_NOT_CONFIGURED') cloudSpeechAvailable = false;
+          }
+          // Fall back for this remaining chunk only; never repeat spoken audio.
+          await super.speak(chunk);
+          continue;
+        }
+        final complete = Completer<void>();
+        final subscription = speaker.onPlayerComplete.listen((_) { if (!complete.isCompleted) complete.complete(); });
+        final deadline = DateTime.now().add(const Duration(minutes: 3));
+        try {
+          await speaker.play(BytesSource(result.bodyBytes, mimeType: 'audio/mpeg'));
+          while (!complete.isCompleted && run == speechRun) {
+            if (DateTime.now().isAfter(deadline)) throw TimeoutException('Phát giọng đọc quá lâu.');
+            await Future.any<void>([complete.future, Future<void>.delayed(const Duration(milliseconds: 100))]);
+          }
+        } finally { await subscription.cancel(); }
+      }
+    } on TimeoutException {
+      if (run == speechRun) throw ApiException('Giọng đọc AI chờ quá lâu. Hãy thử lại hoặc dùng giọng trên máy.');
+    }
+  }
+  @override
+  Future<void> stopSpeaking() async { speechRun++; await speaker.stop(); await super.stopSpeaking(); }
+
   CloudVoiceEngine(this.api);
   StreamSubscription<Uint8List>? audioSub;
   StreamSubscription<Amplitude>? levelSub;
@@ -34,6 +79,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   void Function(String)? status, failure, words;
   bool recording = false, transcribing = false, heardSound = false;
   int generation = 0;
+  double noiseFloor = -60;
+  int voicedFrames = 0;
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) async {
     this.status = status; failure = error;
@@ -45,7 +92,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   Future<void> listen(String locale, void Function(String) words) async {
     final run = ++generation;
-    this.words = words; audio = BytesBuilder(copy: false); heardSound = false;
+    this.words = words; audio = BytesBuilder(copy: false); heardSound = false; noiseFloor = -60; voicedFrames = 0;
     final stream = await recorder.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1));
     if (run != generation) { await recorder.stop(); return; }
@@ -59,10 +106,17 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     levelSub = recorder.onAmplitudeChanged(const Duration(milliseconds: 150)).listen((level) {
       if (run != generation || !recording) return;
       onLevel?.call(((level.current + 60) / 60).clamp(0.0, 1.0) * 12 - 2);
-      if (level.current > -40) {
-        heardSound = true; silence?.cancel(); silence = null;
-      } else if (heardSound && silence == null) {
-        silence = Timer(const Duration(seconds: 2), () { silence = null; unawaited(finish()); });
+      final threshold = (noiseFloor + 10).clamp(-50.0, -30.0);
+      if (level.current > threshold) {
+        voicedFrames++;
+        if (voicedFrames >= 2) heardSound = true;
+        silence?.cancel(); silence = null;
+      } else {
+        voicedFrames = 0;
+        if (!heardSound) noiseFloor = (noiseFloor * .8 + level.current * .2).clamp(-65.0, -38.0);
+        if (heardSound && silence == null) {
+          silence = Timer(const Duration(milliseconds: 1500), () { silence = null; unawaited(finish()); });
+        }
       }
     });
     limit = Timer(const Duration(seconds: 30), () => unawaited(finish()));
@@ -95,5 +149,5 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     }
   }
   @override
-  Future<void> close() async { await cancel(); await recorder.dispose(); }
+  Future<void> close() async { await cancel(); await recorder.dispose(); await speaker.dispose(); }
 }

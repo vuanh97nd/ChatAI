@@ -1544,6 +1544,11 @@ export default {
     const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để tạo ảnh/video.',401));
     return respond(await mediaAPI(env,actor,path,body));
    }
+   if(path==='/api/voice/speak'){
+    if(request.method!=='POST')return respond(fail('POST required.',405));
+    const actor=await auth(env,body.username,body.key);if(!actor)return respond(fail('Đăng nhập để dùng giọng đọc AI.',401));
+    return respond(await synthesizeSpeech(env,actor,body));
+   }
    if(path==='/api/voice/transcribe'){
     if(request.method!=='POST')return respond(fail('Chỉ nhận POST.',405));
     const actor=await auth(env,body.username,body.key);
@@ -2906,6 +2911,23 @@ export async function mediaAPI(env,actor,path,body,send=fetch){
   return new Response(result.body,{headers:{'Content-Type':'video/mp4','Cache-Control':'no-store','Content-Disposition':'attachment; filename="ChatAI.mp4"'}});
  }
  return fail('Không tìm thấy chức năng media.',404);
+}
+
+export async function synthesizeSpeech(env,actor,body,send=fetch){
+ if(env.BILLING_ROLE==='authority')return fail('Giọng đọc AI dùng server chính.',503);
+ const text=String(body.text||'').trim();
+ if(!text||text.length>2200)return fail('Mỗi đoạn đọc cần 1–2200 ký tự.');
+ await initializeProviderStore(env);
+ const saved=await readProviderConfig(env,'openai'),key=saved.key||env.OPENAI_API_KEY;
+ if(!key)return reply({success:false,code:'TTS_NOT_CONFIGURED',message:'Chưa cấu hình OpenAI cho giọng đọc AI.'},503);
+ if(!await throttle(env.DB,actor.username,'voice-speech',15))return fail('Đã đạt giới hạn giọng đọc AI trong phút này.',429);
+ const result=await send('https://api.openai.com/v1/audio/speech',{
+  method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+  body:JSON.stringify({model:'gpt-4o-mini-tts',voice:'coral',input:text,response_format:'mp3',
+   instructions:'Speak Vietnamese naturally, warmly and clearly, like a helpful person in a conversation. Use a normal conversational pace, natural pauses and intonation. Do not sing. Read only the supplied text.'}),
+  redirect:'manual',signal:AbortSignal.timeout(60000)});
+ if(!result.ok){await result.body?.cancel();return fail('Chưa tạo được giọng đọc AI (HTTP '+result.status+').',502);}
+ return new Response(result.body,{headers:{'Content-Type':'audio/mpeg','Cache-Control':'no-store'}});
 }
 
 // BEGIN CENTRAL BILLING V1
