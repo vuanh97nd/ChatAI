@@ -55,7 +55,7 @@ LiveSearchPlan? liveSearchPlan(List<Map<String, String>> messages) {
 }
 
 
-bool asksNearby(String text) => RegExp(r'\b(gan (?:toi|day|nhat)|quanh (?:toi|day)|o day|cho toi dang o|vi tri hien tai|near me|nearby)\b').hasMatch(foldVietnamese(text));
+bool asksNearby(String text) => RegExp(r'\b(gan (?:toi|day|nhat)|quanh (?:toi|day)|o day|cho toi(?: dang o)?|noi toi dang o|toi dang o dau|vi tri hien tai|near me|nearby)\b').hasMatch(foldVietnamese(text));
 bool asksMap(String text) => RegExp(r'\b(ban do|chi duong|duong di|tim duong|google maps|map|maps)\b').hasMatch(foldVietnamese(text));
 String specialistFor(String text) {
   final q = foldVietnamese(text);

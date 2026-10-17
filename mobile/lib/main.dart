@@ -14,6 +14,7 @@ import 'task_page.dart';
 import 'task_intent.dart';
 import 'sound_effects.dart';
 import 'location_context.dart';
+import 'connected_apps.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
 import 'voice.dart';
@@ -331,6 +332,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> send() async {
     final question = input.text.trim();
     if ((question.isEmpty && attachments.isEmpty) || sending || working) return;
+    final linkedApp = requestedApp(question);
+    if (linkedApp != null && attachments.isEmpty && !SoundEffects.suspended) {
+      await voice.stop();
+      if (!mounted) return;
+      await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => ConnectedAppsPage(initialApp: linkedApp, initialRequest: question)));
+      return;
+    }
     if (api.session != null && attachments.isEmpty && isMediaCreationRequest(question)) {
       await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MediaPage(
         api: api, initialPrompt: question, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(question))));
@@ -738,6 +746,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(5, drawerContext)),
         ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Số dư và nạp tiền'),
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
+        ListTile(leading: const Icon(Icons.apps_outlined), title: const Text('Ứng dụng & liên kết'),
+          onTap: () { Navigator.pop(drawerContext); unawaited(voice.stop()); Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const ConnectedAppsPage())); }),
         ListTile(leading: const Icon(Icons.auto_awesome_outlined), title: const Text('Hiệu ứng giao diện'),
           onTap: () { Navigator.pop(drawerContext); Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const EffectsPage())); }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),

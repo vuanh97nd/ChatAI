@@ -74,6 +74,9 @@ def configure(android):
     for action in ('android.speech.RecognitionService', 'android.intent.action.TTS_SERVICE'):
         if action not in text:
             intents += f'<intent><action android:name="{action}"/></intent>\n'
+    for package in ('com.google.android.apps.maps', 'com.google.android.apps.docs', 'com.google.android.gm', 'com.grabtaxi.passenger', 'xyz.be.customer', 'com.gsm.customer'):
+        if f'<package android:name="{package}"' not in text:
+            intents += f'<package android:name="{package}"/>\n'
     if intents:
         if '<queries>' in text:
             text = text.replace('<queries>', '<queries>\n' + intents, 1)
@@ -170,6 +173,18 @@ class MainActivity: FlutterActivity() {
           } catch (_: Exception) { /* Device sound is optional. */ }
           result.success(null)
         }
+      }
+    }
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/linked_apps").setMethodCallHandler { call, result ->
+      val allowed = setOf("com.google.android.apps.maps", "com.google.android.apps.docs", "com.google.android.gm", "com.grabtaxi.passenger", "xyz.be.customer", "com.gsm.customer")
+      val target = call.arguments as? String
+      if (call.method != "open" || target !in allowed) { result.notImplemented() }
+      else {
+        try {
+          val intent = packageManager.getLaunchIntentForPackage(target!!)
+          if (intent == null) result.success(false)
+          else { startActivity(intent); result.success(true) }
+        } catch (_: Exception) { result.success(false) }
       }
     }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/app_identity").setMethodCallHandler { call, result ->
