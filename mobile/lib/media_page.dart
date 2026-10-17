@@ -28,7 +28,7 @@ class _MediaPageState extends State<MediaPage> {
   Future<void> load() async {
     try {
       final saved = await const FlutterSecureStorage().read(key: jobKey);
-      if (mounted && saved != null) setState(() { job = saved; status = 'unknown'; video = true; });
+      if (mounted && saved != null) setState(() { job = saved; status = 'unknown'; if (widget.initialPrompt.isEmpty) video = true; });
       final value = await widget.api.post('/api/media/capabilities', {}); if (mounted) setState(() => capabilities = value); }
     catch (e) { if (mounted) setState(() => message = '$e'); }
   }
