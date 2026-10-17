@@ -124,3 +124,16 @@ class EffectsPage extends StatelessWidget {
         })),
     ])));
 }
+
+class MessageEntrance extends StatelessWidget {
+  final Widget child;
+  const MessageEntrance({super.key, required this.child});
+  @override
+  Widget build(BuildContext context) {
+    final animate = visualEffects.value == VisualEffects.full && !MediaQuery.disableAnimationsOf(context);
+    return TweenAnimationBuilder<double>(tween: Tween(begin: animate ? 0 : 1, end: 1),
+      duration: Duration(milliseconds: animate ? 320 : 0), curve: Curves.easeOutCubic,
+      child: child, builder: (_, value, child) => Opacity(opacity: value,
+        child: Transform.translate(offset: Offset(0, 14 * (1 - value)), child: child)));
+  }
+}

@@ -30,6 +30,10 @@ class AppUpdate {
 }
 
 Future<AppUpdate> checkAppUpdate({http.Client? client, String? signerSha256}) async {
+  if (signerSha256 == null && client == null) {
+    signerSha256 = await const MethodChannel('vn.chatai/app_identity').invokeMethod<String>('signerSha256');
+    if (signerSha256 == null) throw Exception('Chưa xác minh được chữ ký ứng dụng.');
+  }
   final transport = client ?? http.Client();
   try {
     if (signerSha256 != null && !RegExp(r'^[a-f0-9]{64}$').hasMatch(signerSha256)) throw const FormatException('Chữ ký ứng dụng không hợp lệ.');

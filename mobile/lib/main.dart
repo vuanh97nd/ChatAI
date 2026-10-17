@@ -510,7 +510,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         final i = messages.length + (sending ? 1 : 0) - position - 1;
         if (i == messages.length) return ReplyIndicator(status: replyStatus);
         final m = messages[i];
-        return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
+        return MessageEntrance(key: ValueKey('message:$conversation:$i'), child: Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(22), border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .14))), child: Column(
@@ -526,7 +526,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                   Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: m['content']!)));
                 }, icon: const Icon(Icons.checklist, size: 18), label: const Text('Lập kế hoạch / nhắc việc')),
 
-            ])));
+            ]))));
       })),
 
     if (voice.listening || voice.starting || voice.transcribing) Padding(padding: const EdgeInsets.all(8),
