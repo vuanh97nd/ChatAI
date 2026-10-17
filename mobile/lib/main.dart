@@ -9,6 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'visual_style.dart';
 import 'task_page.dart';
 import 'media_page.dart';
 import 'voice.dart';
@@ -25,8 +26,8 @@ import 'animated_logo.dart';
 
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
-final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.2.1');
+final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.3.0');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -44,7 +45,10 @@ Widget buildInfoButton(BuildContext context) => IconButton(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    final effects = await storage.read(key: 'visual_effects');
+    for (final mode in VisualEffects.values) { if (mode.name == effects) visualEffects.value = mode; }
     final saved = await storage.read(key: 'theme_mode');
+    if (saved == 'system') appThemeMode.value = ThemeMode.system;
     if (saved == 'light') appThemeMode.value = ThemeMode.light;
     if (saved == 'dark') appThemeMode.value = ThemeMode.dark;
   } catch (_) {}
@@ -56,12 +60,11 @@ class ChatApp extends StatelessWidget {
   Widget build(BuildContext context) => ValueListenableBuilder<ThemeMode>(
     valueListenable: appThemeMode, builder: (context, mode, _) => MaterialApp(
       title: 'Chat AI', debugShowCheckedModeBanner: false, themeMode: mode,
-      theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff6d65ff), brightness: Brightness.light),
-        scaffoldBackgroundColor: const Color(0xfffaf9f6)),
-      darkTheme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff6d65ff), brightness: Brightness.dark),
-        scaffoldBackgroundColor: const Color(0xff141414)),
+      theme: futuristicTheme(Brightness.light),
+      darkTheme: futuristicTheme(Brightness.dark),
+      builder: (context, child) => ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, effects, _) =>
+        MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: MediaQuery.disableAnimationsOf(context) || effects == VisualEffects.off),
+          child: AmbientScene(effects: effects, child: child ?? const SizedBox()))),
       home: const Home(),
     ));
 }
@@ -73,7 +76,8 @@ class StartupScreen extends StatelessWidget {
 }
 
 class ChatWelcome extends StatelessWidget {
-  const ChatWelcome({super.key});
+  final ValueChanged<String>? onPrompt;
+  const ChatWelcome({super.key, this.onPrompt});
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
     if (constraints.maxHeight < 150 || MediaQuery.viewInsetsOf(context).bottom > 0) return const SizedBox.shrink();
@@ -82,7 +86,13 @@ class ChatWelcome extends StatelessWidget {
       const AnimatedChatLogo(),
       const SizedBox(height: 20),
       Text('Xin chào bạn!', style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 8), const Text('Tôi có thể giúp gì cho bạn?'),
+      const SizedBox(height: 8), const Text('Biến ý tưởng thành kết quả cùng Chat AI'),
+      const SizedBox(height: 24),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 20), child: Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 8, children: [
+        for (final entry in const {'Tra cứu mới nhất': 'Hãy tìm những tin tức mới nhất hôm nay.', 'Lập kế hoạch': 'Giúp tôi lập kế hoạch ',
+          'Tóm tắt tài liệu': 'Tôi muốn tóm tắt tài liệu ', 'Viết nội dung': 'Giúp tôi viết nội dung '}.entries)
+          ActionChip(label: Text(entry.key), avatar: const Icon(Icons.auto_awesome, size: 16), onPressed: onPrompt == null ? null : () => onPrompt!(entry.value)),
+      ])),
     ],
     )));
   });
@@ -495,7 +505,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     // Dialog controllers are retained until the closing animation finishes.
   }
   Widget chat() => Column(children: [
-    Expanded(child: messages.isEmpty && !sending ? const ChatWelcome() :
+    Expanded(child: messages.isEmpty && !sending ? ChatWelcome(onPrompt: (text) => changed(() => input.text = text)) :
       ListView.builder(reverse: true, itemCount: messages.length + (sending ? 1 : 0), itemBuilder: (c, position) {
         final i = messages.length + (sending ? 1 : 0) - position - 1;
         if (i == messages.length) return ReplyIndicator(status: replyStatus);
@@ -503,7 +513,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(16)), child: Column(
+              borderRadius: BorderRadius.circular(22), border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .14))), child: Column(
               mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (m['role'] == 'assistant') AssistantReply(
                 key: ValueKey('$conversation:$i'),
@@ -521,13 +531,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
     if (voice.listening || voice.starting || voice.transcribing) Padding(padding: const EdgeInsets.all(8),
       child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
-    Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: Container(
+    Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: GlassPanel(radius: BorderRadius.circular(28), child: Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow,
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow.withValues(alpha: .3),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(28)),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: input, onChanged: (_) => changed(() {}), minLines: 1, maxLines: 4, maxLength: 12000,
-          decoration: const InputDecoration(hintText: 'Hỏi Chat AI…', counterText: '',
+          decoration: const InputDecoration(filled: false, hintText: 'Hỏi Chat AI…', counterText: '',
             border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none)),
         if (attachments.isNotEmpty) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           for (final a in attachments) Padding(padding: const EdgeInsets.only(right: 6), child: InputChip(
@@ -557,7 +567,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             onPressed: sending && api.session != null ? stopReply : sending || working || voice.starting ? null : input.text.trim().isEmpty && attachments.isEmpty ? openVoiceChat : send,
             icon: Icon(sending && api.session != null ? Icons.stop : input.text.trim().isEmpty && attachments.isEmpty ? Icons.graphic_eq : Icons.send)),
         ]),
-      ]))),
+      ])))),
   ]);
 
   Widget account() {
@@ -667,17 +677,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AdminPage(api: api)));
   }
 
-  AppBar topBar() => AppBar(backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+  AppBar topBar() => AppBar(
     surfaceTintColor: Colors.transparent, elevation: 0,
     leading: tab == 0 ? null : BackButton(onPressed: goBack),
-    title: tab == 0 ? null : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo'][tab]),
+    title: tab == 0 ? const Text('Chat AI') : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo'][tab]),
     actions: [
       if (api.session == null) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))
       else IconButton(tooltip: 'Tài khoản', onPressed: () { unawaited(voice.stop()); selectPage(3); },
         icon: const Icon(Icons.account_circle_outlined)),
     ]);
 
-  Widget navigationDrawer() => Drawer(backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+  Widget navigationDrawer() => Drawer(backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha: .97),
     width: MediaQuery.sizeOf(context).width * .8,
     child: SafeArea(child: Builder(builder: (drawerContext) => Column(children: [
       Padding(padding: const EdgeInsets.fromLTRB(20, 20, 12, 16), child: Row(children: [
@@ -706,6 +716,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           onTap: sending ? null : () => navigateTo(5, drawerContext)),
         ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Số dư và nạp tiền'),
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
+        ListTile(leading: const Icon(Icons.auto_awesome_outlined), title: const Text('Hiệu ứng giao diện'),
+          onTap: () { Navigator.pop(drawerContext); Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const EffectsPage())); }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),
           title: const Text('Giao diện', maxLines: 1),
           onTap: () async {
@@ -787,6 +799,19 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     }
   }
 
+  Widget quickNavigation() => Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: GlassPanel(child: NavigationBar(
+    selectedIndex: tab == 3 ? 3 : 0,
+    onDestinationSelected: sending ? null : (index) async {
+      await voice.stop();
+      if (!mounted) return;
+      if (index == 0 || index == 3) { selectPage(index == 0 ? 0 : 3); return; }
+      if (index == 1) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim()))); }
+      if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
+    }, destinations: const [NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
+      NavigationDestination(icon: Icon(Icons.checklist_outlined), label: 'Công việc'),
+      NavigationDestination(icon: Icon(Icons.collections_outlined), label: 'Sáng tạo'),
+      NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Tài khoản')])));
+
   @override
   Widget build(BuildContext context) {
     if (loading) return const StartupScreen();
@@ -794,6 +819,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     return PopScope(canPop: tab == 0 || drawerOpen,
       onPopInvokedWithResult: (didPop, result) { if (!didPop) goBack(); },
       child: Scaffold(key: scaffoldKey, onDrawerChanged: (v) => changed(() => drawerOpen = v), drawer: navigationDrawer(), appBar: topBar(),
+      bottomNavigationBar: MediaQuery.viewInsetsOf(context).bottom > 0 ? null : quickNavigation(),
       body: SafeArea(child: Column(children: [
         if (error != null) MaterialBanner(content: Text(error!, maxLines: 3, overflow: TextOverflow.ellipsis), actions: [
           TextButton(onPressed: () => showDialog<void>(context: context,

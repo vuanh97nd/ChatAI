@@ -5,6 +5,8 @@ import 'voice.dart';
 import 'cloud_voice.dart';
 import 'api.dart';
 import 'voice_robot.dart';
+import 'voice_wave.dart';
+import 'visual_style.dart';
 
 /// Text-only conversation: never dispatches computer or payment operations.
 class VoiceChatPage extends StatefulWidget {
@@ -111,19 +113,21 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
             children: [
         VoiceRobot(speaking: voice.speaking, listening: voice.listening,
           thinking: processing && !voice.speaking, paused: paused || failure.isNotEmpty),
-        const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 16),
+        VoiceWave(speaking: voice.speaking, listening: voice.listening, level: voice.soundLevel),
+        const SizedBox(height: 12), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         Text(speechMode, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
-        if (showContent && draft.isNotEmpty) Text('Bạn: $draft', textAlign: TextAlign.center),
+        if (showContent && draft.isNotEmpty) GlassPanel(child: Padding(padding: const EdgeInsets.all(16), child: Text('Bạn: $draft', textAlign: TextAlign.center))),
         if (voice.listening && !processing)
           FilledButton.icon(onPressed: voice.finishListening, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (!processing && !voice.listening && draft.trim().isNotEmpty)
           FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (voice.listening && draft.isEmpty && !processing)
           const Text('Hãy nói câu hỏi. Tôi sẽ tự trả lời khi bạn ngừng nói.', textAlign: TextAlign.center),
-        if (showContent && response.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: SelectableText(response)),
+        if (showContent && response.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: GlassPanel(child: Padding(padding: const EdgeInsets.all(16), child: SelectableText(response)))),
         if (failure.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 20), child: Text(failure, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         if (failure.isNotEmpty) Wrap(alignment: WrapAlignment.center, children: [
           TextButton(onPressed: processing ? null : listen, child: const Text('Thử lại')),
@@ -141,7 +145,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         TextButton.icon(onPressed: processing && !voice.speaking ? null : paused ? listen : pause,
           icon: Icon(paused ? Icons.mic : Icons.mic_off), label: Text(paused ? 'Nói tiếp' : 'Tắt mic')),
         TextButton(onPressed: voice.speaking ? pause : null, child: const Text('Ngắt lời')),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Kết thúc')),
+        FilledButton.tonalIcon(style: FilledButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), onPressed: () => Navigator.pop(context), icon: const Icon(Icons.call_end), label: const Text('Kết thúc')),
       ]), const SizedBox(height: 16),
     ])),
   );
