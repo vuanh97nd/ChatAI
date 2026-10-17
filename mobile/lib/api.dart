@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'live_search.dart';
+import 'location_context.dart';
 
 const defaultServer = String.fromEnvironment('CHAT_AI_SERVER',
     defaultValue: 'https://chatai.anhvn53.workers.dev');
@@ -63,7 +64,8 @@ class ChatApi {
   ChatApi? backup;
   bool usingBackup = false;
   void Function(String)? onFailover;
-  ChatApi({http.Client? client, String endpoint = defaultServer})
+  final Future<NearbyPosition?> Function() locate;
+  ChatApi({http.Client? client, String endpoint = defaultServer, this.locate = questionPosition})
       : client = client ?? http.Client(), server = Uri.parse(endpoint) {
     if (server.scheme != 'https' || server.host.isEmpty ||
         server.userInfo.isNotEmpty || server.hasQuery || server.hasFragment ||
@@ -265,8 +267,24 @@ class ChatApi {
       ], 'max_tokens': 4096, 'temperature': 0.2,
     };
     if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
-    final live = autoSearch ? liveSearchPlan(messages) : null;
-    if (live?.askLocation == true) return 'Bạn muốn xem thời tiết ở tỉnh/thành phố nào?';
+    final question = messages.where((m) => m['role'] == 'user').lastOrNull?['content'] ?? '';
+    var live = autoSearch ? liveSearchPlan(messages) : null;
+    NearbyPosition? position;
+    if (autoSearch && (live?.askLocation == true || (live == null && asksNearby(question)))) {
+      onStage?.call('Đang lấy vị trí cho câu hỏi này…');
+      position = await locate();
+      if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
+    }
+    if (autoSearch && (asksMap(question) || (asksNearby(question) && live == null))) {
+      if (asksNearby(question) && position == null) return 'Chưa lấy được vị trí. Hãy bật Vị trí, cấp quyền vị trí cho Chat AI hoặc cho biết khu vực bạn muốn tìm.';
+      final query = position == null ? question : '$question gần ${position.latitude},${position.longitude}';
+      final link = Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': query});
+      return 'Trợ lý bản đồ: mở liên kết để tìm địa điểm hoặc chọn đường đi trên Google Maps. Tôi chưa xác minh giờ mở cửa hay tình trạng giao thông.\n$link';
+    }
+    if (live?.askLocation == true && position == null) return 'Bạn muốn xem thời tiết ở tỉnh/thành phố nào? Bạn cũng có thể bật Vị trí và cấp quyền vị trí cho Chat AI.';
+    if (live?.askLocation == true && position != null) live = LiveSearchPlan(question, location: 'Vị trí hiện tại');
+    if (live == null && autoSearch && specialistFor(question) == 'knowledge') live = LiveSearchPlan(question);
+
     final now = DateTime.now().toUtc().add(const Duration(hours: 7));
     final system=(payload['messages'] as List<dynamic>).first as Map<String,dynamic>;
     final localTime=now.toIso8601String().replaceFirst(RegExp(r'Z$'),'+07:00');
@@ -280,7 +298,7 @@ class ChatApi {
       onStage?.call(live?.location != null ? 'Đang lấy dữ liệu thời tiết…' : 'Đang tìm thông tin trên mạng…');
       Map<String, dynamic> search;
       try {
-        search = await post('/api/chat/search', {'text': query, if (live?.location != null) 'weather_location':live!.location});
+        search = await post('/api/chat/search', {'text': query, if (live?.location != null) 'weather_location':live!.location, if (position != null && live?.location != null) 'weather_coordinates':position.toJson(), 'specialist':specialistFor(question)});
       } on ApiException {
         if (cancelled?.call() == true) throw ApiException('Đã dừng chờ.');
         return 'Hiện tôi chưa lấy được nguồn trên mạng nên chưa thể xác minh thông tin mới. '
@@ -308,6 +326,8 @@ class ChatApi {
       text = result['answer'] as String? ?? '';
       if (searchQuery(text) != null) throw ApiException('AI chưa trả lời sau khi tra cứu; không tự lặp yêu cầu.');
       if (text.trim().isNotEmpty) {
+        final specialist = live?.location != null ? '🌦️ Trợ lý thời tiết' : specialistFor(question) == 'news' ? '📰 Trợ lý tin tức' : specialistFor(question) == 'knowledge' ? '📚 Trợ lý kiến thức' : '🔎 Trợ lý tra cứu';
+        text = '$specialist\n\n$text';
         text += '\n\nNguồn tra cứu:\n${sources.asMap().entries.map((e) => '[${e.key + 1}] ${e.value['title']} — ${e.value['url']}').join('\n')}';
       }
     }

@@ -24,3 +24,13 @@ for(const [name,mod] of [['root',root],['reference',reference]]){
   assert.equal(mod.cleanSpeechTranscript('Lalaschool'),'');
  });
 }
+
+test('GPS weather uses validated coordinates without geocoding a fabricated city',async()=>{
+ let calls=0;
+ const result=await root.requestWeatherSearch('Vị trí hiện tại',async(url)=>{
+  calls++;const u=new URL(url);assert.equal(u.hostname,'api.open-meteo.com');assert.equal(u.searchParams.get('latitude'),'21.02');
+  return Response.json({current:{time:'2026-10-17T10:00',temperature_2m:25}});
+ },{latitude:21.02,longitude:105.84});
+ assert.equal(calls,1);assert.match(result.answer,/gần đúng/);
+ await assert.rejects(root.requestWeatherSearch('GPS',()=>{throw Error('must not fetch');},{latitude:999,longitude:0}),/Tọa độ/);
+});

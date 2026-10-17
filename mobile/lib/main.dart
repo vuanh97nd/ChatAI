@@ -13,6 +13,7 @@ import 'visual_style.dart';
 import 'task_page.dart';
 import 'task_intent.dart';
 import 'sound_effects.dart';
+import 'location_context.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
 import 'voice.dart';
@@ -48,6 +49,7 @@ Widget buildInfoButton(BuildContext context) => IconButton(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    locationForQuestions.value = await storage.read(key: 'location_for_questions') != 'false';
     SoundEffects.enabled.value = await storage.read(key: 'sound_effects') != 'false';
     final effects = await storage.read(key: 'visual_effects');
     for (final mode in VisualEffects.values) { if (mode.name == effects) visualEffects.value = mode; }
@@ -332,6 +334,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (api.session != null && attachments.isEmpty && isMediaCreationRequest(question)) {
       await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MediaPage(
         api: api, initialPrompt: question, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(question))));
+      return;
+    }
+    if (api.session != null && attachments.isEmpty && isTaskRequest(question)) {
+      await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: question)));
       return;
     }
     final text = [question.isEmpty ? 'Đọc các file đính kèm và tóm tắt nội dung.' : question,

@@ -160,24 +160,60 @@ export async function runMemorySync(env,send=fetch){
  await env.DB.prepare('INSERT INTO memory_sync_schedule(id,next_scope) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET next_scope=excluded.next_scope').bind(resume).run();
  return result;
 }
-export async function requestWeatherSearch(location,send=fetch){
+export async function requestWeatherSearch(location,send=fetch,coordinates=null){
  location=String(location||'').trim();
  if(!location||location.length>120||/[\x00-\x1f]/.test(location))throw new Error('Cần tỉnh/thành phố để tra thời tiết.');
  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),20000);
  const get=async url=>{const response=await send(url,{signal:abort.signal,headers:{Accept:'application/json'}});if(!response.ok)throw new Error('Không lấy được dữ liệu thời tiết.');const text=await response.text();if(text.length>200000)throw new Error('Dữ liệu thời tiết quá lớn.');return JSON.parse(text);};
  try{
+  let place;
+  if(coordinates!==null){
+   if(typeof coordinates!=='object'||!Number.isFinite(coordinates.latitude)||Math.abs(coordinates.latitude)>90||!Number.isFinite(coordinates.longitude)||Math.abs(coordinates.longitude)>180)throw new Error('Tọa độ không hợp lệ.');
+   place={latitude:coordinates.latitude,longitude:coordinates.longitude,name:'Vị trí thiết bị (gần đúng)'};
+  }else{
   const geoURL=new URL('https://geocoding-api.open-meteo.com/v1/search');geoURL.searchParams.set('name',location);geoURL.searchParams.set('count','5');geoURL.searchParams.set('language','vi');geoURL.searchParams.set('format','json');
   const geo=await get(geoURL.href),places=(geo.results||[]).filter(p=>Number.isFinite(p.latitude)&&Math.abs(p.latitude)<=90&&Number.isFinite(p.longitude)&&Math.abs(p.longitude)<=180);
   if(!places.length)throw new Error('Chưa xác định được địa điểm. Hãy ghi rõ tỉnh/thành phố và quốc gia.');
-  const place=places[0];
+  place=places[0];
+  }
   const url=new URL('https://api.open-meteo.com/v1/forecast');url.searchParams.set('latitude',place.latitude);url.searchParams.set('longitude',place.longitude);url.searchParams.set('timezone','auto');url.searchParams.set('forecast_days','3');
   url.searchParams.set('current','temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m');
   url.searchParams.set('daily','temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code');
   const data=await get(url.href);
   if(!data.current||!Number.isFinite(data.current.temperature_2m)||typeof data.current.time!=='string')throw new Error('Nguồn chưa có số liệu thời tiết hiện tại.');
   const resolved=[place.name,place.admin1,place.country].filter(Boolean).join(', ');
-  return {success:true,source:'open_meteo',searched_at:new Date().toISOString(),answer:'Dữ liệu thời tiết Open-Meteo (mô hình dự báo, không phải số đo trạm tại chỗ). Địa điểm nguồn xác định: '+resolved+'. Nếu khác địa điểm được hỏi, yêu cầu người dùng làm rõ; không tự đổi địa điểm. Giờ theo múi giờ của địa điểm.\n'+JSON.stringify({timezone:data.timezone,current:data.current,current_units:data.current_units,daily:data.daily,daily_units:data.daily_units}),sources:[{title:'Open-Meteo — '+resolved,url:url.href}]};
+  return {success:true,source:'open_meteo',searched_at:new Date().toISOString(),answer:'Dữ liệu thời tiết Open-Meteo (mô hình dự báo, không phải số đo trạm tại chỗ). Địa điểm nguồn xác định: '+resolved+'. Nếu khác địa điểm được hỏi, yêu cầu người dùng làm rõ; không tự đổi địa điểm. Giờ theo múi giờ của địa điểm.\n'+JSON.stringify({timezone:data.timezone,current:data.current,current_units:data.current_units,daily:data.daily,daily_units:data.daily_units}),sources:[{title:'Open-Meteo — '+resolved,url:coordinates===null?url.href:'https://open-meteo.com/en/docs'}]};
  }finally{clearTimeout(timer);}
+}
+
+// Public specialist data sources: no paid API fallback.
+const specialistCache=new Map();
+export async function requestFreeSpecialist(kind,query,send=fetch){
+ if(!['news','knowledge'].includes(kind))throw new Error('Trợ lý chưa được hỗ trợ.');
+ query=String(query||'').trim();if(!query||query.length>600)throw new Error('Từ khóa không hợp lệ.');
+ const key=kind+':'+query,cached=specialistCache.get(key);
+ if(cached&&Date.now()-cached.created<300000)return cached.value;
+ const clean=value=>String(value||'').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/<[^>]*>/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&[^; ]{1,12};/g,' ').replace(/\s+/g,' ').trim();
+ const get=async url=>{const r=await send(url,{headers:{Accept:kind==='news'?'application/rss+xml, application/xml':'application/json','User-Agent':'ChatAI/3.0 (https://github.com/vuanh97nd/ChatAI)'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('Nguồn chuyên môn chưa phản hồi.');const text=await r.text();if(text.length>1000000)throw new Error('Nguồn quá lớn.');return text;};
+ let entries=[];
+ if(kind==='news'){
+  const folded=query.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const section=/cong nghe|\bai\b|khoa hoc/.test(folded)?'khoa-hoc-cong-nghe':/kinh te|tai chinh|kinh doanh/.test(folded)?'kinh-doanh':/the thao|bong da/.test(folded)?'the-thao':'tin-moi-nhat';
+  const xml=await get('https://vnexpress.net/rss/'+section+'.rss');
+  entries=[...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0,8).map(match=>{
+   const field=tag=>clean(match[1].match(new RegExp('<'+tag+'[^>]*>([\\s\\S]*?)</'+tag+'>','i'))?.[1]);
+   return {title:field('title'),url:field('link'),date:field('pubDate'),text:field('description').slice(0,700)};
+  }).filter(e=>{try{const u=new URL(e.url);return u.protocol==='https:'&&u.hostname==='vnexpress.net'&&e.title;}catch{return false;}});
+ }else{
+  const topic=query.replace(/^(?:tra cứu|tìm hiểu)\s+/i,'').replace(/\s+là gì[?!.]*$/i,'').trim();
+  const url=new URL('https://vi.wikipedia.org/w/api.php');Object.entries({action:'query',format:'json',generator:'search',gsrsearch:topic,gsrlimit:'3',prop:'extracts|info',exintro:'1',explaintext:'1',inprop:'url',origin:'*'}).forEach(([k,v])=>url.searchParams.set(k,v));
+  const data=JSON.parse(await get(url.href));
+  entries=Object.values(data.query?.pages||{}).map(p=>({title:p.title,url:p.fullurl,text:String(p.extract||'').slice(0,2400)})).filter(e=>{try{const u=new URL(e.url);return u.protocol==='https:'&&u.hostname==='vi.wikipedia.org'&&e.text;}catch{return false;}});
+ }
+ if(!entries.length)throw new Error('Chưa có dữ liệu phù hợp từ nguồn chuyên môn miễn phí.');
+ const value={success:true,source:kind,searched_at:new Date().toISOString(),answer:(kind==='news'?'Tin từ RSS VnExpress; chỉ là tiêu đề và trích đoạn, không phải toàn văn. Không khẳng định đây là toàn bộ tin hoặc kết quả lọc đầy đủ theo chủ đề.':'Kiến thức tham khảo Wikipedia; không dùng làm dữ liệu thời tiết, tin tức hay giá hiện tại.')+'\n'+JSON.stringify(entries),sources:entries.map(e=>({title:e.title,url:e.url}))};
+ if(specialistCache.size>=64)specialistCache.delete(specialistCache.keys().next().value);
+ specialistCache.set(key,{created:Date.now(),value});return value;
 }
 
 export async function requestWebSearch(env,query,send=fetch){
@@ -681,7 +717,7 @@ const referenceWorker = {async fetch(request,env){
     const query=String(body.text||'').trim();
     if(!query||query.length>2000)return fail('Câu hỏi tra cứu phải có từ 1 đến 2000 ký tự.');
     if(!await throttle(db,account,'chat/search',600))return fail('Vui lòng đợi một chút trước khi tra cứu tiếp.',429);
-    try{return reply((body.weather_location?await requestWeatherSearch(body.weather_location):await requestWebSearch(env,query)));}
+    try{return reply((body.weather_location?await requestWeatherSearch(body.weather_location,fetch,body.weather_coordinates??null):['news','knowledge'].includes(body.specialist)?await requestFreeSpecialist(body.specialist,query):await requestWebSearch(env,query)));}
     catch(error){return fail(error.message||'Chưa kết nối được dịch vụ tra cứu mạng.',503);}
    }
    if(path==='/api/chat/ai'||path==='/api/ai/consult'){

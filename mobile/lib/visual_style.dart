@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'sound_effects.dart';
+import 'location_context.dart';
 
 enum VisualEffects { full, light, off }
 final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
@@ -128,6 +129,12 @@ class EffectsPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Hiệu ứng giao diện')),
     body: ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, value, _) => ListView(padding: const EdgeInsets.all(20), children: [
       const Text('Chọn mức hiệu ứng phù hợp với điện thoại. Cài đặt Giảm chuyển động của hệ thống luôn được ưu tiên.'),
+      ValueListenableBuilder<bool>(valueListenable: locationForQuestions, builder: (context, enabled, _) => SwitchListTile(
+        title: const Text('Vị trí cho thời tiết và địa điểm'), subtitle: const Text('Chỉ lấy khi câu hỏi cần vị trí, sau khi bạn cấp quyền Android. Không theo dõi nền.'),
+        value: enabled, onChanged: (next) async {
+          try { await const FlutterSecureStorage().write(key: 'location_for_questions', value: '$next'); locationForQuestions.value = next; }
+          catch (_) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa lưu được cài đặt vị trí.'))); }
+        })),
       ValueListenableBuilder<bool>(valueListenable: SoundEffects.enabled, builder: (context, enabled, _) => SwitchListTile(
         title: const Text('Âm thanh hiệu ứng'),
         subtitle: const Text('Âm nhẹ khi gửi tin, nhận câu trả lời và tạo ảnh xong. Tắt khi điện thoại ở chế độ im lặng hoặc đang trò chuyện giọng nói.'),
