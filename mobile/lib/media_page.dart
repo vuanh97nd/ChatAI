@@ -9,7 +9,9 @@ import 'api.dart';
 
 class MediaPage extends StatefulWidget {
   final ChatApi api;
-  const MediaPage({super.key, required this.api});
+  final String initialPrompt;
+  final bool initialVideo;
+  const MediaPage({super.key, required this.api, this.initialPrompt = '', this.initialVideo = false});
   @override
   State<MediaPage> createState() => _MediaPageState();
 }
@@ -21,7 +23,7 @@ class _MediaPageState extends State<MediaPage> {
   Uint8List? image;
   Map<String, dynamic>? capabilities;
   @override
-  void initState() { super.initState(); load(); }
+  void initState() { super.initState(); prompt.text = widget.initialPrompt; video = widget.initialVideo; load(); }
   String get jobKey => 'media-job:${widget.api.server.origin}:${widget.api.session?.username}';
   Future<void> load() async {
     try {
