@@ -30,11 +30,12 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   final AudioRecorder recorder = AudioRecorder();
   final AudioPlayer speaker = AudioPlayer();
   bool cloudSpeechAvailable = true;
+  bool useCloudSpeech = true;
   int speechRun = 0;
   @override
   Future<void> speak(String text) async {
     final run = ++speechRun;
-    if (!cloudSpeechAvailable) { await super.speak(text); return; }
+    if (!useCloudSpeech || !cloudSpeechAvailable) { await super.speak(text); return; }
     try {
       for (final chunk in speechChunks(text, 1200)) {
         if (run != speechRun) return;

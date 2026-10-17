@@ -18,6 +18,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   late final VoiceController voice;
   String draft = '', response = '', phase = 'Sẵn sàng', failure = '';
   bool showContent = true;
+  bool useCloudSpeech = true;
   bool processing = false, paused = false, closed = false;
   int generation = 0;
   @override
@@ -79,7 +80,19 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Trò chuyện giọng nói')),
+    appBar: AppBar(title: const Text('Trò chuyện giọng nói'), actions: [
+      PopupMenuButton<bool>(tooltip: 'Chọn giọng đọc', initialValue: useCloudSpeech,
+        icon: const Icon(Icons.record_voice_over),
+        onSelected: (value) async {
+          await pause();
+          if (!mounted) return;
+          (voice.engine as CloudVoiceEngine).useCloudSpeech = value;
+          setState(() => useCloudSpeech = value);
+        }, itemBuilder: (_) => [
+          CheckedPopupMenuItem(value: true, checked: useCloudSpeech, child: const Text('Giọng AI · có thể tính phí API')),
+          CheckedPopupMenuItem(value: false, checked: !useCloudSpeech, child: const Text('Giọng trên điện thoại')),
+        ]),
+    ]),
     body: SafeArea(child: Column(children: [
       Expanded(child: LayoutBuilder(builder: (context, constraints) =>
         SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(
