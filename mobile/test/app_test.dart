@@ -82,8 +82,8 @@ void main() {
     expect(find.text('Test notice'), findsOneWidget);
     await tester.tap(find.byType(BackButton)); await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Open navigation menu')); await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Chat'), -160, scrollable: drawerScroll);
-    await tester.tap(find.text('Chat')); await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.descendant(of: find.byType(Drawer), matching: find.text('Chat')), -160, scrollable: drawerScroll);
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('Chat'))); await tester.pumpAndSettle();
     expect(find.byType(ChatWelcome), findsOneWidget);
     await tester.pumpWidget(testApp(home: const SizedBox()));
   });
