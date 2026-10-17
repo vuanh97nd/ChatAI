@@ -19,7 +19,7 @@ void main() {
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,true);
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
     await tester.pumpWidget(page()); await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.byType(CheckboxListTile),200);
+    await tester.scrollUntilVisible(find.byType(CheckboxListTile),200, scrollable:find.byType(Scrollable).first);
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,true);
     expect(find.text('1/1 việc đã hoàn thành'),findsOneWidget);
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
