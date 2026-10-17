@@ -7,7 +7,8 @@ import 'package:chatai_mobile/updates.dart';
 void main() {
   test('update manifest builds a fixed GitHub APK URL and compares build codes', () async {
     final client = MockClient((request) async {
-      expect(request.url.replace(query: '').toString(), updateManifest);
+      expect(request.url.path, Uri.parse(updateManifest).path);
+      expect(request.url.queryParameters, contains('t'));
       return http.Response(jsonEncode({'version': '0.9.5', 'build': '${currentBuild + 1}',
         'file': 'ChatAI-0.9.5-build25-abcdef0.apk'}), 200);
     });
