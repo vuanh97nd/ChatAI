@@ -2866,7 +2866,7 @@ export async function mediaAPI(env,actor,path,body,send=fetch){
   const prompt=String(body.prompt||'').trim();if(!prompt||prompt.length>2000)return fail('Nhập mô tả ảnh tối đa 2000 ký tự.');
   if(!env.AI)return fail('Server chưa bật Workers AI.',503);
   if(!await throttle(db,owner,'media-image',3))return fail('Mỗi tài khoản tối đa 3 ảnh/phút.',429);
-  const result=await env.AI.run('@cf/black-forest-labs/flux-1-schnell',{prompt,num_steps:4});
+  const result=await env.AI.run('@cf/black-forest-labs/flux-1-schnell',{prompt,steps:4});
   if(typeof result?.image!=='string'||result.image.length>20000000)return fail('Dịch vụ chưa trả ảnh hợp lệ.',502);
   return reply({success:true,image:result.image,mime:'image/jpeg'});
  }
