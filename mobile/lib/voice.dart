@@ -1,4 +1,5 @@
 import 'speech_transcript.dart';
+import 'tts_text.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -21,10 +22,21 @@ abstract class VoiceEngine {
 bool vietnameseLocale(String value) => value.toLowerCase().replaceAll('_', '-').split('-').first == 'vi';
 Map<String, String>? vietnameseVoice(dynamic values) {
   if (values is! List) return null;
-  for (final value in values) {
-    if (value is Map && value['locale'] is String && value['name'] is String && vietnameseLocale(value['locale'] as String)) {
-      return {'name': value['name'] as String, 'locale': value['locale'] as String};
-    }
+  final candidates = values.whereType<Map>().where((value) =>
+    value['locale'] is String && value['name'] is String &&
+    vietnameseLocale(value['locale'] as String) &&
+    !'${value['features'] ?? ''}'.toLowerCase().contains('notinstalled')).toList();
+  int quality(Map value) => int.tryParse('${value['quality'] ?? 0}') ?? 0;
+  bool network(Map value) => '${value['network_required']}'.toLowerCase() == 'true';
+  candidates.sort((a, b) {
+    final difference = quality(b).compareTo(quality(a));
+    if (difference != 0) return difference;
+    if (network(a) != network(b)) return network(a) ? 1 : -1;
+    return 0;
+  });
+  if (candidates.isNotEmpty) {
+    final best = candidates.first;
+    return {'name': best['name'] as String, 'locale': best['locale'] as String};
   }
   return null;
 }
@@ -92,15 +104,15 @@ class AndroidVoiceEngine extends VoiceEngine {
       }
       await tts.setLanguage('vi-VN');
     }
-    await tts.setSpeechRate(0.45);
+    await tts.setSpeechRate(0.48);
+    await tts.setPitch(1.0);
     await tts.awaitSpeakCompletion(true);
     // Keep each utterance within Android's TTS input limit; preserve full answer.
     final limit = await tts.getMaxSpeechInputLength ?? 4000;
-    final size = limit > 0 ? limit : 4000;
-    for (var offset = 0; offset < text.length; offset += size) {
+    final size = limit > 0 ? limit.clamp(2, 1200).toInt() : 1200;
+    for (final chunk in speechChunks(text, size)) {
       if (run != _readRun) break;
-      final end = (offset + size).clamp(0, text.length).toInt();
-      await tts.speak(text.substring(offset, end));
+      await tts.speak(chunk);
     }
   }
   int _readRun = 0;

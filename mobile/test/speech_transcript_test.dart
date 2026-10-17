@@ -14,6 +14,8 @@ void main(){
  });
  test('known caption is stripped while the real question remains',(){
   expect(cleanRecognizedSpeech('Thời tiết Hà Nội? Các bạn hãy đăng ký cho kênh lalaschool để không bỏ lỡ những video hấp dẫn.'),'Thời tiết Hà Nội?');
+  expect(cleanRecognizedSpeech('Hãy subscribe cho kênh La La School Để không bỏ lỡ những video hấp dẫn'),'');
+  expect(cleanRecognizedSpeech('Thời tiết hôm nay? Hãy subscribe cho kênh La La School để không bỏ lỡ những video hấp dẫn.'),'Thời tiết hôm nay?');
   expect(cleanRecognizedSpeech('Lalaschool'),'');
   expect(cleanRecognizedSpeech('Kênh Lalaschool là gì?'),'Kênh Lalaschool là gì?');
  });

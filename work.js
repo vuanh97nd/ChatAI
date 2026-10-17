@@ -2917,7 +2917,7 @@ export async function mobileGuestAPI(env,path,body,execute=providerAPI){
 export function cleanSpeechTranscript(text){
  let value=String(text||'').normalize('NFC').trim();
  const folded=value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
- const caption=/(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?dang k[yi]\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*/g;
+ const caption=/(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*/g;
  for(const match of [...folded.matchAll(caption)].reverse())value=value.slice(0,match.index)+' '+value.slice(match.index+match[0].length);
  value=value.replace(/\s+/g,' ').trim();
  return /^la\s*la\s*school[.!?]*$/i.test(value)?'':value;

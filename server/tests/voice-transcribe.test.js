@@ -43,3 +43,5 @@ for(const [name,mod] of [['root',root],['server',server]]){
   }finally{db.raw.close();}
  });
 }
+
+for (const mod of [root,server]) test("subscription caption from Android screenshot is suppressed",()=>{assert.equal(mod.cleanSpeechTranscript("Hãy subscribe cho kênh La La School Để không bỏ lỡ những video hấp dẫn"),"");assert.equal(mod.cleanSpeechTranscript("Kênh La La School là gì?"),"Kênh La La School là gì?");});

@@ -18,7 +18,7 @@ String cleanRecognizedSpeech(String text) {
   final folded=foldVietnamese(result);
   // A recurring Whisper training-caption hallucination, not ordinary mentions
   // of the channel name. Do not strip arbitrary words from actual questions.
-  final caption=RegExp(r'(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?dang k[yi]\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*',caseSensitive:false);
+  final caption=RegExp(r'(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*',caseSensitive:false);
   for(final match in caption.allMatches(folded).toList().reversed) {
     result=result.replaceRange(match.start,match.end,' ');
   }
