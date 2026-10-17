@@ -1,7 +1,17 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:chatai_mobile/task_plans.dart';
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  test('saved work survives a new store instance and is isolated by account', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final plan=TaskPlan(id:'p',title:'Work',items:[WorkItem(id:'t',title:'Prepare',done:true)]);
+    await TaskPlanStore('https://one.example','alice').save([plan]);
+    final saved=await TaskPlanStore('https://one.example','alice').load();
+    expect(saved.single.progress,1);
+    expect(await TaskPlanStore('https://one.example','bob').load(),isEmpty);
+  });
   test('AI plan is preview data and cannot schedule or execute hidden actions', () {
     final plan = parseSuggestedPlan(jsonEncode({'title': 'Cuộc họp', 'tasks': [
       {'title': 'Chuẩn bị báo cáo', 'detail': 'Đối chiếu số liệu', 'done': true, 'due': '2026-10-18', 'action': 'send_email'},
