@@ -9,6 +9,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'task_page.dart';
 import 'media_page.dart';
 import 'voice.dart';
 import 'cloud_voice.dart';
@@ -25,7 +26,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.system);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.1.3');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.2.0');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -509,6 +510,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 text: m['content']!, provider: m['provider'],
                 reading: readingMessage == i && voice.speaking, onRead: () => readMessage(i))
               else SelectableText(m['content']!),
+              if (m['role'] == 'user' && api.session != null && m['content']!.length <= 2000)
+                TextButton.icon(onPressed: sending ? null : () {
+                  unawaited(voice.stop());
+                  Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: m['content']!)));
+                }, icon: const Icon(Icons.checklist, size: 18), label: const Text('Lập kế hoạch / nhắc việc')),
+
             ])));
       })),
 
@@ -686,6 +693,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           }),
         ListTile(leading: const Icon(Icons.history_outlined), title: const Text('Hội thoại'),
           onTap: sending ? null : () => navigateTo(1, drawerContext)),
+        ListTile(leading: const Icon(Icons.checklist_outlined), title: const Text('Trợ lý công việc'),
+          onTap: sending || api.session == null ? null : () {
+            Navigator.pop(drawerContext); unawaited(voice.stop());
+            Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim())));
+          }),
         ListTile(leading: const Icon(Icons.memory_outlined), title: const Text('Bộ nhớ'),
           onTap: sending ? null : () => navigateTo(2, drawerContext)),
         ListTile(leading: const Icon(Icons.computer_outlined), title: const Text('Kết nối máy tính'),

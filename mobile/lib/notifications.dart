@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:workmanager/workmanager.dart';
 import 'api.dart';
+import 'task_reminders.dart';
 
 const notificationJob = 'chatai-notification-check';
 const notificationVault = FlutterSecureStorage();
@@ -23,6 +24,7 @@ void notificationDispatcher() {
       final raw = await notificationVault.read(key: api.sessionStorageKey);
       if (raw == null) return true;
       api.session = Session.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      if (task == taskReminderJob) { await showTaskReminders(api); return true; }
       if (await notificationVault.read(key: 'notify-enabled:${notificationScope(api)}') != 'true') return true;
       final result = await api.post('/api/notifications/list', {});
       if (await notificationVault.read(key: api.sessionStorageKey) != raw) return true;
@@ -81,6 +83,7 @@ Future<bool> enableAccountNotifications(ChatApi api) async {
   return true;
 }
 Future<void> disableAccountNotifications(ChatApi api) async {
+  await disableTaskReminders(api);
   if (api.session != null) await notificationVault.write(key: 'notify-enabled:${notificationScope(api)}', value: 'false');
   await Workmanager().cancelByUniqueName(notificationJob);
   await localNotifications.cancelAll();
