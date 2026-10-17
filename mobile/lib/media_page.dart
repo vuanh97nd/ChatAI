@@ -96,7 +96,10 @@ class _MediaPageState extends State<MediaPage> {
         if (status == 'completed') FilledButton(onPressed: busy ? null : saveVideo, child: const Text('Lưu video MP4')),
       ],
       if (!video && image != null) ...[
-        Image.memory(image!),
+        InkWell(onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => Scaffold(
+          backgroundColor: Colors.black, appBar: AppBar(title: const Text('Ảnh đã tạo'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+          body: Center(child: InteractiveViewer(minScale: .5, maxScale: 5, child: Hero(tag: 'generated-image', child: Image.memory(image!, fit: BoxFit.contain))))))),
+          child: Hero(tag: 'generated-image', child: ClipRRect(borderRadius: BorderRadius.circular(24), child: Image.memory(image!)))),
         OutlinedButton(onPressed: busy ? null : () => run(() async {
           final path = await FilePicker.platform.saveFile(dialogTitle: 'Lưu ảnh', fileName: 'ChatAI.jpg', bytes: image!);
           if (mounted && path != null) setState(() => message = 'Đã lưu ảnh.');
