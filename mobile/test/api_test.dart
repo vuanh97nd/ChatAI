@@ -26,6 +26,35 @@ void main() {
     expect(chunks, ['Xin ', 'Xin chào']); expect(answer, 'Xin chào');
   });
 
+  test('finish frame completes answer before a trailing connection failure', () async {
+    var calls = 0;
+    final api = ChatApi(client: MockClient.streaming((request, body) async {
+      calls++;
+      return http.StreamedResponse(() async* {
+        yield utf8.encode('data: {"choices":[{"delta":{"content":"Xin chào"},"finish_reason":"stop"}]}\n\n');
+        throw http.ClientException('Connection closed while receiving data');
+      }(), 200, headers: {'content-type': 'text/event-stream'});
+    }))..session = Session('owner', 'session:test', 'Owner');
+    addTearDown(api.close);
+    expect((await api.modelAnswer({'provider': 'nvidia'}, onText: (_) {}))['answer'], 'Xin chào');
+    expect(calls, 1);
+  });
+  test('broken stream preserves partial text and reports a safe error without replay', () async {
+    var calls = 0;
+    final chunks = <String>[];
+    final api = ChatApi(client: MockClient.streaming((request, body) async {
+      calls++;
+      return http.StreamedResponse(() async* {
+        yield utf8.encode('data: {"choices":[{"delta":{"content":"Một phần"}}]}\n\n');
+        throw http.ClientException('Connection closed while receiving data');
+      }(), 200, headers: {'content-type': 'text/event-stream'});
+    }))..session = Session('owner', 'session:test', 'Owner');
+    addTearDown(api.close);
+    await expectLater(api.modelAnswer({'provider': 'nvidia'}, onText: chunks.add),
+      throwsA(isA<ApiException>().having((e) => e.code, 'code', 'STREAM_CONNECTION')));
+    expect(chunks, ['Một phần']); expect(calls, 1);
+  });
+
   test('AI decides to search, receives snippets and answer includes verified source URLs', () async {
     final paths = <String>[];
     var modelCalls = 0;

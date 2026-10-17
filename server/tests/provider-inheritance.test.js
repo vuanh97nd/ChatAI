@@ -113,3 +113,17 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
 }
+
+for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',server]]){
+ test(`${name}: upstream stream failure becomes an SSE error rather than a broken HTTP body`,async()=>{
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',NVIDIA_API_KEY:'test-only-key'};
+  const original=globalThis.fetch;let calls=0;
+  try{
+   globalThis.fetch=async()=>{calls++;let reads=0;return new Response(new ReadableStream({pull(out){if(reads++===0)out.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Partial"}}]}\n\n'));else out.error(new Error('private upstream failure'));}}),{headers:{'Content-Type':'text/event-stream'}});};
+   const response=await worker.fetch(new Request('https://example.org/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'nvidia',stream:true,messages:[{role:'user',content:'Hi'}]})}),env,{});
+   const text=await response.text();
+   assert.match(text,/Partial/);assert.match(text,/UPSTREAM_STREAM_INTERRUPTED/);
+   assert.ok(!text.includes('private upstream failure'));assert.equal(calls,1);
+  }finally{globalThis.fetch=original;env.DB.raw.close();}
+ });
+}

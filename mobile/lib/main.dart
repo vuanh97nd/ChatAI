@@ -380,7 +380,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         changed(() => error = 'Đã có câu trả lời nhưng chưa lưu lên server. Hãy sao chép để giữ lại.');
       }
     } catch (e) {
-      changed(() => error = '$e${userSaved ? '\nCâu hỏi đã lưu; chưa có câu trả lời. Có thể gửi yêu cầu tiếp theo.' : ''}');
+      changed(() => error = '$e${userSaved ? (streamingIndex != null ? '\nCâu hỏi đã lưu. Phần trả lời đang hiện có thể chưa đầy đủ; hãy sao chép để giữ lại.' : '\nCâu hỏi đã lưu; chưa nhận được câu trả lời. Yêu cầu không tự gửi lại.') : ''}');
     } finally { changed(() => sending = false); }
   }
   Future<void> openLogin() async {

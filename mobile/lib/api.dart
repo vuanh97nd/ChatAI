@@ -192,7 +192,13 @@ class ChatApi {
   Future<Map<String, dynamic>> modelAnswer(Map<String, dynamic> payload,
       {void Function(String)? onText, bool Function()? cancelled}) async {
     usingBackup = false;
-    return _primaryModelAnswer(payload, onText: onText, cancelled: cancelled);
+    try {
+      return await _primaryModelAnswer(payload, onText: onText, cancelled: cancelled);
+    } on http.ClientException {
+      throw ApiException('Kết nối bị ngắt khi nhận câu trả lời. Nội dung đã nhận được giữ lại. Yêu cầu không tự gửi lại.', 0, 'STREAM_CONNECTION');
+    } on TimeoutException {
+      throw ApiException('AI phản hồi quá lâu. Nội dung đã nhận được giữ lại. Yêu cầu không tự gửi lại.', 0, 'TIMEOUT');
+    }
   }
 
   Future<Map<String, dynamic>> _primaryModelAnswer(Map<String, dynamic> payload,
@@ -230,7 +236,7 @@ class ChatApi {
         // Keep tool requests private until the complete JSON can be parsed.
         if (!text.trimLeft().startsWith('{') && !text.trimLeft().startsWith('```')) onText(text);
       }
-      if (choices.first['finish_reason'] != null) done = true;
+      if (choices.first['finish_reason'] != null) { done = true; break; }
     }
     if (!done) throw ApiException('Kết nối ngắt trước khi AI trả lời xong. Nội dung đã nhận được giữ lại.');
     if (text.trim().isEmpty) throw ApiException('AI chưa trả nội dung.');

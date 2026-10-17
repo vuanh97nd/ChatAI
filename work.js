@@ -2112,7 +2112,7 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
       bytes+=value.byteLength;
       if(bytes>50000000)throw new Error('Oversized provider stream');
       out.enqueue(value);
-     }catch{clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});out.error(new Error('Provider stream interrupted'));}
+     }catch{clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});out.enqueue(new TextEncoder().encode('data: '+JSON.stringify({error:{code:'UPSTREAM_STREAM_INTERRUPTED'}})+'\n\n'));out.close();}
     },
     async cancel(){clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});}
    });
