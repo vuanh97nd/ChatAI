@@ -11,6 +11,7 @@ import 'package:uuid/uuid.dart';
 import 'api.dart';
 import 'visual_style.dart';
 import 'task_page.dart';
+import 'task_intent.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
 import 'voice.dart';
@@ -526,7 +527,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 text: m['content']!, provider: m['provider'],
                 reading: readingMessage == i && voice.speaking, onRead: () => readMessage(i))
               else SelectableText(m['content']!),
-              if (m['role'] == 'user' && api.session != null && m['content']!.length <= 2000)
+              if (m['role'] == 'user' && api.session != null && m['content']!.length <= 2000 && isTaskRequest(m['content']!))
                 TextButton.icon(onPressed: sending ? null : () {
                   unawaited(voice.stop());
                   Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: m['content']!)));
