@@ -81,3 +81,20 @@ test('failed image translation never generates an unrelated image',async()=>{
   assert.equal(response.status,503);assert.equal((await response.json()).code,'IMAGE_PROMPT_TRANSLATION_FAILED');assert.equal(calls,1);
  }finally{db.raw.close();}
 });
+
+test('ghost and wolf short prompts have unambiguous English subjects',async()=>{
+ for(const module of ['../../work.js','../worker.js']){
+  const {imagePromptEnglish}=await import(module);
+  const env={AI:{run(){throw new Error('Short subject must not need translation');}}};
+  for(const prompt of ['con ma','tạo ảnh con ma','Vẽ cho tôi một con ma'])assert.match(await imagePromptEnglish(env,prompt),/ghost/);
+  for(const prompt of ['con sói','tạo ảnh con sói','tao anh con soi'])assert.match(await imagePromptEnglish(env,prompt),/wolf/);
+ }
+});
+test('complex descriptions retain ghost and wolf and reject lost subjects',async()=>{
+ const {imagePromptEnglish}=await import('../../work.js');
+ const prompt='Một con ma đứng cạnh hai con sói trong rừng';
+ const env={AI:{run:async()=>({response:'A ghost standing beside two wolves in a forest.'})}};
+ assert.equal(await imagePromptEnglish(env,prompt),'A ghost standing beside two wolves in a forest.');
+ env.AI.run=async()=>({response:'A horse beside two dogs in a forest.'});
+ await assert.rejects(imagePromptEnglish(env,prompt),/Invalid image translation/);
+});
