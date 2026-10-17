@@ -13,9 +13,8 @@ class VoiceChatPage extends StatefulWidget {
   @override
   State<VoiceChatPage> createState() => _VoiceChatPageState();
 }
-class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserver {
   late final VoiceController voice;
-  late final AnimationController pulse;
   String draft = '', response = '', phase = 'Sẵn sàng', failure = '';
   bool showContent = true;
   bool processing = false, paused = false, closed = false;
@@ -25,14 +24,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     voice = VoiceController(engine: CloudVoiceEngine(widget.api))..addListener(changed);
-    pulse = AnimationController(vsync: this, duration: const Duration(seconds: 2));
     WidgetsBinding.instance.addPostFrameCallback((_) => listen());
-  }
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) { pulse.stop(); }
-    else { pulse.repeat(); }
   }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -82,7 +74,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   @override
   void dispose() {
     closed = true; generation++; WidgetsBinding.instance.removeObserver(this);
-    voice.removeListener(changed); voice.dispose(); pulse.dispose(); super.dispose();
+    voice.removeListener(changed); voice.dispose(); super.dispose();
   }
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -95,38 +87,11 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-        AnimatedBuilder(animation: pulse, builder: (_, child) {
-          final reduced = MediaQuery.disableAnimationsOf(context);
-          final wave = (math.sin(pulse.value * math.pi * 2) + 1) / 2;
-          final level = reduced || paused || failure.isNotEmpty ? 0.0
-            : voice.listening ? voice.soundLevel.clamp(0.0, 1.0)
-            : voice.speaking ? wave : 0.0;
-          final thinking = processing && !voice.speaking && !paused && failure.isEmpty;
-          return SizedBox(width: 180, height: 180, child: Stack(alignment: Alignment.center, children: [
-            if (thinking) Transform.rotate(
-              angle: reduced ? 0 : pulse.value * math.pi * 2,
-              child: Container(width: 164, height: 164, decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: SweepGradient(colors: [
-                  const Color(0xff20bfff).withValues(alpha: .05),
-                  const Color(0xff7654ff).withValues(alpha: .65),
-                  const Color(0xff20bfff).withValues(alpha: .05),
-                ]),
-              )),
-            ),
-            AnimatedScale(scale: 1 + level * .12,
-              duration: Duration(milliseconds: reduced ? 0 : 140),
-              curve: Curves.easeOut,
-              child: Container(width: 136, height: 136, decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [BoxShadow(color: const Color(0xff635bff).withValues(
-                  alpha: paused || failure.isNotEmpty ? .05 : .12 + level * .15),
-                  blurRadius: 20 + level * 20, spreadRadius: level * 3)],
-              ), child: ClipRRect(borderRadius: BorderRadius.circular(32),
-                child: Image.asset('assets/chat_ai.png', semanticLabel: 'Logo Chat AI'))),
-            ),
-          ]));
-        }),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Image.asset('assets/chat_ai.png', width: 88, height: 88,
+            semanticLabel: 'Logo Chat AI'),
+        ),
         const SizedBox(height: 24), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 20),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
