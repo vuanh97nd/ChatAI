@@ -41,6 +41,18 @@ def main():
         if tag!='android-latest':command.append('--prerelease')
         subprocess.run(command,check=True)
     subprocess.run(['gh','release','upload',tag,*[str(p) for p in output.iterdir()],'--clobber'],check=True)
+    digest=signer(current)
+    if not digest or not re.fullmatch(r'[a-f0-9]{64}',digest):raise ValueError('Missing verified APK signer')
+    channel='android-signed-'+digest
+    if subprocess.run(['gh','release','view',channel],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode:
+        subprocess.run(['gh','release','create',channel,'--target',current['commit'],'--title','Chat AI Android compatible updates','--notes','Automatic update metadata for APKs signed with the same certificate.','--prerelease'],check=True)
+    # Publish the pointer only after its versioned APK upload has succeeded.
+    pointer={**current,'release_tag':tag,'signer_sha256':digest}
+    with tempfile.TemporaryDirectory() as directory:
+        manifest=Path(directory)/'build-info.json'
+        manifest.write_text(json.dumps(pointer,ensure_ascii=False,indent=2),encoding='utf-8')
+        subprocess.run(['gh','release','upload',channel,str(manifest),'--clobber'],check=True)
+    print('Published compatible update channel:',channel)
     print('Published:',tag)
     if tag!='android-latest':print('Signing identity differs; existing automatic update manifest retained.')
 

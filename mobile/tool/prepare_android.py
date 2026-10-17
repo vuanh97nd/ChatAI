@@ -119,6 +119,9 @@ def configure(android):
     activity.write_text("""package vn.chatai.chatai_mobile
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.content.pm.PackageManager
+import java.security.MessageDigest
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -142,6 +145,19 @@ class MainActivity: FlutterActivity() {
         result.success(pendingAssist)
         pendingAssist = false
       } else { result.notImplemented() }
+    }
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/app_identity").setMethodCallHandler { call, result ->
+      if (call.method != "signerSha256") { result.notImplemented() }
+      else {
+        try {
+          @Suppress("DEPRECATION")
+          val signature = if (Build.VERSION.SDK_INT >= 28) {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo?.apkContentsSigners?.firstOrNull()
+          } else { packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES).signatures?.firstOrNull() }
+          if (signature == null) result.error("identity", "Không đọc được chữ ký ứng dụng", null)
+          else result.success(MessageDigest.getInstance("SHA-256").digest(signature.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 0xff) })
+        } catch (e: Exception) { result.error("identity", "Không đọc được chữ ký ứng dụng", null) }
+      }
     }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/voice_settings").setMethodCallHandler { call, result ->
       if (call.method != "tts" && call.method != "speech") { result.notImplemented() }
