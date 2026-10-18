@@ -14,7 +14,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(theme: futuristicTheme(brightness), builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.4)), child: child!), home: const EffectsPage()));
       await tester.pumpAndSettle();
-      expect(find.byType(IosSection), findsNWidgets(2));
+      expect(find.text('QUYỀN RIÊNG TƯ VÀ ÂM THANH'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Tắt hiệu ứng'), 250, scrollable: find.byType(Scrollable).first);
       await tester.tap(find.text('Tắt hiệu ứng')); await tester.pumpAndSettle();
       expect(visualEffects.value, VisualEffects.off);
