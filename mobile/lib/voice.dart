@@ -239,6 +239,7 @@ class VoiceController extends ChangeNotifier {
   }
 
   Future<void> finishListening() async {
+    _recognitionWatchdog?.cancel();
     if (!listening) { await stop(); return; }
     final run = _generation;
     await engine.finish();
