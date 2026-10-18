@@ -1,10 +1,11 @@
+import 'ios_settings.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
-const currentBuild = int.fromEnvironment('CHAT_AI_BUILD', defaultValue: 68);
+const currentBuild = int.fromEnvironment('CHAT_AI_BUILD', defaultValue: 69);
 const updateManifest = 'https://github.com/vuanh97nd/ChatAI/releases/download/android-latest/build-info.json';
 
 class AppUpdate {
@@ -81,7 +82,7 @@ class _UpdatePageState extends State<UpdatePage> {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Cập nhật ứng dụng')),
     body: ListView(padding: const EdgeInsets.all(24), children: [
       Text('Bản đang dùng: build $currentBuild'), const SizedBox(height: 16),
-      if (checking) const LinearProgressIndicator(),
+      if (checking) const IosLoading(),
       if (message != null) Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(message!)),
       if (!checking && update != null && update!.build > currentBuild)
         FilledButton.icon(onPressed: download, icon: const Icon(Icons.download), label: const Text('Tải bản mới')),

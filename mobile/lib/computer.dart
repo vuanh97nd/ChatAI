@@ -224,7 +224,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     ]),
     OutlinedButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlaxisAgentPage(storageKey: storageKey))),
       icon: const Icon(Icons.psychology_outlined), label: const Text('Agent PLAXIS · bộ nhớ và RAG')),
-    if (busy) const LinearProgressIndicator(),
+    if (busy) const IosLoading(),
     if (error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(error!)),
     if (desktop != null && pairId == null) ...[
       OutlinedButton.icon(onPressed: busy ? null : requestScreen, icon: const Icon(Icons.screenshot_monitor),

@@ -6,6 +6,19 @@ import '../lib/ios_settings.dart';
 import '../lib/visual_style.dart';
 
 void main() {
+  testWidgets('picker opens an iOS sheet and returns the selected value', (tester) async {
+    String? selected;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: IosPicker<String>(
+      title: 'Trạng thái', value: 'all', options: const {'all': 'Tất cả', 'locked': 'Đã khóa'}, onChanged: (value) => selected = value))));
+    await tester.tap(find.text('Tất cả')); await tester.pumpAndSettle();
+    expect(find.byType(CupertinoActionSheet), findsOneWidget);
+    await tester.tap(find.text('Đã khóa')); await tester.pumpAndSettle();
+    expect(selected, 'locked'); expect(find.byType(CupertinoActionSheet), findsNothing);
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: IosPicker<String>(
+      title: 'Trạng thái', value: 'all', options: {'all': 'Tất cả'}, onChanged: null))));
+    await tester.tap(find.text('Tất cả')); await tester.pumpAndSettle();
+    expect(find.byType(CupertinoActionSheet), findsNothing);
+  });
   testWidgets('inset settings fit narrow screens with larger text in both themes', (tester) async {
     tester.view.physicalSize = const Size(320, 740); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);

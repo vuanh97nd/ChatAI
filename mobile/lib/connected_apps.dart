@@ -64,7 +64,7 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
     const Text('Mở ứng dụng để tiếp tục công việc. Chat AI chưa có quyền đọc Drive/Gmail và không tự đặt xe hoặc gửi thư.'),
     if(widget.initialRequest.isNotEmpty) Padding(padding:const EdgeInsets.only(top:12),child:Text('Yêu cầu: ${widget.initialRequest}')),
     const SizedBox(height:16),
-    Wrap(spacing:8,runSpacing:8,children:[for(final app in LinkedApp.values)ChoiceChip(label:Text(appNames[app]!),selected:selected==app,onSelected:busy?null:(_)=>setState((){selected=app;message=null;}))]),
+    IosPicker<LinkedApp>(title:'Ứng dụng',value:selected,options:appNames,onChanged:busy?null:(value)=>setState((){selected=value;message=null;})),
     const SizedBox(height:20),
     if(selected==LinkedApp.maps)...[
       TextField(controller:query,decoration:const InputDecoration(labelText:'Địa điểm hoặc điểm đến',hintText:'Ví dụ: Sân bay Nội Bài'),maxLength:300),

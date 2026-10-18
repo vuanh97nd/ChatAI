@@ -11,6 +11,6 @@ class ApkIdentityTests(unittest.TestCase):
     def test_actual_manifest_must_match_name_and_code(self):
         valid = "package: name='vn.chatai.chatai_mobile' versionCode='10' versionName='0.8.2' platformBuildVersionName='15'"
         self.assertEqual(verify.check_manifest(valid, '0.8.2+10'), ('0.8.2', '10'))
-        for invalid in (valid.replace("'10'", "'9'"), valid.replace("'0.8.2'", "'0.8.1'"), valid.replace('vn.chatai.chatai_mobile', 'other.app'), ''):
+        for invalid in (valid.replace("'10'", "'9'"), valid.replace("'0.8.2'", "'0.8.1'"), valid.replace('vn.chatai.chatai_mobile', 'other.app'), valid + '\napplication-debuggable', ''):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 verify.check_manifest(invalid, '0.8.2+10')

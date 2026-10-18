@@ -157,17 +157,14 @@ class _AdminPageState extends State<AdminPage> {
     return DefaultTabController(length: 3, child: Scaffold(
       appBar: AppBar(title: const Text('Quản trị'), bottom: const IosTabHeader(labels: ['Người dùng', 'Thông báo', 'Thanh toán'])),
       body: Column(children: [
-        if (busy) const LinearProgressIndicator(),
+        if (busy) const IosLoading(),
         if (message != null) MaterialBanner(content: Text(message!), actions: [TextButton(onPressed: () => setState(() => message = null), child: const Text('Đóng'))]),
         Expanded(child: TabBarView(children: [
           ListView(padding: const EdgeInsets.all(16), children: [
             field(search, 'Tìm tên / email'),
-            DropdownButton<String>(value: filter, items: const [
-              DropdownMenuItem(value: 'all', child: Text('Tất cả')),
-              DropdownMenuItem(value: 'active', child: Text('Hoạt động')),
-              DropdownMenuItem(value: 'locked', child: Text('Đã khóa')),
-              DropdownMenuItem(value: 'deleted', child: Text('Đã xóa')),
-            ], onChanged: busy ? null : (v) { setState(() { filter = v!; offset = 0; }); run(loadUsers); }),
+            IosPicker<String>(title: 'Trạng thái tài khoản', value: filter,
+              options: const {'all': 'Tất cả', 'active': 'Hoạt động', 'locked': 'Đã khóa', 'deleted': 'Đã xóa'},
+              onChanged: busy ? null : (value) { setState(() { filter = value; offset = 0; }); run(loadUsers); }),
             FilledButton(onPressed: busy ? null : () { offset = 0; run(loadUsers); }, child: const Text('Tìm / Làm mới')),
             Text('$total người dùng · trang ${offset ~/ 100 + 1} · token theo tháng, giờ Việt Nam'),
             for (final item in users) Builder(builder: (_) {

@@ -290,7 +290,7 @@ class _PlaxisAgentPageState extends State<PlaxisAgentPage>
           ),
           if (ready)
             const Text('Đã kết nối dịch vụ. Chưa xác minh kết nối PLAXIS.'),
-          if (busy) const LinearProgressIndicator(),
+          if (busy) const IosLoading(),
           if (error != null)
             Text(
               error!,
@@ -313,18 +313,9 @@ class _PlaxisAgentPageState extends State<PlaxisAgentPage>
               labelText: 'Mã dự án để lưu bộ nhớ',
             ),
           ),
-          DropdownButtonFormField<String>(
-            key: ValueKey(version),
-            initialValue: version,
-            decoration: const InputDecoration(labelText: 'Sản phẩm PLAXIS'),
-            items: const [
-              DropdownMenuItem(value: '2d', child: Text('PLAXIS 2D')),
-              DropdownMenuItem(value: '3d', child: Text('PLAXIS 3D')),
-            ],
-            onChanged: busy || running
-                ? null
-                : (v) => changed(() => version = v!),
-          ),
+          IosPicker<String>(title: 'Sản phẩm PLAXIS', value: version,
+            options: const {'2d': 'PLAXIS 2D', '3d': 'PLAXIS 3D'},
+            onChanged: busy || running ? null : (value) => changed(() => version = value)),
           TextField(
             controller: prompt,
             minLines: 3,
@@ -345,14 +336,9 @@ class _PlaxisAgentPageState extends State<PlaxisAgentPage>
                   labelText: 'Chỉ tiêu, ví dụ S_m',
                 ),
               ),
-              DropdownButtonFormField<String>(
-                initialValue: comparison,
-                items: const [
-                  DropdownMenuItem(value: 'le', child: Text('Không vượt quá')),
-                  DropdownMenuItem(value: 'ge', child: Text('Không nhỏ hơn')),
-                ],
-                onChanged: (v) => changed(() => comparison = v!),
-              ),
+              IosPicker<String>(title: 'Điều kiện', value: comparison,
+                options: const {'le': 'Không vượt quá', 'ge': 'Không nhỏ hơn'},
+                onChanged: (value) => changed(() => comparison = value)),
               TextField(
                 controller: target,
                 keyboardType: const TextInputType.numberWithOptions(

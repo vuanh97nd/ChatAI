@@ -15,6 +15,12 @@ import 'package:chatai_mobile/visual_style.dart';
 import 'voice_test.dart' show FakeVoice;
 
 void main() {
+  testWidgets('full effects do not repaint the background continuously', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: AmbientScene(effects: VisualEffects.full, child: const Scaffold(body: Text('Ready')))));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(tester.binding.hasScheduledFrame, isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets('dark home fits a small screen and prompt chips populate the composer', (tester) async {
     if (Platform.environment['CHAT_AI_UI_PREVIEW'] == 'true') {
       await tester.runAsync(() async {

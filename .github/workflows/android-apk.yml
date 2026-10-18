@@ -81,11 +81,15 @@ jobs:
           name: android-ui-preview
           path: mobile/build/ui-preview
           if-no-files-found: ignore
-      - name: Build installable test APK
+      - name: Build optimized installable APK
         working-directory: mobile
         run: |
           version=$(sed -n 's/^version: //p' pubspec.yaml)
-          flutter build apk --debug --build-name="${version%+*}" --build-number="${version#*+}" --dart-define="CHAT_AI_BUILD=${version#*+}" --dart-define="CHAT_AI_VERSION=${version%+*}" --dart-define="CHAT_AI_COMMIT=${GITHUB_SHA:0:7}"
+          export ANDROID_KEYSTORE="$HOME/.android/debug.keystore"
+          export ANDROID_STORE_PASSWORD=android
+          export ANDROID_KEY_ALIAS=androiddebugkey
+          export ANDROID_KEY_PASSWORD=android
+          flutter build apk --release --build-name="${version%+*}" --build-number="${version#*+}" --dart-define="CHAT_AI_BUILD=${version#*+}" --dart-define="CHAT_AI_VERSION=${version%+*}" --dart-define="CHAT_AI_COMMIT=${GITHUB_SHA:0:7}"
       - name: Verify APK and publish build identity
         working-directory: mobile
         run: python tool/verify_apk.py

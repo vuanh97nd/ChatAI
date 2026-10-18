@@ -3,6 +3,24 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/persistent_tabs.dart';
 
 void main() {
+  testWidgets('updates to the active tab do not rebuild a hidden tab', (tester) async {
+    var selected = 0;
+    late StateSetter update;
+    final builds = <int, int>{};
+    await tester.pumpWidget(MaterialApp(home: StatefulBuilder(builder: (context, setState) {
+      update = setState;
+      return Scaffold(body: PersistentTabs(selected: selected, builder: (index) {
+        builds.update(index, (n) => n + 1, ifAbsent: () => 1);
+        return Text('page $index');
+      }));
+    })));
+    update(() => selected = 6); await tester.pumpAndSettle();
+    update(() {}); await tester.pumpAndSettle();
+    update(() {}); await tester.pumpAndSettle();
+    expect(builds[0], 1);
+    expect(builds[6], 3);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('bottom tabs mount lazily and retain edits across rapid switches', (tester) async {
     var selected = 0;
     late StateSetter update;

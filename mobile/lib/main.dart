@@ -35,7 +35,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.0');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.1');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -691,7 +691,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   AppBar topBar() => AppBar(
     surfaceTintColor: Colors.transparent, elevation: 0,
     leading: tab == 0 ? IconButton(tooltip:'Open navigation menu',onPressed:()=>scaffoldKey.currentState?.openDrawer(),icon:const Icon(CupertinoIcons.sidebar_left)) : BackButton(onPressed: goBack),
-    title: tab == 0 ? const Text('Chat AI') : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo', 'Công việc', 'Sáng tạo'][tab]),
+    title: tab == 0 ? const Text('Chat AI') : tab == 4 ? const Text('Máy tính') : const SizedBox.shrink(),
     actions: [
       if(api.session!=null&&tab==0)IconButton(tooltip:'Cuộc trò chuyện mới',onPressed:sending?null:newChat,icon:const Icon(CupertinoIcons.square_pencil)),
       if (api.session == null) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))
@@ -846,7 +846,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             catch (e) { changed(() => error = '$e'); }
           }, child: Text(voice.recognitionError ? 'Cài đặt nhận dạng' : 'Cài đặt giọng đọc')),
           TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
-        if (working) const LinearProgressIndicator(),
+        if (working) const IosLoading(),
         Expanded(child: PersistentTabs(key: ValueKey(api.session!.username), selected: tab,
           animate: visualEffects.value != VisualEffects.off, builder: pageContent)),
       ]))));

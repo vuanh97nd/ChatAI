@@ -12,6 +12,7 @@ class PersistentTabs extends StatefulWidget {
 }
 class _PersistentTabsState extends State<PersistentTabs> with SingleTickerProviderStateMixin {
   final visited = <int>{};
+  final pages = <int, Widget>{};
   late final AnimationController transition = AnimationController(vsync: this, duration: const Duration(milliseconds: 160), value: 1);
   bool retained(int index) => const {0, 3, 6, 7}.contains(index);
   @override
@@ -19,8 +20,9 @@ class _PersistentTabsState extends State<PersistentTabs> with SingleTickerProvid
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selected != widget.selected) {
       visited.removeWhere((index) => !retained(index));
+      pages.removeWhere((index, _) => !retained(index));
       if (widget.animate && !MediaQuery.disableAnimationsOf(context)) {
-        transition.forward(from: .65);
+        transition.forward(from: 0);
       } else { transition.value = 1; }
     }
   }
@@ -29,12 +31,15 @@ class _PersistentTabsState extends State<PersistentTabs> with SingleTickerProvid
   @override
   Widget build(BuildContext context) {
     visited.add(widget.selected);
+    pages[widget.selected] = widget.builder(widget.selected);
     return Stack(fit: StackFit.expand, children: [
       for (final index in visited) Offstage(key: ValueKey(index), offstage: index != widget.selected,
         child: TickerMode(enabled: index == widget.selected,
           child: ExcludeFocus(excluding: index != widget.selected,
-            child: FadeTransition(opacity: index == widget.selected ? transition : const AlwaysStoppedAnimation(1),
-              child: widget.builder(index))))),
+            child: SlideTransition(position: index == widget.selected
+                ? Tween<Offset>(begin: const Offset(.018, 0), end: Offset.zero).chain(CurveTween(curve: Curves.easeOutCubic)).animate(transition)
+                : const AlwaysStoppedAnimation(Offset.zero),
+              child: RepaintBoundary(child: pages[index]!))))),
     ]);
   }
 }

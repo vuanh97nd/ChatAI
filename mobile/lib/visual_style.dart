@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -9,7 +8,7 @@ import 'location_context.dart';
 import 'ios_settings.dart';
 
 enum VisualEffects { full, light, off }
-final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
+final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.light);
 
 ThemeData futuristicTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
@@ -37,50 +36,16 @@ ThemeData futuristicTheme(Brightness brightness) {
   );
 }
 
-class AmbientScene extends StatefulWidget {
+class AmbientScene extends StatelessWidget {
   final Widget child;
   final VisualEffects effects;
   const AmbientScene({super.key, required this.child, required this.effects});
   @override
-  State<AmbientScene> createState() => _AmbientSceneState();
-}
-class _AmbientSceneState extends State<AmbientScene> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  late final AnimationController motion;
-  bool foreground = true;
-  @override
-  void initState() { super.initState(); motion = AnimationController(vsync: this, duration: const Duration(seconds: 18)); WidgetsBinding.instance.addObserver(this); }
-  void updateMotion() {
-    if (foreground && widget.effects == VisualEffects.full && !MediaQuery.disableAnimationsOf(context) && MediaQuery.viewInsetsOf(context).bottom == 0 && TickerMode.of(context)) {
-      if (!motion.isAnimating) motion.repeat();
-    } else { motion.stop(); }
-  }
-  @override
-  void didChangeDependencies() { super.didChangeDependencies(); updateMotion(); }
-  @override
-  void didUpdateWidget(covariant AmbientScene oldWidget) { super.didUpdateWidget(oldWidget); updateMotion(); }
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) { foreground = state == AppLifecycleState.resumed; updateMotion(); }
-  @override
-  void dispose() { WidgetsBinding.instance.removeObserver(this); motion.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      Positioned.fill(
-        child: IgnorePointer(
-          child: RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: motion,
-              builder: (_, child) => CustomPaint(
-                painter: _AuroraPainter(motion.value, Theme.of(context).brightness == Brightness.dark, widget.effects),
-              ),
-            ),
-          ),
-        ),
-      ),
-      widget.child,
-    ],
-  );
+  Widget build(BuildContext context) => Stack(fit: StackFit.expand, children: [
+    Positioned.fill(child: IgnorePointer(child: RepaintBoundary(child: CustomPaint(
+      painter: _AuroraPainter(0, Theme.of(context).brightness == Brightness.dark, effects))))),
+    child,
+  ]);
 }
 class _AuroraPainter extends CustomPainter {
   final double phase;
@@ -116,10 +81,9 @@ class GlassPanel extends StatelessWidget {
   Widget build(BuildContext context) => ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, effects, _) {
     final scheme = Theme.of(context).colorScheme;
     final content = DecoratedBox(decoration: BoxDecoration(borderRadius: radius,
-      color: scheme.surface.withValues(alpha: effects == VisualEffects.off ? 1 : .84),
+      color: scheme.surface.withValues(alpha: effects == VisualEffects.full ? .96 : 1),
       border: Border.all(color: scheme.outline.withValues(alpha: .1))), child: child);
-    return ClipRRect(borderRadius: radius, child: effects == VisualEffects.off ? content :
-      BackdropFilter(filter: ImageFilter.blur(sigmaX: effects == VisualEffects.full ? 12 : 5, sigmaY: effects == VisualEffects.full ? 12 : 5), child: content));
+    return ClipRRect(borderRadius: radius, child: content);
   });
 }
 
@@ -157,7 +121,7 @@ class EffectsPage extends StatelessWidget {
       IosSection(title: 'CHUYỂN ĐỘNG', children: [
       for (final mode in VisualEffects.values) IosChoice(selected: mode == value,
         title: switch(mode) { VisualEffects.full => 'Đầy đủ', VisualEffects.light => 'Nhẹ', VisualEffects.off => 'Tắt hiệu ứng' },
-        subtitle: switch(mode) { VisualEffects.full => 'Kính mờ, chuyển động nhẹ và bảng chọn kiểu iOS', VisualEffects.light => 'Nền tĩnh, kính mờ nhẹ; giảm hoạt ảnh trang trí', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' },
+        subtitle: switch(mode) { VisualEffects.full => 'Nền màu nhẹ, chuyển trang và bảng chọn kiểu iOS', VisualEffects.light => 'Nền tĩnh, giảm hoạt ảnh; ưu tiên độ mượt', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' },
         onTap: () async {
           try { await const FlutterSecureStorage().write(key: 'visual_effects', value: mode.name); visualEffects.value = mode; }
           catch (_) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa lưu được mức hiệu ứng. Hãy thử lại.'))); }

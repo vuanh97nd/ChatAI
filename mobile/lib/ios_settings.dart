@@ -79,3 +79,29 @@ class IosAlertDialog extends StatelessWidget {
     );
   }
 }
+
+class IosPicker<T extends Object> extends StatelessWidget {
+  final String title;
+  final T value;
+  final Map<T, String> options;
+  final ValueChanged<T>? onChanged;
+  const IosPicker({super.key, required this.title, required this.value, required this.options, required this.onChanged});
+  @override
+  Widget build(BuildContext context) => Material(color: Theme.of(context).colorScheme.surface,
+    borderRadius: BorderRadius.circular(14), clipBehavior: Clip.antiAlias,
+    child: ListTile(title: Text(title), subtitle: Text(options[value] ?? '$value'),
+      trailing: const Icon(CupertinoIcons.chevron_down, size: 16),
+      onTap: onChanged == null ? null : () => showCupertinoModalPopup<void>(context: context, builder: (sheet) => CupertinoActionSheet(
+        title: Text(title), actions: [for (final entry in options.entries) CupertinoActionSheetAction(
+          onPressed: () { Navigator.pop(sheet); onChanged?.call(entry.key); },
+          child: Text('${entry.value}${entry.key == value ? ' ✓' : ''}'),
+        )], cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet), child: const Text('Hủy')),
+      )),
+    ));
+}
+
+class IosLoading extends StatelessWidget {
+  const IosLoading({super.key});
+  @override
+  Widget build(BuildContext context) => const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()));
+}

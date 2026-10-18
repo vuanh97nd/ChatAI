@@ -63,7 +63,10 @@ flutter test
 flutter build apk --debug
 ```
 
-File: `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+File debug để phát triển: `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
+Bản cập nhật cho điện thoại được CI build bằng `flutter build apk --release`
+(AOT, không debuggable), ký bằng đúng danh tính của kênh cập nhật hiện tại.
+Không dùng hiệu năng của APK debug để đánh giá độ mượt bản phát hành.
 Script lấy cấu trúc Android từ chính phiên bản Flutter đang dùng; không ghi đè
 mã ứng dụng và kiểm thử. Cần triển khai Worker mới cho mục Máy tính; chat/giọng nói dùng API sẵn có.
 
