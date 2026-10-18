@@ -234,7 +234,7 @@ class VoiceController extends ChangeNotifier {
     } catch (e) {
       if (run == _generation && !_disposed) {
         _generation++;
-        listening = false; starting = false; error = '$e';
+        listening = false; starting = false; error ??= '$e';
         unawaited(engine.cancel().catchError((Object _) {}));
         _changed();
       }
