@@ -15,6 +15,8 @@ import 'task_intent.dart';
 import 'sound_effects.dart';
 import 'location_context.dart';
 import 'connected_apps.dart';
+import 'ios_composer.dart';
+import 'package:flutter/cupertino.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
 import 'voice.dart';
@@ -22,7 +24,6 @@ import 'cloud_voice.dart';
 import 'voice_chat.dart';
 import 'reply_indicator.dart';
 import 'assistant_reply.dart';
-import 'provider_icon.dart';
 import 'updates.dart';
 import 'computer.dart';
 import 'admin.dart';
@@ -32,7 +33,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.3.0');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.0');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -51,6 +52,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     locationForQuestions.value = await storage.read(key: 'location_for_questions') != 'false';
+    SoundEffects.volume.value = (double.tryParse(await storage.read(key: 'sound_volume') ?? '') ?? .35).clamp(0.0, 1.0);
     SoundEffects.enabled.value = await storage.read(key: 'sound_effects') != 'false';
     final effects = await storage.read(key: 'visual_effects');
     for (final mode in VisualEffects.values) { if (mode.name == effects) visualEffects.value = mode; }
@@ -179,7 +181,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   void dispose() {
     assistantChannel.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this); poll?.cancel();
-    voice.removeListener(voiceChanged); voice.dispose();
+    SoundEffects.microphoneActive=false; voice.removeListener(voiceChanged); voice.dispose();
     api.close(); input.dispose(); amount.dispose(); super.dispose();
   }
   @override
@@ -192,6 +194,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   void changed(VoidCallback fn) { if (mounted) setState(fn); }
   void voiceChanged() {
+    SoundEffects.microphoneActive = voice.starting || voice.listening || voice.transcribing;
     changed(() {
       if (voice.error != null) error = voice.error;
       if (!voice.speaking) readingMessage = null;
@@ -223,6 +226,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     changed(() => error = null);
     FocusManager.instance.primaryFocus?.unfocus();
     final prefix = input.text.trimRight();
+    await SoundEffects.play(AppSound.listening);
+    await Future<void>.delayed(const Duration(milliseconds:220));
+    if(!mounted)return;
     await voice.start((words) {
       if (!mounted) return;
       final text = prefix.isEmpty ? words : '$prefix $words';
@@ -401,6 +407,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         changed(() => error = 'Đã có câu trả lời nhưng chưa lưu lên server. Hãy sao chép để giữ lại.');
       }
     } catch (e) {
+      if(foreground&&!voice.speaking&&!voice.listening)unawaited(SoundEffects.play(AppSound.error));
       changed(() => error = '$e${userSaved ? (streamingIndex != null ? '\nCâu hỏi đã lưu. Phần trả lời đang hiện có thể chưa đầy đủ; hãy sao chép để giữ lại.' : '\nCâu hỏi đã lưu; chưa nhận được câu trả lời. Yêu cầu không tự gửi lại.') : ''}');
     } finally { changed(() => sending = false); }
   }
@@ -542,8 +549,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         final m = messages[i];
         return MessageEntrance(key: ValueKey('message:$conversation:$i'), child: Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Theme.of(context).colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(22), border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .14))), child: Column(
+            decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Colors.transparent,
+              borderRadius: BorderRadius.circular(22)), child: Column(
               mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (m['role'] == 'assistant') AssistantReply(
                 key: ValueKey('$conversation:$i'),
@@ -561,43 +568,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
     if (voice.listening || voice.starting || voice.transcribing) Padding(padding: const EdgeInsets.all(8),
       child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
-    Padding(padding: const EdgeInsets.fromLTRB(14, 8, 14, 12), child: GlassPanel(radius: BorderRadius.circular(28), child: Container(
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerLow.withValues(alpha: .3),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(28)),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: input, onChanged: (_) => changed(() {}), minLines: 1, maxLines: 4, maxLength: 12000,
-          decoration: const InputDecoration(filled: false, hintText: 'Hỏi Chat AI…', counterText: '',
-            border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none)),
-        if (attachments.isNotEmpty) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-          for (final a in attachments) Padding(padding: const EdgeInsets.only(right: 6), child: InputChip(
-            label: Text(a.name), onDeleted: sending ? null : () => changed(() => attachments.remove(a)))),
-        ])),
-        Row(children: [
-          IconButton(tooltip: 'Tạo ảnh/video', onPressed: api.session == null || sending ? null : () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MediaPage(api: api))), icon: const Icon(Icons.auto_awesome)),
-          IconButton(tooltip: 'Đính kèm file', onPressed: sending || working ? null : pickAttachment, icon: const Icon(Icons.add)),
-          Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
-            child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-              isExpanded: true, value: provider, hint: const Text('Chọn AI'),
-              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
-              items: const [
-                DropdownMenuItem(value: 'openrouter', child: ProviderOption(provider: 'openrouter', label: 'OpenRouter')),
-                DropdownMenuItem(value: 'nvidia', child: ProviderOption(provider: 'nvidia', label: 'NVIDIA')),
-                DropdownMenuItem(value: 'deepseek_flash', child: ProviderOption(provider: 'deepseek_flash', label: 'DeepSeek')),
-                DropdownMenuItem(value: 'cloudflare', child: ProviderOption(provider: 'cloudflare', label: 'Cloudflare AI')),
-                DropdownMenuItem(value: 'gemini', child: ProviderOption(provider: 'gemini', label: 'Gemini')),
-                DropdownMenuItem(value: 'groq', child: ProviderOption(provider: 'groq', label: 'Groq')),
-              ], onChanged: sending || api.session == null ? null : (v) => changed(() => provider = v!))))),
-          IconButton(tooltip: voice.listening || voice.starting ? 'Dừng nghe' : 'Nhập bằng giọng nói',
-            onPressed: sending || working ? null : dictate,
-            icon: Icon(voice.listening || voice.starting ? Icons.mic_off : Icons.mic_none),
-            color: voice.listening ? Colors.redAccent : null),
-          IconButton.filled(tooltip: sending && api.session != null ? 'Dừng chờ' : input.text.trim().isEmpty && attachments.isEmpty ? 'Trò chuyện giọng nói' : 'Gửi tin nhắn',
-            onPressed: sending && api.session != null ? stopReply : sending || working || voice.starting ? null : input.text.trim().isEmpty && attachments.isEmpty ? openVoiceChat : send,
-            icon: Icon(sending && api.session != null ? Icons.stop : input.text.trim().isEmpty && attachments.isEmpty ? Icons.graphic_eq : Icons.send)),
-        ]),
-      ])))),
+    IosChatComposer(canChooseProvider:api.session!=null,controller:input,provider:provider,busy:sending&&api.session!=null,hasAttachments:attachments.isNotEmpty,listening:voice.listening||voice.starting,
+      onChanged:()=>changed((){}),onProvider:(value)=>changed(()=>provider=value),
+      onMedia:api.session==null||sending?null:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>MediaPage(api:api))),
+      onAttach:sending||working?null:pickAttachment,onMicrophone:sending||working?null:dictate,
+      onAction:sending&&api.session!=null?stopReply:sending||working||voice.starting?null:input.text.trim().isEmpty&&attachments.isEmpty?openVoiceChat:send,
+      attachmentChips:[for(final a in attachments)Padding(padding:const EdgeInsets.only(right:6),child:InputChip(label:Text(a.name),onDeleted:sending?null:()=>changed(()=>attachments.remove(a))))]),
   ]);
 
   Widget account() {
@@ -709,12 +685,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   AppBar topBar() => AppBar(
     surfaceTintColor: Colors.transparent, elevation: 0,
-    leading: tab == 0 ? null : BackButton(onPressed: goBack),
+    leading: tab == 0 ? IconButton(tooltip:'Open navigation menu',onPressed:()=>scaffoldKey.currentState?.openDrawer(),icon:const Icon(CupertinoIcons.sidebar_left)) : BackButton(onPressed: goBack),
     title: tab == 0 ? const Text('Chat AI') : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo'][tab]),
     actions: [
+      if(api.session!=null&&tab==0)IconButton(tooltip:'Cuộc trò chuyện mới',onPressed:sending?null:newChat,icon:const Icon(CupertinoIcons.square_pencil)),
       if (api.session == null) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))
       else IconButton(tooltip: 'Tài khoản', onPressed: () { unawaited(voice.stop()); selectPage(3); },
-        icon: const Icon(Icons.account_circle_outlined)),
+        icon: const Icon(CupertinoIcons.person_crop_circle)),
     ]);
 
   Widget navigationDrawer() => Drawer(backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha: .97),
@@ -727,13 +704,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         buildInfoButton(context),
       ])),
       Expanded(child: ListView(key: const ValueKey('drawer-history'), padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-        ListTile(leading: const Icon(Icons.chat_bubble_outline), title: const Text('Chat'),
+        ListTile(leading: const Icon(CupertinoCupertinoIcons.chat_bubble_fill), title: const Text('Chat'),
           onTap: sending ? null : () {
             Navigator.pop(drawerContext); unawaited(voice.stop()); selectPage(0);
           }),
         ListTile(leading: const Icon(Icons.history_outlined), title: const Text('Hội thoại'),
           onTap: sending ? null : () => navigateTo(1, drawerContext)),
-        ListTile(leading: const Icon(Icons.checklist_outlined), title: const Text('Trợ lý công việc'),
+        ListTile(leading: const Icon(CupertinoIcons.check_mark_circled), title: const Text('Trợ lý công việc'),
           onTap: sending || api.session == null ? null : () {
             Navigator.pop(drawerContext); unawaited(voice.stop());
             Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim())));
@@ -787,7 +764,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         if (api.session == null) const Padding(padding: EdgeInsets.all(16), child: Text('Đăng nhập để xem hội thoại đã lưu.', style: TextStyle(color: Colors.grey)))
         else if (conversations.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Chưa có hội thoại đã lưu.', style: TextStyle(color: Colors.grey))),
         for (final item in conversations.where((c) => (c['title'] as String).toLowerCase().contains(historyQuery.toLowerCase())))
-          ListTile(leading: const Icon(Icons.chat_bubble_outline, size: 20),
+          ListTile(leading: const Icon(CupertinoIcons.chat_bubble, size: 20),
             title: Text(item['title'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
             onTap: sending ? null : () { Navigator.pop(drawerContext); unawaited(openConversation(item as Map<String, dynamic>)); }),
       ])),
@@ -807,7 +784,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return ListView(children: [
           ListTile(title: const Text('Hội thoại đã lưu'), trailing: IconButton(
             tooltip: 'Làm mới', onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
-          for (final item in conversations) ListTile(leading: const Icon(Icons.chat_bubble_outline),
+          for (final item in conversations) ListTile(leading: const Icon(CupertinoCupertinoIcons.chat_bubble_fill),
             title: Text(item['title'] as String, maxLines: 2, overflow: TextOverflow.ellipsis),
             onTap: sending ? null : () => openConversation(item as Map<String, dynamic>)),
           const Padding(padding: EdgeInsets.all(16), child: Text('Hiển thị hội thoại Android. Hội thoại desktop dùng kho đồng bộ riêng.')),
@@ -831,7 +808,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     }
   }
 
-  Widget quickNavigation() => Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 8), child: GlassPanel(child: NavigationBar(
+  Widget quickNavigation() => Padding(padding: EdgeInsets.zero, child: GlassPanel(radius:BorderRadius.zero,child: NavigationBar(
     selectedIndex: tab == 3 ? 3 : 0,
     onDestinationSelected: sending ? null : (index) async {
       await voice.stop();
@@ -839,10 +816,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (index == 0 || index == 3) { selectPage(index == 0 ? 0 : 3); return; }
       if (index == 1) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim()))); }
       else if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
-    }, destinations: const [NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: 'Chat'),
-      NavigationDestination(icon: Icon(Icons.checklist_outlined), label: 'Công việc'),
-      NavigationDestination(icon: Icon(Icons.collections_outlined), label: 'Sáng tạo'),
-      NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Tài khoản')])));
+    }, destinations: const [NavigationDestination(icon: Icon(CupertinoCupertinoIcons.chat_bubble_fill), selectedIcon: Icon(CupertinoIcons.chat_bubble_fill), label: 'Chat'),
+      NavigationDestination(icon: Icon(CupertinoIcons.check_mark_circled), label: 'Công việc'),
+      NavigationDestination(icon: Icon(CupertinoIcons.photo_on_rectangle), label: 'Sáng tạo'),
+      NavigationDestination(icon: Icon(CupertinoIcons.person), selectedIcon: Icon(CupertinoIcons.person_fill), label: 'Tài khoản')])));
 
   @override
   Widget build(BuildContext context) {

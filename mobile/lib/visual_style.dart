@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'sound_effects.dart';
@@ -11,13 +12,13 @@ final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
 
 ThemeData futuristicTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
-  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xff7664ff), brightness: brightness);
-  return ThemeData(useMaterial3: true, colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
-    appBarTheme: AppBarTheme(backgroundColor: dark ? const Color(0xd910142c) : const Color(0xd9f5f5ff),
-      surfaceTintColor: Colors.transparent, centerTitle: false, elevation: 0,
-      titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w700, color: scheme.onSurface)),
-    cardTheme: CardThemeData(color: dark ? const Color(0xb319203e) : const Color(0xd9ffffff), elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: BorderSide(color: scheme.primary.withValues(alpha: .18)))),
+  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xff007aff), brightness: brightness).copyWith(primary: dark ? const Color(0xff0a84ff) : const Color(0xff007aff), surface: dark ? const Color(0xff1c1c1e) : Colors.white, surfaceContainerLow: dark ? const Color(0xff1c1c1e) : Colors.white, primaryContainer: dark ? const Color(0xff153551) : const Color(0xffe4f0ff));
+  return ThemeData(useMaterial3: true, platform: TargetPlatform.iOS, cupertinoOverrideTheme: CupertinoThemeData(brightness: brightness, primaryColor: scheme.primary), colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
+    appBarTheme: AppBarTheme(backgroundColor: dark ? const Color(0xe61c1c1e) : const Color(0xe6f2f2f7),
+      surfaceTintColor: Colors.transparent, centerTitle: true, elevation: 0,
+      titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w600, color: scheme.onSurface)),
+    cardTheme: CardThemeData(color: dark ? const Color(0xff1c1c1e) : const Color(0xffffffff), elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: scheme.outline.withValues(alpha: .08)))),
     inputDecorationTheme: InputDecorationTheme(filled: true, fillColor: scheme.surfaceContainerHighest.withValues(alpha: .4),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: scheme.outlineVariant)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5))),
@@ -25,7 +26,7 @@ ThemeData futuristicTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)))),
     navigationBarTheme: NavigationBarThemeData(backgroundColor: Colors.transparent, elevation: 0,
-      indicatorColor: scheme.primary.withValues(alpha: .22), height: 72),
+      indicatorColor: Colors.transparent, labelTextStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w500)), height: 62),
     snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
   );
 }
@@ -83,7 +84,7 @@ class _AuroraPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bounds = Offset.zero & size;
-    canvas.drawRect(bounds, Paint()..color = dark ? const Color(0xff080d20) : const Color(0xfff4f5ff));
+    canvas.drawRect(bounds, Paint()..color = dark ? const Color(0xff000000) : const Color(0xfff2f2f7));
     if (effects == VisualEffects.off) return;
     final t = phase * math.pi * 2;
     final colors = [const Color(0xff336dff), const Color(0xff8a3ffc), const Color(0xff00c6e5)];
@@ -92,17 +93,10 @@ class _AuroraPainter extends CustomPainter {
       Offset(size.width * .2, size.height * (.88 + .05 * math.cos(t)))];
     for (var i = 0; i < centers.length; i++) {
       final radius = size.width * .9;
-      canvas.drawCircle(centers[i], radius, Paint()..shader = RadialGradient(colors: [colors[i].withValues(alpha: dark ? .24 : .12), colors[i].withValues(alpha: 0)])
+      canvas.drawCircle(centers[i], radius, Paint()..shader = RadialGradient(colors: [colors[i].withValues(alpha: dark ? .055 : .025), colors[i].withValues(alpha: 0)])
         .createShader(Rect.fromCircle(center: centers[i], radius: radius)));
     }
-    if (effects == VisualEffects.full) {
-      final paint = Paint()..color = (dark ? Colors.white : const Color(0xff7060be)).withValues(alpha: .18);
-      for (var i = 0; i < 18; i++) {
-        final x = ((i * 73.7 + phase * 28) % 1000) / 1000 * size.width;
-        final y = ((i * 137.3 - phase * 35) % 1000) / 1000 * size.height;
-        canvas.drawCircle(Offset(x, y), i.isEven ? 1.3 : .8, paint);
-      }
-    }
+
   }
   @override
   bool shouldRepaint(covariant _AuroraPainter oldDelegate) => phase != oldDelegate.phase || dark != oldDelegate.dark || effects != oldDelegate.effects;
@@ -116,8 +110,8 @@ class GlassPanel extends StatelessWidget {
   Widget build(BuildContext context) => ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, effects, _) {
     final scheme = Theme.of(context).colorScheme;
     final content = DecoratedBox(decoration: BoxDecoration(borderRadius: radius,
-      color: scheme.surface.withValues(alpha: effects == VisualEffects.off ? 1 : .68),
-      border: Border.all(color: scheme.primary.withValues(alpha: .24))), child: child);
+      color: scheme.surface.withValues(alpha: effects == VisualEffects.off ? 1 : .84),
+      border: Border.all(color: scheme.outline.withValues(alpha: .1))), child: child);
     return ClipRRect(borderRadius: radius, child: effects == VisualEffects.off ? content :
       BackdropFilter(filter: ImageFilter.blur(sigmaX: effects == VisualEffects.full ? 12 : 5, sigmaY: effects == VisualEffects.full ? 12 : 5), child: content));
   });
@@ -129,23 +123,34 @@ class EffectsPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Hiệu ứng giao diện')),
     body: ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, value, _) => ListView(padding: const EdgeInsets.all(20), children: [
       const Text('Chọn mức hiệu ứng phù hợp với điện thoại. Cài đặt Giảm chuyển động của hệ thống luôn được ưu tiên.'),
-      ValueListenableBuilder<bool>(valueListenable: locationForQuestions, builder: (context, enabled, _) => SwitchListTile(
+      ValueListenableBuilder<bool>(valueListenable: locationForQuestions, builder: (context, enabled, _) => SwitchListTile.adaptive(
         title: const Text('Vị trí cho thời tiết và địa điểm'), subtitle: const Text('Chỉ lấy khi câu hỏi cần vị trí, sau khi bạn cấp quyền Android. Không theo dõi nền.'),
         value: enabled, onChanged: (next) async {
           try { await const FlutterSecureStorage().write(key: 'location_for_questions', value: '$next'); locationForQuestions.value = next; }
           catch (_) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa lưu được cài đặt vị trí.'))); }
         })),
-      ValueListenableBuilder<bool>(valueListenable: SoundEffects.enabled, builder: (context, enabled, _) => SwitchListTile(
+      ValueListenableBuilder<bool>(valueListenable: SoundEffects.enabled, builder: (context, enabled, _) => SwitchListTile.adaptive(
         title: const Text('Âm thanh hiệu ứng'),
-        subtitle: const Text('Âm nhẹ khi gửi tin, nhận câu trả lời và tạo ảnh xong. Tắt khi điện thoại ở chế độ im lặng hoặc đang trò chuyện giọng nói.'),
+        subtitle: const Text('Âm nhẹ khi gửi tin, nhận câu trả lời và tạo ảnh xong. Tôn trọng chế độ im lặng và Không làm phiền. Không phát lúc đang thu hoặc đọc; âm báo thu phát trước khi mở micro.'),
         value: enabled, onChanged: (next) async {
           try { await const FlutterSecureStorage().write(key: 'sound_effects', value: '$next'); SoundEffects.enabled.value = next; }
           catch (_) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa lưu được cài đặt âm thanh.'))); }
         })),
+      ValueListenableBuilder<double>(valueListenable: SoundEffects.volume, builder: (context, volume, _) => Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Text('Âm lượng hiệu ứng · ${(volume*100).round()}%')),
+        CupertinoSlider(value:volume,divisions:20,onChanged:(next)=>SoundEffects.volume.value=next,onChangeEnd:(next) async {
+          try { await const FlutterSecureStorage().write(key:'sound_volume',value:'$next'); }
+          catch (_) { if(context.mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Chưa lưu được âm lượng.'))); }
+        }),
+      ])),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:16),child:Wrap(spacing:6,children:[
+        for(final cue in const {AppSound.sent:'Gửi tin',AppSound.reply:'Trả lời',AppSound.listening:'Bắt đầu thu',AppSound.ended:'Kết thúc',AppSound.created:'Tạo ảnh',AppSound.saved:'Lưu tệp',AppSound.error:'Lỗi'}.entries)
+          TextButton(onPressed:()=>SoundEffects.play(cue.key),child:Text('Nghe: ${cue.value}')),
+      ])),
       const SizedBox(height: 16),
       for (final mode in VisualEffects.values) Card(child: RadioListTile<VisualEffects>(value: mode, groupValue: value,
         title: Text(switch(mode) { VisualEffects.full => 'Đầy đủ', VisualEffects.light => 'Nhẹ', VisualEffects.off => 'Tắt hiệu ứng' }),
-        subtitle: Text(switch(mode) { VisualEffects.full => 'Nền cực quang chuyển động, hạt sáng và thẻ kính mờ', VisualEffects.light => 'Nền tĩnh, kính mờ nhẹ; giảm hoạt ảnh trang trí', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' }),
+        subtitle: Text(switch(mode) { VisualEffects.full => 'Kính mờ, chuyển động nhẹ và bảng chọn kiểu iOS', VisualEffects.light => 'Nền tĩnh, kính mờ nhẹ; giảm hoạt ảnh trang trí', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' }),
         onChanged: (next) async {
           if (next == null) return;
           try { await const FlutterSecureStorage().write(key: 'visual_effects', value: next.name); visualEffects.value = next; }

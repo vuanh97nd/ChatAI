@@ -7,6 +7,8 @@ import 'api.dart';
 import 'voice_robot.dart';
 import 'voice_wave.dart';
 import 'visual_style.dart';
+import 'sound_effects.dart';
+import 'package:flutter/cupertino.dart';
 
 /// Text-only conversation: never dispatches computer or payment operations.
 class VoiceChatPage extends StatefulWidget {
@@ -24,6 +26,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   String selectedVoice = 'auto';
   bool processing = false, paused = false, closed = false;
   int generation = 0;
+  bool startCuePlayed = false;
   @override
   void initState() {
     super.initState();
@@ -40,6 +43,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   }
   void changed() {
     if (!mounted || closed) return;
+    SoundEffects.microphoneActive = voice.starting || voice.listening || voice.transcribing;
     setState(() {
       if (voice.error != null) { failure = voice.error!; paused = true; phase = 'Chưa mở được giọng nói'; }
       else if (!processing) { phase = voice.transcribing ? 'Đang nhận dạng…' : voice.starting ? 'Đang mở micro…' : voice.listening ? 'Đang nghe…' : paused ? 'Đã tạm dừng' : 'Sẵn sàng'; }
@@ -50,7 +54,10 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   }
   Future<void> listen() async {
     if (!mounted || closed || processing) return;
+    final cueNeeded=!startCuePlayed||paused;
     setState(() { paused = false; draft = ''; failure = ''; phase = 'Đang mở micro…'; });
+    if(cueNeeded){startCuePlayed=true;await SoundEffects.play(AppSound.listening,voiceBoundary:true);await Future<void>.delayed(const Duration(milliseconds:220));}
+    if(!mounted||closed||paused)return;
     await voice.start((words) { if (mounted && !closed) setState(() => draft = words); });
   }
   Future<void> reply() async {
@@ -80,7 +87,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   }
   @override
   void dispose() {
-    closed = true; generation++; WidgetsBinding.instance.removeObserver(this);
+    closed = true; SoundEffects.microphoneActive=false; generation++; WidgetsBinding.instance.removeObserver(this);
     voice.removeListener(changed); voice.dispose(); super.dispose();
   }
   @override
@@ -145,7 +152,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         TextButton.icon(onPressed: processing && !voice.speaking ? null : paused ? listen : pause,
           icon: Icon(paused ? Icons.mic : Icons.mic_off), label: Text(paused ? 'Nói tiếp' : 'Tắt mic')),
         TextButton(onPressed: voice.speaking ? pause : null, child: const Text('Ngắt lời')),
-        FilledButton.tonalIcon(style: FilledButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), onPressed: () => Navigator.pop(context), icon: const Icon(Icons.call_end), label: const Text('Kết thúc')),
+        FilledButton.tonalIcon(style: FilledButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), onPressed: () async { closed=true; generation++; await voice.stop(); SoundEffects.microphoneActive=false; await SoundEffects.play(AppSound.ended,voiceBoundary:true); if(context.mounted)Navigator.pop(context); }, icon: const Icon(CupertinoIcons.phone_down_fill), label: const Text('Kết thúc')),
       ]), const SizedBox(height: 16),
     ])),
   );

@@ -105,7 +105,7 @@ class _MediaPageState extends State<MediaPage> {
           child: Hero(tag: 'generated-image', child: ClipRRect(borderRadius: BorderRadius.circular(24), child: Image.memory(image!)))),
         OutlinedButton(onPressed: busy ? null : () => run(() async {
           final path = await FilePicker.platform.saveFile(dialogTitle: 'Lưu ảnh', fileName: 'ChatAI.jpg', bytes: image!);
-          if (mounted && path != null) setState(() => message = 'Đã lưu ảnh.');
+          if (mounted && path != null) { setState(() => message = 'Đã lưu ảnh.'); unawaited(SoundEffects.play(AppSound.saved)); }
         }), child: const Text('Lưu ảnh')),
       ],
     ]));

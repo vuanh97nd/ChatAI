@@ -119,6 +119,10 @@ def configure(android):
     if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs' not in text:
         text += '\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
     build.write_text(text)
+    raw = android / 'app/src/main/res/raw'
+    raw.mkdir(parents=True, exist_ok=True)
+    for cue in (ROOT / 'assets/sounds').glob('*.wav'):
+        shutil.copyfile(cue, raw / cue.name)
     activity = android / 'app/src/main/kotlin/vn/chatai/chatai_mobile/MainActivity.kt'
     activity.parent.mkdir(parents=True, exist_ok=True)
     activity.write_text("""package vn.chatai.chatai_mobile
@@ -133,6 +137,12 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity: FlutterActivity() {
   private var assistantChannel: MethodChannel? = null
   private var pendingAssist = false
+  private var effectsPool: android.media.SoundPool? = null
+  override fun onDestroy() {
+    effectsPool?.release()
+    effectsPool = null
+    super.onDestroy()
+  }
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
@@ -151,25 +161,32 @@ class MainActivity: FlutterActivity() {
         pendingAssist = false
       } else { result.notImplemented() }
     }
+    val effects = android.media.SoundPool.Builder().setMaxStreams(1).setAudioAttributes(
+      android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()).build()
+    effectsPool = effects
+    val loadedSounds = mutableSetOf<Int>()
+    effects.setOnLoadCompleteListener { _, id, status -> if (status == 0) loadedSounds.add(id) }
+    val sounds = mapOf(
+      "sent" to effects.load(this, R.raw.chatai_sent, 1),
+      "reply" to effects.load(this, R.raw.chatai_reply, 1),
+      "created" to effects.load(this, R.raw.chatai_created, 1),
+      "listening" to effects.load(this, R.raw.chatai_listening, 1),
+      "ended" to effects.load(this, R.raw.chatai_ended, 1),
+      "saved" to effects.load(this, R.raw.chatai_saved, 1),
+      "error" to effects.load(this, R.raw.chatai_error, 1))
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/sound_effects").setMethodCallHandler { call, result ->
       if (call.method != "play") { result.notImplemented() }
       else {
         val manager = getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
-        if (manager.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL || manager.mode != android.media.AudioManager.MODE_NORMAL || isFinishing) {
+        val notifications = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (manager.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL || manager.mode != android.media.AudioManager.MODE_NORMAL || manager.isMusicActive || notifications.currentInterruptionFilter != android.app.NotificationManager.INTERRUPTION_FILTER_ALL || isFinishing) {
           result.success(null)
         } else {
           try {
-            val tone = when (call.arguments as? String) {
-              "sent" -> android.media.ToneGenerator.TONE_PROP_BEEP
-              "reply" -> android.media.ToneGenerator.TONE_PROP_ACK
-              "created" -> android.media.ToneGenerator.TONE_PROP_BEEP2
-              else -> -1
-            }
-            if (tone >= 0) {
-              val player = android.media.ToneGenerator(android.media.AudioManager.STREAM_SYSTEM, 12)
-              player.startTone(tone, 100)
-              android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ player.release() }, 250)
-            }
+            val name = call.argument<String>("name")
+            val volume = ((call.argument<Number>("volume")?.toFloat() ?: .35f).coerceIn(0f, 1f)) * .5f
+            val sound = sounds[name]
+            if (sound != null && loadedSounds.contains(sound) && volume > 0) effects.play(sound, volume, volume, 1, 0, 1f)
           } catch (_: Exception) { /* Device sound is optional. */ }
           result.success(null)
         }
