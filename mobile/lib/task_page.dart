@@ -119,7 +119,7 @@ class _TaskPageState extends State<TaskPage> {
           await showTaskReminders(widget.api);
         } else { await disableTaskReminders(widget.api); }
         if (mounted) setState(() { reminderEnabled = enabled; message = enabled ? 'Đã bật nhắc việc nền.' : 'Đã tắt nhắc việc nền.'; });
-      }),
+      })),
     ]),
     if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CupertinoActivityIndicator())),
     if (message.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: SelectableText(message)),
