@@ -17,7 +17,7 @@ class IosChatComposer extends StatelessWidget {
  Future<void> chooseProvider(BuildContext context) async {
   final selected=await showCupertinoModalPopup<String>(context:context,builder:(c)=>CupertinoActionSheet(
    title:const Text('Chọn AI'),message:const Text('AI đang chọn tiếp tục dùng các trợ lý chuyên môn tự động.'),
-   actions:[for(final entry in names.entries)CupertinoActionSheetAction(onPressed:()=>Navigator.pop(c,entry.key),child:Row(mainAxisAlignment:MainAxisAlignment.center,children:[ProviderIcon(provider:entry.key,size:22),const SizedBox(width:10),Text(entry.value),if(entry.key==provider)...[const SizedBox(width:10),const Icon(CupertinoIcons.check_mark,size:20)]]))],
+   actions:[for(final entry in names.entries)CupertinoActionSheetAction(onPressed:()=>Navigator.pop(c,entry.key),child:Row(mainAxisAlignment:MainAxisAlignment.center,children:[ProviderIcon(provider:entry.key,size:22),const SizedBox(width:10),Flexible(child:Text(entry.value,textAlign:TextAlign.center,maxLines:2,overflow:TextOverflow.ellipsis)),if(entry.key==provider)...[const SizedBox(width:10),const Icon(CupertinoIcons.check_mark,size:20)]]))],
    cancelButton:CupertinoActionSheetAction(onPressed:()=>Navigator.pop(c),child:const Text('Hủy'))));
   if(selected!=null){HapticFeedback.selectionClick();onProvider(selected);}
  }
@@ -27,7 +27,7 @@ class IosChatComposer extends StatelessWidget {
   final color=Theme.of(context).colorScheme;
   return Padding(padding:const EdgeInsets.fromLTRB(12,6,12,10),child:GlassPanel(radius:BorderRadius.circular(24),child:Padding(
    padding:const EdgeInsets.fromLTRB(5,0,5,5),child:Column(mainAxisSize:MainAxisSize.min,children:[
-    Row(children:[Expanded(child:Align(alignment:Alignment.centerLeft,child:CupertinoButton(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),onPressed:busy||!canChooseProvider?null:()=>chooseProvider(context),child:Row(mainAxisSize:MainAxisSize.min,children:[ProviderIcon(provider:provider,size:17),const SizedBox(width:7),Text(names[provider]??'Chọn AI',style:TextStyle(fontSize:13,color:color.onSurfaceVariant)),const SizedBox(width:4),Icon(CupertinoIcons.chevron_down,size:12,color:color.onSurfaceVariant)])))),
+    Row(children:[Expanded(child:Align(alignment:Alignment.centerLeft,child:CupertinoButton(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),onPressed:busy||!canChooseProvider?null:()=>chooseProvider(context),child:Row(mainAxisSize:MainAxisSize.min,children:[ProviderIcon(provider:provider,size:17),const SizedBox(width:7),Flexible(child:Text(names[provider]??'Chọn AI',maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontSize:13,color:color.onSurfaceVariant))),const SizedBox(width:4),Icon(CupertinoIcons.chevron_down,size:12,color:color.onSurfaceVariant)])))),
      IconButton(tooltip:'Tạo ảnh/video',onPressed:onMedia,icon:Icon(CupertinoIcons.wand_stars,size:21,color:color.primary)),
     ]),
     if(attachmentChips.isNotEmpty)SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:attachmentChips)),
