@@ -236,8 +236,14 @@ class VoiceController extends ChangeNotifier {
   }
 
   Future<void> finishListening() async {
-    if (engine.recordsAudio && listening) { await engine.finish(); }
-    else { await stop(); }
+    if (!listening) { await stop(); return; }
+    final run = _generation;
+    await engine.finish();
+    if (!engine.recordsAudio) {
+      // Let the recognizer deliver its final words; cancelling discards them.
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (!_disposed && run == _generation && listening) { listening = false; _changed(); }
+    }
   }
 
   Future<void> read(String text) async {

@@ -133,7 +133,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     return recorder.hasPermission();
   }
   @override
-  Future<List<String>> locales() async => _useDeviceRecognition ? deviceRecognizer.locales() : ['vi-VN'];
+  Future<List<String>> locales() async { if (_useDeviceRecognition) return await deviceRecognizer.locales(); return ['vi-VN']; }
   @override
   Future<void> listen(String locale, void Function(String) words) async {
     if (_useDeviceRecognition) {

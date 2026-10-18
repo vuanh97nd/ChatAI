@@ -46,6 +46,12 @@ class FakeAudioVoice extends FakeVoice {
 }
 
 void main() {
+  testWidgets('finishing device recognition preserves words and ends a stalled listener', (tester) async {
+    final engine = FakeVoice(); final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    var text = ''; await voice.start((words) => text = words); engine.recognition!('Câu hỏi đã nhận');
+    final finishing = voice.finishListening(); await tester.pump(); await tester.pump(const Duration(milliseconds: 600)); await finishing;
+    expect(text, 'Câu hỏi đã nhận'); expect(voice.listening, isFalse); expect(voice.error, isNull);
+  });
   testWidgets('cloud capture is independent of native recognition and finishes with text', (tester) async {
     final engine = FakeAudioVoice();
     final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
