@@ -20,7 +20,7 @@ void main() {
       return http.Response(jsonEncode({'success': true, 'items': [], 'notifications': [], 'conversations': [],
         'conversation': {'id': 'tools-test'}, 'image_available': true, 'video_available': false}), 200);
     }));
-    await tester.pumpWidget(MaterialApp(theme: futuristicTheme(Brightness.light), home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
+    await tester.pumpWidget(MaterialApp(theme: futuristicTheme(Brightness.light), builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!), home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
     expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations.length, 3);
     await tester.enterText(find.byType(TextField).last, 'Tạo ảnh con mèo');
