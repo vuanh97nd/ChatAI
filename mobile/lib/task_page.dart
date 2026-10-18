@@ -8,9 +8,10 @@ import 'task_reminders.dart';
 
 class TaskPage extends StatefulWidget {
   final ChatApi api;
+  final bool embedded;
   final String provider;
   final String initialGoal;
-  const TaskPage({super.key, required this.api, required this.provider, this.initialGoal = ''});
+  const TaskPage({super.key, required this.api, this.embedded = false, required this.provider, this.initialGoal = ''});
   @override
   State<TaskPage> createState() => _TaskPageState();
 }
@@ -28,7 +29,7 @@ class _TaskPageState extends State<TaskPage> {
     goal = TextEditingController(text: widget.initialGoal);
     store = TaskPlanStore(widget.api.server.origin, widget.api.session!.username);
     unawaited(load());
-    reminders = Timer.periodic(const Duration(seconds: 30), (_) => showTaskReminders(widget.api).catchError((Object _) {}));
+    reminders = Timer.periodic(const Duration(seconds: 30), (_) { if (mounted && TickerMode.of(context)) { unawaited(showTaskReminders(widget.api).catchError((Object _) {})); } });
   }
   @override
   void dispose() { reminders?.cancel(); goal.dispose(); super.dispose(); }
@@ -94,9 +95,10 @@ class _TaskPageState extends State<TaskPage> {
   }
   String dueLabel(DateTime value) => '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2,'0')}:${value.minute.toString().padLeft(2,'0')}';
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Trợ lý công việc'), actions: [
+  Widget build(BuildContext context) => Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Trợ lý công việc'), actions: [
     IconButton(onPressed: busy ? null : load, tooltip: 'Tải lại tiến độ', icon: const Icon(Icons.refresh)),
   ]), body: ListView(padding: const EdgeInsets.all(16), children: [
+    if (widget.embedded) Align(alignment: Alignment.centerRight, child: IconButton(onPressed: busy ? null : load, tooltip: 'Tải lại tiến độ', icon: const Icon(Icons.refresh))),
     const Text('Kế hoạch và tiến độ được lưu riêng cho tài khoản trên điện thoại này. Chưa đồng bộ sang thiết bị khác.'),
     const SizedBox(height: 12),
     TextField(controller: goal, enabled: !busy, minLines: 2, maxLines: 5, maxLength: 2000,

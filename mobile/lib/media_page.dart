@@ -10,9 +10,10 @@ import 'sound_effects.dart';
 
 class MediaPage extends StatefulWidget {
   final ChatApi api;
+  final bool embedded;
   final String initialPrompt;
   final bool initialVideo;
-  const MediaPage({super.key, required this.api, this.initialPrompt = '', this.initialVideo = false});
+  const MediaPage({super.key, required this.api, this.embedded = false, this.initialPrompt = '', this.initialVideo = false});
   @override
   State<MediaPage> createState() => _MediaPageState();
 }
@@ -80,7 +81,7 @@ class _MediaPageState extends State<MediaPage> {
     if (mounted && path != null) setState(() => message = 'Đã lưu video. Mở bằng ứng dụng xem video trên điện thoại.');
   });
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Tạo ảnh và video')),
+  Widget build(BuildContext context) => Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Tạo ảnh và video')),
     body: ListView(padding: const EdgeInsets.all(16), children: [
       SegmentedButton<bool>(segments: const [ButtonSegment(value: false, label: Text('Ảnh')), ButtonSegment(value: true, label: Text('Video'))],
         selected: {video}, onSelectionChanged: busy ? null : (value) => setState(() { video = value.first; message = ''; })),

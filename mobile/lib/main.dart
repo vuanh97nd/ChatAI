@@ -16,6 +16,7 @@ import 'sound_effects.dart';
 import 'location_context.dart';
 import 'connected_apps.dart';
 import 'ios_composer.dart';
+import 'persistent_tabs.dart';
 import 'package:flutter/cupertino.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
@@ -686,7 +687,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   AppBar topBar() => AppBar(
     surfaceTintColor: Colors.transparent, elevation: 0,
     leading: tab == 0 ? IconButton(tooltip:'Open navigation menu',onPressed:()=>scaffoldKey.currentState?.openDrawer(),icon:const Icon(CupertinoIcons.sidebar_left)) : BackButton(onPressed: goBack),
-    title: tab == 0 ? const Text('Chat AI') : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo'][tab]),
+    title: tab == 0 ? const Text('Chat AI') : Text(['Chat AI', 'Hội thoại', 'Bộ nhớ', 'Tài khoản', 'Máy tính', 'Thông báo', 'Công việc', 'Sáng tạo'][tab]),
     actions: [
       if(api.session!=null&&tab==0)IconButton(tooltip:'Cuộc trò chuyện mới',onPressed:sending?null:newChat,icon:const Icon(CupertinoIcons.square_pencil)),
       if (api.session == null) TextButton(onPressed: sending ? null : openLogin, child: const Text('Đăng nhập'))
@@ -778,8 +779,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       ])),
     ]))));
 
-  Widget pageContent() {
-    switch (tab) {
+  Widget pageContent(int page) {
+    switch (page) {
       case 1:
         return ListView(children: [
           ListTile(title: const Text('Hội thoại đã lưu'), trailing: IconButton(
@@ -795,6 +796,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             tooltip: 'Thêm ghi nhớ', onPressed: working ? null : editMemory, icon: const Icon(Icons.add))),
           for (final m in memories) ListTile(title: Text(m['title'] as String), subtitle: Text(m['text'] as String)),
         ]);
+      case 6: return TaskPage(api: api, provider: provider, embedded: true);
+      case 7: return MediaPage(api: api, embedded: true);
       case 3: return account();
       case 4: return ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device);
       case 5:
@@ -809,13 +812,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Widget quickNavigation() => Padding(padding: EdgeInsets.zero, child: GlassPanel(radius:BorderRadius.zero,child: NavigationBar(
-    selectedIndex: tab == 3 ? 3 : 0,
-    onDestinationSelected: sending ? null : (index) async {
-      await voice.stop();
-      if (!mounted) return;
-      if (index == 0 || index == 3) { selectPage(index == 0 ? 0 : 3); return; }
-      if (index == 1) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim()))); }
-      else if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
+    selectedIndex: switch (tab) { 6 => 1, 7 => 2, 3 => 3, _ => 0 },
+    onDestinationSelected: sending ? null : (index) {
+      FocusScope.of(context).unfocus();
+      selectPage(const [0, 6, 7, 3][index]);
+      unawaited(voice.stop());
     }, destinations: const [NavigationDestination(icon: Icon(CupertinoIcons.chat_bubble_fill), selectedIcon: Icon(CupertinoIcons.chat_bubble_fill), label: 'Chat'),
       NavigationDestination(icon: Icon(CupertinoIcons.check_mark_circled), label: 'Công việc'),
       NavigationDestination(icon: Icon(CupertinoIcons.photo_on_rectangle), label: 'Sáng tạo'),
@@ -841,7 +842,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           }, child: Text(voice.recognitionError ? 'Cài đặt nhận dạng' : 'Cài đặt giọng đọc')),
           TextButton(onPressed: () => changed(() => error = null), child: const Text('Đóng'))]),
         if (working) const LinearProgressIndicator(),
-        Expanded(child: pageContent()),
+        Expanded(child: PersistentTabs(key: ValueKey(api.session!.username), selected: tab,
+          animate: visualEffects.value != VisualEffects.off, builder: pageContent)),
       ]))));
   }
 
