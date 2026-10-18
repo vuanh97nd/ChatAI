@@ -90,6 +90,12 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     closed = true; SoundEffects.microphoneActive=false; generation++; WidgetsBinding.instance.removeObserver(this);
     voice.removeListener(changed); voice.dispose(); super.dispose();
   }
+  Widget voiceControl(IconData icon,String label,VoidCallback? action,{bool destructive=false}) => Column(mainAxisSize:MainAxisSize.min,children:[
+    IconButton(tooltip:label,onPressed:action,icon:Icon(icon,size:25),style:IconButton.styleFrom(
+      minimumSize:const Size(62,62),backgroundColor:destructive?const Color(0xffff453a):Theme.of(context).colorScheme.surfaceContainerHigh,
+      foregroundColor:destructive?Colors.white:Theme.of(context).colorScheme.onSurface,shape:const CircleBorder())),
+    const SizedBox(height:7),Text(label,textAlign:TextAlign.center,style:Theme.of(context).textTheme.labelMedium),
+  ]);
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Trò chuyện giọng nói'), actions: [
@@ -148,12 +154,11 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
           }, child: const Text('Cài đặt giọng đọc')),
         ]),
       ])))))),
-      Wrap(alignment: WrapAlignment.center, spacing: 8, children: [
-        TextButton.icon(onPressed: processing && !voice.speaking ? null : paused ? listen : pause,
-          icon: Icon(paused ? Icons.mic : Icons.mic_off), label: Text(paused ? 'Nói tiếp' : 'Tắt mic')),
-        TextButton(onPressed: voice.speaking ? pause : null, child: const Text('Ngắt lời')),
-        FilledButton.tonalIcon(style: FilledButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error), onPressed: () async { closed=true; generation++; await voice.stop(); SoundEffects.microphoneActive=false; await SoundEffects.play(AppSound.ended,voiceBoundary:true); if(context.mounted)Navigator.pop(context); }, icon: const Icon(CupertinoIcons.phone_down_fill), label: const Text('Kết thúc')),
-      ]), const SizedBox(height: 16),
+      Padding(padding:const EdgeInsets.symmetric(horizontal:20,vertical:12),child:Row(children:[
+        Expanded(child:voiceControl(paused?CupertinoIcons.mic:CupertinoIcons.mic_slash,paused?'Nói tiếp':'Tắt mic',processing&&!voice.speaking?null:paused?listen:pause)),
+        Expanded(child:voiceControl(CupertinoIcons.hand_raised,'Ngắt lời',voice.speaking?pause:null)),
+        Expanded(child:voiceControl(CupertinoIcons.phone_down_fill,'Kết thúc',() async {closed=true;generation++;await voice.stop();SoundEffects.microphoneActive=false;await SoundEffects.play(AppSound.ended,voiceBoundary:true);if(context.mounted)Navigator.pop(context);},destructive:true)),
+      ])), const SizedBox(height:8),
     ])),
   );
 }
