@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'sound_effects.dart';
 import 'location_context.dart';
+import 'ios_settings.dart';
 
 enum VisualEffects { full, light, off }
 final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
@@ -13,7 +14,12 @@ final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
 ThemeData futuristicTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(seedColor: const Color(0xff007aff), brightness: brightness).copyWith(primary: dark ? const Color(0xff0a84ff) : const Color(0xff007aff), surface: dark ? const Color(0xff1c1c1e) : Colors.white, surfaceContainerLow: dark ? const Color(0xff1c1c1e) : Colors.white, primaryContainer: dark ? const Color(0xff153551) : const Color(0xffe4f0ff));
-  return ThemeData(useMaterial3: true, fontFamily: 'Roboto', platform: TargetPlatform.iOS, cupertinoOverrideTheme: CupertinoThemeData(brightness: brightness, primaryColor: scheme.primary, textTheme: CupertinoTextThemeData(textStyle: TextStyle(fontFamily:'Roboto',fontSize:17,color:scheme.onSurface), actionTextStyle: TextStyle(fontFamily:'Roboto',fontSize:20,color:scheme.primary))), colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
+  return ThemeData(splashFactory: NoSplash.splashFactory, highlightColor: Colors.transparent,
+    listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4), minVerticalPadding: 10),
+    checkboxTheme: CheckboxThemeData(shape: const CircleBorder(), side: BorderSide(color: scheme.onSurfaceVariant, width: 1.5)),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .3)))),
+    tabBarTheme: TabBarThemeData(dividerColor: Colors.transparent, indicatorSize: TabBarIndicatorSize.tab, labelColor: scheme.primary, unselectedLabelColor: scheme.onSurfaceVariant, indicator: BoxDecoration(color: scheme.primary.withValues(alpha: .12), borderRadius: BorderRadius.circular(12))),
+    useMaterial3: true, fontFamily: 'Roboto', platform: TargetPlatform.iOS, cupertinoOverrideTheme: CupertinoThemeData(brightness: brightness, primaryColor: scheme.primary, textTheme: CupertinoTextThemeData(textStyle: TextStyle(fontFamily:'Roboto',fontSize:17,color:scheme.onSurface), actionTextStyle: TextStyle(fontFamily:'Roboto',fontSize:20,color:scheme.primary))), colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
     appBarTheme: AppBarTheme(backgroundColor: dark ? const Color(0xe61c1c1e) : const Color(0xe6f2f2f7),
       surfaceTintColor: Colors.transparent, centerTitle: true, elevation: 0,
       titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w600, color: scheme.onSurface)),
@@ -121,8 +127,8 @@ class EffectsPage extends StatelessWidget {
   const EffectsPage({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Hiệu ứng giao diện')),
-    body: ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, value, _) => ListView(padding: const EdgeInsets.all(20), children: [
-      const Text('Chọn mức hiệu ứng phù hợp với điện thoại. Cài đặt Giảm chuyển động của hệ thống luôn được ưu tiên.'),
+    body: ValueListenableBuilder<VisualEffects>(valueListenable: visualEffects, builder: (context, value, _) => IosPageList(title: 'Cá nhân hóa', subtitle: 'Cài đặt Giảm chuyển động của hệ thống luôn được ưu tiên.', children: [
+      IosSection(title: 'QUYỀN RIÊNG TƯ VÀ ÂM THANH', children: [
       ValueListenableBuilder<bool>(valueListenable: locationForQuestions, builder: (context, enabled, _) => SwitchListTile.adaptive(
         title: const Text('Vị trí cho thời tiết và địa điểm'), subtitle: const Text('Chỉ lấy khi câu hỏi cần vị trí, sau khi bạn cấp quyền Android. Không theo dõi nền.'),
         value: enabled, onChanged: (next) async {
@@ -147,15 +153,16 @@ class EffectsPage extends StatelessWidget {
         for(final cue in const {AppSound.sent:'Gửi tin',AppSound.reply:'Trả lời',AppSound.listening:'Bắt đầu thu',AppSound.ended:'Kết thúc',AppSound.created:'Tạo ảnh',AppSound.saved:'Lưu tệp',AppSound.error:'Lỗi'}.entries)
           TextButton(onPressed:()=>SoundEffects.play(cue.key),child:Text('Nghe: ${cue.value}')),
       ])),
-      const SizedBox(height: 16),
-      for (final mode in VisualEffects.values) Card(child: RadioListTile<VisualEffects>(value: mode, groupValue: value,
-        title: Text(switch(mode) { VisualEffects.full => 'Đầy đủ', VisualEffects.light => 'Nhẹ', VisualEffects.off => 'Tắt hiệu ứng' }),
-        subtitle: Text(switch(mode) { VisualEffects.full => 'Kính mờ, chuyển động nhẹ và bảng chọn kiểu iOS', VisualEffects.light => 'Nền tĩnh, kính mờ nhẹ; giảm hoạt ảnh trang trí', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' }),
-        onChanged: (next) async {
-          if (next == null) return;
-          try { await const FlutterSecureStorage().write(key: 'visual_effects', value: next.name); visualEffects.value = next; }
+      ]),
+      IosSection(title: 'CHUYỂN ĐỘNG', children: [
+      for (final mode in VisualEffects.values) IosChoice(selected: mode == value,
+        title: switch(mode) { VisualEffects.full => 'Đầy đủ', VisualEffects.light => 'Nhẹ', VisualEffects.off => 'Tắt hiệu ứng' },
+        subtitle: switch(mode) { VisualEffects.full => 'Kính mờ, chuyển động nhẹ và bảng chọn kiểu iOS', VisualEffects.light => 'Nền tĩnh, kính mờ nhẹ; giảm hoạt ảnh trang trí', VisualEffects.off => 'Nền đơn sắc, tắt chuyển động trang trí' },
+        onTap: () async {
+          try { await const FlutterSecureStorage().write(key: 'visual_effects', value: mode.name); visualEffects.value = mode; }
           catch (_) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa lưu được mức hiệu ứng. Hãy thử lại.'))); }
-        })),
+        }),
+      ]),
     ])));
 }
 

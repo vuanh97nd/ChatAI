@@ -1,3 +1,4 @@
+import 'ios_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -50,7 +51,7 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
       else {
         try{opened=await channel.invokeMethod<bool>('open',appPackages[selected])??false;}on MissingPluginException{opened=false;}
         if(!opened && mounted){
-          final install=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:Text('Chưa mở được ${appNames[selected]}'),content:const Text('Ứng dụng có thể chưa được cài. Mở trang Google Play để kiểm tra?'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Hủy')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Google Play'))]));
+          final install=await showDialog<bool>(context:context,builder:(c)=>AlertDialog.adaptive(title:Text('Chưa mở được ${appNames[selected]}'),content:const Text('Ứng dụng có thể chưa được cài. Mở trang Google Play để kiểm tra?'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Hủy')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Google Play'))]));
           if(install==true)opened=await launchUrl(Uri.https('play.google.com','/store/apps/details',{'id':appPackages[selected]!}),mode:LaunchMode.externalApplication);
         }
       }
@@ -59,7 +60,7 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
     finally{if(mounted)setState(()=>busy=false);}
   }
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Ứng dụng & liên kết')),body:ListView(padding:const EdgeInsets.all(20),children:[
+  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Ứng dụng & liên kết')),body:IosPageList(title:'Ứng dụng',subtitle:'Tiếp tục công việc trong ứng dụng bạn dùng mỗi ngày.',children:[
     const Text('Mở ứng dụng để tiếp tục công việc. Chat AI chưa có quyền đọc Drive/Gmail và không tự đặt xe hoặc gửi thư.'),
     if(widget.initialRequest.isNotEmpty) Padding(padding:const EdgeInsets.only(top:12),child:Text('Yêu cầu: ${widget.initialRequest}')),
     const SizedBox(height:16),

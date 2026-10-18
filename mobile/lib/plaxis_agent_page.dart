@@ -186,7 +186,7 @@ class _PlaxisAgentPageState extends State<PlaxisAgentPage>
   Future<void> clearUncertain() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => AlertDialog.adaptive(
         title: const Text('Kiểm tra công việc trên PC'),
         content: const Text(
           'Yêu cầu trước có thể đã chạy. Chỉ mở gửi việc lại sau khi đã kiểm tra PC để tránh chạy trùng.',

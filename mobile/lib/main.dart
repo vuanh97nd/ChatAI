@@ -17,6 +17,7 @@ import 'location_context.dart';
 import 'connected_apps.dart';
 import 'ios_composer.dart';
 import 'persistent_tabs.dart';
+import 'ios_settings.dart';
 import 'package:flutter/cupertino.dart';
 import 'media_page.dart';
 import 'media_intent.dart';
@@ -452,7 +453,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (error != null) ListTile(
         dense: true, title: Text(voice.error != null ? voice.error! : 'Chưa kết nối được. Vui lòng thử lại sau.'),
         trailing: TextButton(onPressed: () => showDialog<void>(context: context,
-          builder: (c) => AlertDialog(title: const Text('Chi tiết lỗi'),
+          builder: (c) => AlertDialog.adaptive(title: const Text('Chi tiết lỗi'),
             content: SingleChildScrollView(child: SelectableText(error!)),
             actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])),
           child: const Text('Chi tiết'))),
@@ -527,7 +528,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Future<void> editMemory() async {
     final title = TextEditingController(), text = TextEditingController();
-    final save = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    final save = await showDialog<bool>(context: context, builder: (c) => AlertDialog.adaptive(
       title: const Text('Thêm ghi nhớ'), content: SingleChildScrollView(child: Column(
         mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: title, maxLength: 120, decoration: const InputDecoration(labelText: 'Tiêu đề')),
@@ -579,23 +580,25 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Widget account() {
     final wallet = billing?['wallet'] as Map<String, dynamic>?;
-    return ListView(padding: const EdgeInsets.all(16), children: [
-      Text(api.session!.fullname, style: Theme.of(context).textTheme.headlineSmall),
-      Text(api.session!.username), const SizedBox(height: 20),
-      ListTile(leading: const Icon(Icons.notifications_active_outlined), title: const Text('Bật thông báo điện thoại'),
+    return IosPageList(title: 'Tài khoản', storageKey: const PageStorageKey('account'), children: [
+      IosSection(children: [ListTile(leading: CircleAvatar(backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: .12), child: Icon(CupertinoIcons.person_fill, color: Theme.of(context).colorScheme.primary)), title: Text(api.session!.fullname, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20)), subtitle: Text(api.session!.username))]),
+      IosSection(title: 'THÔNG BÁO VÀ QUẢN LÝ', children: [
+      ListTile(leading: const Icon(CupertinoIcons.bell), title: const Text('Bật thông báo điện thoại'),
         subtitle: const Text('Kiểm tra nền khoảng 15 phút/lần; có thể chậm khi tiết kiệm pin'),
         onTap: working ? null : () => guard(() async {
           final allowed = await enableAccountNotifications(api);
           changed(() => error = allowed ? 'Đã bật thông báo. Bạn có thể quản lý quyền trong Cài đặt Android.' : 'Chưa được cấp quyền. Bật Thông báo trong Cài đặt Android nếu muốn nhận.');
         })),
       TextButton(onPressed: working ? null : () => guard(() async { await disableAccountNotifications(api); changed(() => error = 'Đã tắt thông báo điện thoại.'); }), child: const Text('Tắt thông báo điện thoại')),
-      if (api.session!.admin) ListTile(leading: const Icon(Icons.admin_panel_settings),
+      if (api.session!.admin) ListTile(leading: const Icon(CupertinoIcons.person_2_square_stack), trailing: const Icon(CupertinoIcons.chevron_forward, size: 16),
         title: const Text('Quản trị'), subtitle: const Text('Người dùng · token · thông báo · thanh toán'),
         onTap: () async {
           await voice.stop();
           if (!mounted) return;
           await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => AdminPage(api: api)));
         }),
+      ]),
+      IosSection(title: 'VÍ VÀ THANH TOÁN', children: [Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Số dư: ${wallet == null ? 'Chưa tải được' : money(wallet['balance_vnd'] as num)}',
         style: Theme.of(context).textTheme.titleLarge),
       Text('Khả dụng: ${money((wallet?['available_vnd'] as num?) ?? 0)}'),
@@ -623,12 +626,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           'Số tiền: ${money(order!['order']['amount'] as num)}\nNội dung: ${order!['order']['memo']}'),
         const Text('Đang chờ xác nhận tự động. Chuyển đúng số tiền và nội dung.'),
       ],
-      OutlinedButton(onPressed: working ? null : () => guard(refresh), child: const Text('Làm mới')),
-      OutlinedButton(onPressed: working || sending ? null : () => guard(signOut), child: const Text('Đăng xuất')),
+      ]))]),
+      IosSection(children: [ListTile(leading: const Icon(CupertinoIcons.refresh), title: const Text('Làm mới'), onTap: working ? null : () => guard(refresh)),
+        ListTile(leading: Icon(CupertinoIcons.square_arrow_right, color: Theme.of(context).colorScheme.error), title: Text('Đăng xuất', style: TextStyle(color: Theme.of(context).colorScheme.error)), onTap: working || sending ? null : () => guard(signOut))]),
     ]);
   }
   Future<bool> confirmDiscard() async => await showDialog<bool>(context: context,
-    builder: (c) => AlertDialog(title: const Text('Bỏ nội dung chưa gửi?'),
+    builder: (c) => AlertDialog.adaptive(title: const Text('Bỏ nội dung chưa gửi?'),
       content: const Text('Bản nháp và file đính kèm sẽ được xóa.'), actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Giữ lại')),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Bỏ nội dung')),
@@ -782,31 +786,32 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Widget pageContent(int page) {
     switch (page) {
       case 1:
-        return ListView(children: [
+        return IosPageList(title: 'Hội thoại', storageKey: const PageStorageKey('conversations'), children: [IosSection(children: [
           ListTile(title: const Text('Hội thoại đã lưu'), trailing: IconButton(
             tooltip: 'Làm mới', onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
           for (final item in conversations) ListTile(leading: const Icon(CupertinoIcons.chat_bubble_fill),
             title: Text(item['title'] as String, maxLines: 2, overflow: TextOverflow.ellipsis),
             onTap: sending ? null : () => openConversation(item as Map<String, dynamic>)),
           const Padding(padding: EdgeInsets.all(16), child: Text('Hiển thị hội thoại Android. Hội thoại desktop dùng kho đồng bộ riêng.')),
-        ]);
+        ])]);
       case 2:
-        return ListView(children: [
+        return IosPageList(title: 'Bộ nhớ', storageKey: const PageStorageKey('memories'), children: [IosSection(children: [
           ListTile(title: const Text('Bộ nhớ cá nhân'), trailing: IconButton(
             tooltip: 'Thêm ghi nhớ', onPressed: working ? null : editMemory, icon: const Icon(Icons.add))),
           for (final m in memories) ListTile(title: Text(m['title'] as String), subtitle: Text(m['text'] as String)),
-        ]);
+          if (memories.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('Chưa có ghi nhớ. Bấm + để thêm thông tin bạn muốn AI nhớ.')),
+        ])]);
       case 6: return TaskPage(api: api, provider: provider, embedded: true);
       case 7: return MediaPage(api: api, embedded: true);
       case 3: return account();
       case 4: return ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device);
       case 5:
-        return ListView(children: [
+        return IosPageList(title: 'Thông báo', storageKey: const PageStorageKey('notifications'), children: [IosSection(children: [
           ListTile(title: const Text('Thông báo'), trailing: IconButton(tooltip: 'Làm mới',
             onPressed: working ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
           if (notifications.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('Chưa có thông báo.')),
           for (final n in notifications) ListTile(title: Text(n['title'] as String), subtitle: Text(n['text'] as String)),
-        ]);
+        ])]);
       default: return chat();
     }
   }
@@ -833,7 +838,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       body: SafeArea(child: Column(children: [
         if (error != null) MaterialBanner(content: Text(error!, maxLines: 3, overflow: TextOverflow.ellipsis), actions: [
           TextButton(onPressed: () => showDialog<void>(context: context,
-            builder: (c) => AlertDialog(title: const Text('Chi tiết'),
+            builder: (c) => AlertDialog.adaptive(title: const Text('Chi tiết'),
               content: SingleChildScrollView(child: SelectableText(error!)),
               actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])), child: const Text('Chi tiết')),
           if (voice.error != null && (!voice.recognitionError || !voice.engine.recordsAudio)) TextButton(onPressed: () async {
@@ -868,7 +873,7 @@ class _LoginPageState extends State<LoginPage> {
     if (busy) return;
     if (MediaQuery.viewInsetsOf(context).bottom > 0) { FocusScope.of(context).unfocus(); return; }
     if (hasDraft && !discardApproved) {
-      final discard = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      final discard = await showDialog<bool>(context: context, builder: (c) => AlertDialog.adaptive(
         title: const Text('Bỏ thông tin chưa gửi?'), actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Giữ lại')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Bỏ thông tin')),

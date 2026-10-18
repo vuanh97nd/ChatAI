@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'ios_settings.dart';
 
 /// Durable operation IDs: a timeout never becomes a second credit or notification.
 class AdminActions {
@@ -100,7 +101,7 @@ class _AdminPageState extends State<AdminPage> {
     setState(() { fee.text = '${config['service_fee']}'; price.text = '${config['token_price']}'; pricesLoaded = true; });
   }
   Future<bool> confirm(String content) async => await showDialog<bool>(context: context,
-    builder: (c) => AlertDialog(title: const Text('Xác nhận thao tác Admin'), content: Text(content), actions: [
+    builder: (c) => AlertDialog.adaptive(title: const Text('Xác nhận thao tác Admin'), content: Text(content), actions: [
       TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy')),
       FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Thực hiện'))])) ?? false;
   Future<void> changeUser(Map<String, dynamic> user, String action) async {
@@ -154,8 +155,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     if (widget.api.session?.admin != true) return const Scaffold(body: Center(child: Text('Chỉ dành cho Admin.')));
     return DefaultTabController(length: 3, child: Scaffold(
-      appBar: AppBar(title: const Text('Quản trị'), bottom: const TabBar(isScrollable: true, tabs: [
-        Tab(text: 'Người dùng'), Tab(text: 'Thông báo'), Tab(text: 'Thanh toán')])),
+      appBar: AppBar(title: const Text('Quản trị'), bottom: const IosTabHeader(labels: ['Người dùng', 'Thông báo', 'Thanh toán'])),
       body: Column(children: [
         if (busy) const LinearProgressIndicator(),
         if (message != null) MaterialBanner(content: Text(message!), actions: [TextButton(onPressed: () => setState(() => message = null), child: const Text('Đóng'))]),

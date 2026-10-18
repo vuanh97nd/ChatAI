@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'api.dart';
+import 'ios_settings.dart';
+import 'package:flutter/cupertino.dart';
 import 'task_plans.dart';
 import 'task_reminders.dart';
 
@@ -73,7 +75,7 @@ class _TaskPageState extends State<TaskPage> {
         'Nếu đã hoàn thành tất cả, hãy nói rõ. Dữ liệu kế hoạch: ${jsonEncode(plan.toJson())}'},
     ], [], autoSearch: false);
     if (!mounted) return;
-    await showDialog<void>(context: context, builder: (context) => AlertDialog(title: const Text('Bước tiếp theo'),
+    await showDialog<void>(context: context, builder: (context) => AlertDialog.adaptive(title: const Text('Bước tiếp theo'),
       content: SingleChildScrollView(child: SelectableText(answer)),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))]));
   });
@@ -97,27 +99,27 @@ class _TaskPageState extends State<TaskPage> {
   @override
   Widget build(BuildContext context) => Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Trợ lý công việc'), actions: [
     IconButton(onPressed: busy ? null : load, tooltip: 'Tải lại tiến độ', icon: const Icon(Icons.refresh)),
-  ]), body: ListView(padding: const EdgeInsets.all(16), children: [
+  ]), body: IosPageList(title: 'Công việc', subtitle: 'Lên kế hoạch, theo dõi từng bước và nhắc việc.', children: [
     if (widget.embedded) Align(alignment: Alignment.centerRight, child: IconButton(onPressed: busy ? null : load, tooltip: 'Tải lại tiến độ', icon: const Icon(Icons.refresh))),
     const Text('Kế hoạch và tiến độ được lưu riêng cho tài khoản trên điện thoại này. Chưa đồng bộ sang thiết bị khác.'),
     const SizedBox(height: 12),
     TextField(controller: goal, enabled: !busy, minLines: 2, maxLines: 5, maxLength: 2000,
       decoration: const InputDecoration(labelText: 'Bạn muốn hoàn thành việc gì?', hintText: 'Ví dụ: Chuẩn bị cuộc họp tuần sau')),
     Wrap(spacing: 8, children: [
-      FilledButton.icon(onPressed: busy || !loaded ? null : generate, icon: const Icon(Icons.auto_awesome), label: const Text('AI lập kế hoạch')),
+      FilledButton.icon(onPressed: busy || !loaded ? null : generate, icon: const Icon(CupertinoIcons.sparkles), label: const Text('AI lập kế hoạch')),
       OutlinedButton(onPressed: busy || !loaded ? null : manual, child: const Text('Thêm thủ công')),
       OutlinedButton.icon(onPressed: busy ? null : () => run(() async {
         await enableTaskReminders(widget.api);
         await showTaskReminders(widget.api);
         if (mounted) setState(() { reminderEnabled = true; message = 'Đã bật nhắc việc. Android kiểm tra khoảng 15 phút/lần; có thể chậm khi tiết kiệm pin.'; });
-      }), icon: const Icon(Icons.notifications_active_outlined), label: const Text('Bật nhắc việc')),
+      }), icon: const Icon(CupertinoIcons.bell), label: const Text('Bật nhắc việc')),
       TextButton(onPressed: busy ? null : () => run(() async {
         await disableTaskReminders(widget.api);
         if (mounted) setState(() { reminderEnabled = false; message = 'Đã tắt nhắc việc nền.'; });
       }), child: const Text('Tắt nhắc việc')),
     ]),
     Text(reminderEnabled ? 'Nhắc việc nền: đang bật · kiểm tra khoảng 15 phút/lần' : 'Nhắc việc nền: đang tắt'),
-    if (busy) const LinearProgressIndicator(),
+    if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CupertinoActivityIndicator())),
     if (message.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: SelectableText(message)),
     if (suggestion != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Đề xuất: ${suggestion!.title}', style: Theme.of(context).textTheme.titleMedium),
@@ -132,8 +134,8 @@ class _TaskPageState extends State<TaskPage> {
     if (loaded && plans.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Chưa có kế hoạch. Nhập mục tiêu để AI chia thành các bước hoặc thêm việc thủ công.')),
     for (final plan in plans) Card(child: Padding(padding: const EdgeInsets.all(8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ListTile(title: Text(plan.title), subtitle: Text('${plan.items.where((t) => t.done).length}/${plan.items.length} việc đã hoàn thành'),
-        trailing: IconButton(tooltip: 'Xóa kế hoạch', icon: const Icon(Icons.delete_outline), onPressed: busy ? null : () async {
-          final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('Xóa kế hoạch?'), content: Text(plan.title),
+        trailing: IconButton(tooltip: 'Xóa kế hoạch', icon: const Icon(CupertinoIcons.trash), onPressed: busy ? null : () async {
+          final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog.adaptive(title: const Text('Xóa kế hoạch?'), content: Text(plan.title),
             actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Giữ lại')),
               FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa'))]));
           if (yes == true && mounted) await run(() => persist(plans.where((p) => p.id != plan.id).toList()));
@@ -144,7 +146,7 @@ class _TaskPageState extends State<TaskPage> {
         CheckboxListTile(value: item.done, onChanged: busy ? null : (value) => run(() => updateItem(plan, item.change(done: value))),
           title: Text(item.title), subtitle: item.detail.isEmpty ? null : Text(item.detail), controlAffinity: ListTileControlAffinity.leading),
         Row(children: [Expanded(child: Padding(padding: const EdgeInsets.only(left: 16), child: Text(item.due == null ? 'Chưa đặt hạn' : dueLabel(item.due!)))),
-          IconButton(tooltip: 'Đặt hạn việc', onPressed: busy || item.done ? null : () => setDue(plan, item), icon: const Icon(Icons.event_outlined)),
+          IconButton(tooltip: 'Đặt hạn việc', onPressed: busy || item.done ? null : () => setDue(plan, item), icon: const Icon(CupertinoIcons.calendar)),
           if (item.due != null) IconButton(tooltip: 'Bỏ hạn việc', onPressed: busy ? null : () => run(() => updateItem(plan, item.change(clearDue: true))), icon: const Icon(Icons.event_busy)),
         ]),
       ]),
@@ -162,7 +164,7 @@ class _WorkNameDialogState extends State<_WorkNameDialog> {
   @override
   void dispose() { name.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog(title: const Text('Thêm việc thủ công'),
+  Widget build(BuildContext context) => AlertDialog.adaptive(title: const Text('Thêm việc thủ công'),
     content: TextField(controller: name, maxLength: 160, autofocus: true, decoration: const InputDecoration(labelText: 'Việc cần làm')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
       FilledButton(onPressed: () { if (name.text.trim().isNotEmpty) Navigator.pop(context, name.text.trim()); }, child: const Text('Lưu'))]);

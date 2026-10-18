@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api.dart';
+import 'ios_settings.dart';
+import 'package:flutter/cupertino.dart';
 import 'sound_effects.dart';
 
 class MediaPage extends StatefulWidget {
@@ -44,7 +46,7 @@ class _MediaPageState extends State<MediaPage> {
   Future<void> generate() async {
     final text = prompt.text.trim();
     if (text.isEmpty) return;
-    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog.adaptive(
       title: const Text('Xác nhận tạo nội dung'),
       content: Text(video ? 'Tạo video Sora 4 giây có thể tính phí OpenAI. Không tự gửi lại nếu yêu cầu chưa xác nhận.' : 'Tạo ảnh dùng hạn mức Workers AI của server.'),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
@@ -82,17 +84,17 @@ class _MediaPageState extends State<MediaPage> {
   });
   @override
   Widget build(BuildContext context) => Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Tạo ảnh và video')),
-    body: ListView(padding: const EdgeInsets.all(16), children: [
-      SegmentedButton<bool>(segments: const [ButtonSegment(value: false, label: Text('Ảnh')), ButtonSegment(value: true, label: Text('Video'))],
-        selected: {video}, onSelectionChanged: busy ? null : (value) => setState(() { video = value.first; message = ''; })),
+    body: IosPageList(title: 'Sáng tạo', subtitle: 'Biến ý tưởng thành hình ảnh và video.', children: [
+      CupertinoSlidingSegmentedControl<bool>(groupValue: video, children: const {false: Padding(padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20), child: Text('Ảnh')), true: Padding(padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20), child: Text('Video'))}, onValueChanged: (value) { if (!busy && value != null) setState(() { video = value; message = ''; }); }),
       const SizedBox(height: 16),
       Text(video ? 'Sora 2 · 4 giây · 720 × 1280. Cần OpenAI key có quyền tạo video trên server chính.' : 'FLUX Schnell · Workers AI trên server chính.'),
       if (capabilities != null && capabilities![video ? 'video_available' : 'image_available'] != true)
         const Text('Dịch vụ chưa được cấu hình. Liên hệ quản trị viên.'),
+      const SizedBox(height: 12),
       TextField(controller: prompt, maxLength: 2000, minLines: 3, maxLines: 6, decoration: const InputDecoration(labelText: 'Mô tả nội dung muốn tạo')),
       FilledButton(onPressed: busy || capabilities?[video ? 'video_available' : 'image_available'] != true || (video && job.isNotEmpty && status != 'completed' && status != 'failed') ? null : generate,
         child: Text(video ? 'Tạo video' : 'Tạo ảnh')),
-      if (busy) const LinearProgressIndicator(),
+      if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CupertinoActivityIndicator())),
       if (message.isNotEmpty) SelectableText(message),
       if (video && job.isNotEmpty) ...[
         SelectableText('Mã yêu cầu: $job\nTrạng thái: $status'),

@@ -147,7 +147,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
   }
   Future<void> paste() async {
     final field = TextEditingController();
-    final raw = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+    final raw = await showDialog<String>(context: context, builder: (c) => AlertDialog.adaptive(
       title: const Text('Dán mã ghép nối từ Windows'),
       content: TextField(controller: field, maxLines: 5), actions: [
         TextButton(onPressed: () => Navigator.pop(c), child: const Text('Hủy')),
@@ -175,7 +175,7 @@ class _ComputerPageState extends State<ComputerPage> with WidgetsBindingObserver
     String text = '';
     if (command == 'reply') {
       final field = TextEditingController();
-      final reply = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+      final reply = await showDialog<String>(context: context, builder: (c) => AlertDialog.adaptive(
         title: const Text('Bổ sung cho AI'), content: TextField(controller: field, maxLines: 4),
         actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Hủy')),
           FilledButton(onPressed: () => Navigator.pop(c, field.text.trim()), child: const Text('Gửi'))]));
