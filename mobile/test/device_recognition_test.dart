@@ -3,6 +3,7 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/cloud_voice.dart';
 import 'voice_test.dart' show FakeVoice;
 void main(){
+ TestWidgetsFlutterBinding.ensureInitialized();
  test('available device recognition bypasses recording and server transcription',() async {
   final device=FakeVoice();final api=ChatApi();final modes=<String>[];final statuses=<String>[];
   final engine=CloudVoiceEngine(api,deviceRecognizer:device,onRecognitionMode:modes.add);
