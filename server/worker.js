@@ -2888,6 +2888,9 @@ export function cleanSpeechTranscript(text){
  const folded=value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
  const caption=/(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*/g;
  for(const match of [...folded.matchAll(caption)].reverse())value=value.slice(0,match.index)+' '+value.slice(match.index+match[0].length);
+ const generic=/(^|[.!?]\s+)(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+de\s+ung ho\s+kenh\s+(?:cua\s+)?(?:minh|toi)\s*(?:nhe|nha)?[.!?]*(?=\s|$)/g;
+ const remaining=value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
+ for(const match of [...remaining.matchAll(generic)].reverse()){const start=match.index+match[1].length;value=value.slice(0,start)+' '+value.slice(match.index+match[0].length);}
  value=value.replace(/\s+/g,' ').trim();
  return /^la\s*la\s*school[.!?]*$/i.test(value)?'':value;
 }

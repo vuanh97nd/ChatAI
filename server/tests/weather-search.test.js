@@ -34,3 +34,13 @@ test('GPS weather uses validated coordinates without geocoding a fabricated city
  assert.equal(calls,1);assert.match(result.answer,/gần đúng/);
  await assert.rejects(root.requestWeatherSearch('GPS',()=>{throw Error('must not fetch');},{latitude:999,longitude:0}),/Tọa độ/);
 });
+
+test('generic subscribe hallucination is removed without deleting real channel questions',()=>{
+ for(const mod of [root,reference]){
+  assert.equal(mod.cleanSpeechTranscript('Các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé.'),'');
+  assert.equal(mod.cleanSpeechTranscript('Thời tiết hôm nay? Các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé.'),'Thời tiết hôm nay?');
+  const real='Vì sao AI nói các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé?';
+  assert.equal(mod.cleanSpeechTranscript(real),real);
+  assert.equal(mod.cleanSpeechTranscript('Làm sao đăng ký kênh để ủng hộ tác giả?'),'Làm sao đăng ký kênh để ủng hộ tác giả?');
+ }
+});
