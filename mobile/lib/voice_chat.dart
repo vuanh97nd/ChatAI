@@ -157,7 +157,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
       Padding(padding:const EdgeInsets.symmetric(horizontal:20,vertical:12),child:Row(children:[
         Expanded(child:voiceControl(paused?CupertinoIcons.mic:CupertinoIcons.mic_slash,paused?'Nói tiếp':'Tắt mic',processing&&!voice.speaking?null:paused?listen:pause)),
         Expanded(child:voiceControl(CupertinoIcons.hand_raised,'Ngắt lời',voice.speaking?pause:null)),
-        Expanded(child:voiceControl(CupertinoIcons.phone_down_fill,'Kết thúc',() async {closed=true;generation++;await voice.stop();SoundEffects.microphoneActive=false;await SoundEffects.play(AppSound.ended,voiceBoundary:true);if(context.mounted)Navigator.pop(context);},destructive:true)),
+        Expanded(child:voiceControl(CupertinoIcons.phone_down_fill,'Kết thúc',() async {if(closed)return;closed=true;generation++;await voice.stop();SoundEffects.microphoneActive=false;await SoundEffects.play(AppSound.ended,voiceBoundary:true);if(context.mounted)Navigator.pop(context);},destructive:true)),
       ])), const SizedBox(height:8),
     ])),
   );
