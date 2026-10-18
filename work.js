@@ -211,9 +211,23 @@ export async function requestFreeSpecialist(kind,query,send=fetch){
   entries=Object.values(data.query?.pages||{}).map(p=>({title:p.title,url:p.fullurl,text:String(p.extract||'').slice(0,2400)})).filter(e=>{try{const u=new URL(e.url);return u.protocol==='https:'&&u.hostname==='vi.wikipedia.org'&&e.text;}catch{return false;}});
  }
  if(!entries.length)throw new Error('Chưa có dữ liệu phù hợp từ nguồn chuyên môn miễn phí.');
- const value={success:true,source:kind,searched_at:new Date().toISOString(),answer:(kind==='news'?'Tin từ RSS VnExpress; chỉ là tiêu đề và trích đoạn, không phải toàn văn. Không khẳng định đây là toàn bộ tin hoặc kết quả lọc đầy đủ theo chủ đề.':'Kiến thức tham khảo Wikipedia; không dùng làm dữ liệu thời tiết, tin tức hay giá hiện tại.')+'\n'+JSON.stringify(entries),sources:entries.map(e=>({title:e.title,url:e.url}))};
+ const value={success:true,source:kind,searched_at:new Date().toISOString(),items:entries,answer:(kind==='news'?'Tin từ RSS VnExpress; chỉ là tiêu đề và trích đoạn, không phải toàn văn. Không khẳng định đây là toàn bộ tin hoặc kết quả lọc đầy đủ theo chủ đề.':'Kiến thức tham khảo Wikipedia; không dùng làm dữ liệu thời tiết, tin tức hay giá hiện tại.')+'\n'+JSON.stringify(entries),sources:entries.map(e=>({title:e.title,url:e.url}))};
  if(specialistCache.size>=64)specialistCache.delete(specialistCache.keys().next().value);
  specialistCache.set(key,{created:Date.now(),value});return value;
+}
+
+export async function requestGoldPrice(send=fetch){
+ const source='https://www.pnj.com.vn/blog/gia-vang/';
+ const response=await send(source,{headers:{'User-Agent':'Mozilla/5.0','Accept':'text/html'},signal:AbortSignal.timeout(15000)});
+ if(!response.ok)throw new Error('Chưa lấy được bảng giá PNJ.');
+ const html=await response.text();if(html.length>2000000)throw new Error('Bảng giá quá lớn.');
+ const clean=s=>String(s||'').replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\s+/g,' ').trim();
+ const table=html.match(/<tbody[^>]*id=["']content-price["'][^>]*>([\s\S]*?)<\/tbody>/i)?.[1];
+ if(!table||!/1[.,]000\s*đ\s*\/\s*Chỉ/i.test(clean(html)))throw new Error('Nguồn đã đổi cấu trúc hoặc thiếu đơn vị giá.');
+ const rows=[...table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map(m=>[...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(c=>clean(c[1]))).filter(r=>r.length===3&&r[0]&&r.slice(1).every(v=>/^\d{1,3}(?:,\d{3})*(?:\.\d+)?$/.test(v))).slice(0,8).map(r=>({name:r[0],buy:r[1],sell:r[2]}));
+ if(!rows.length)throw new Error('Nguồn chưa có hàng giá hợp lệ.');
+ const update=clean(html.match(/<span[^>]*id=["']time-now["'][^>]*>([\s\S]*?)<\/span>/i)?.[1]);
+ return {success:true,source:'gold_pnj',searched_at:new Date().toISOString(),updated_at:update||null,unit:'1.000 đồng/chỉ',items:rows,answer:'Bảng niêm yết trên trang PNJ; giữ nguyên đơn vị 1.000 đồng/chỉ. Đây không phải bảng giá của mọi cửa hàng hoặc mọi khu vực. '+(update?'Ngày giờ cập nhật do nguồn hiển thị: '+update:'Nguồn chưa cung cấp thời điểm cập nhật; không xác nhận đây là giá hôm nay.')+'\n'+JSON.stringify(rows),sources:[{title:'Bảng giá vàng PNJ',url:source}]};
 }
 
 export async function requestWebSearch(env,query,send=fetch){
@@ -717,7 +731,7 @@ const referenceWorker = {async fetch(request,env){
     const query=String(body.text||'').trim();
     if(!query||query.length>2000)return fail('Câu hỏi tra cứu phải có từ 1 đến 2000 ký tự.');
     if(!await throttle(db,account,'chat/search',600))return fail('Vui lòng đợi một chút trước khi tra cứu tiếp.',429);
-    try{return reply((body.weather_location?await requestWeatherSearch(body.weather_location,fetch,body.weather_coordinates??null):['news','knowledge'].includes(body.specialist)?await requestFreeSpecialist(body.specialist,query):await requestWebSearch(env,query)));}
+    try{if(/\bgia vang\b/.test(query.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()))return reply(await requestGoldPrice());return reply((body.weather_location?await requestWeatherSearch(body.weather_location,fetch,body.weather_coordinates??null):['news','knowledge'].includes(body.specialist)?await requestFreeSpecialist(body.specialist,query):await requestWebSearch(env,query)));}
     catch(error){return fail(error.message||'Chưa kết nối được dịch vụ tra cứu mạng.',503);}
    }
    if(path==='/api/chat/ai'||path==='/api/ai/consult'){
@@ -2138,21 +2152,27 @@ const variants={deepseek_flash:'deepseek-flash',deepseek_pro:'deepseek-v4-pro',d
    detail=detail.split(key).join('[KEY]').replace(/Bearer\s+\S+/gi,'Bearer [KEY]').replace(/nvapi-[A-Za-z0-9_-]+|gsk_[A-Za-z0-9_-]+/g,'[KEY]').slice(0,320);
    const hints={401:'API key không hợp lệ.',403:'Key chưa có quyền dùng AI này.',404:'Không tìm thấy mã AI '+selectedModel+'.',410:'AI '+selectedModel+' đã ngừng phục vụ. Đổi mã AI trong Cài đặt; lỗi này không xác định key sai.',429:'Dịch vụ đang giới hạn yêu cầu hoặc hết hạn mức.'};return fail('Dịch vụ '+provider.toUpperCase()+' HTTP '+response.status+'. '+(hints[response.status]||'Chưa xử lý được yêu cầu.')+(detail?' Chi tiết: '+detail:''),502);}
    if(payload.stream===true){
-   const reader=response.body.getReader();let bytes=0;
+   const reader=response.body.getReader();let bytes=0,closed=false,heartbeat;
+   const cleanup=()=>{clearTimeout(timer);clearInterval(heartbeat);};
    streaming=true;
    const stream=new ReadableStream({
     async pull(out){
+     if(closed)return;
+     heartbeat=setInterval(()=>{if(!closed)try{out.enqueue(new TextEncoder().encode(': keep-alive\n\n'));}catch{closed=true;cleanup();controller.abort();}},10000);
      try{
       const {done,value}=await reader.read();
-      if(done){clearTimeout(timer);out.close();return;}
+      if(closed)return;
+      if(done){closed=true;cleanup();out.close();return;}
       bytes+=value.byteLength;
       if(bytes>50000000)throw new Error('Oversized provider stream');
       out.enqueue(value);
-     }catch{clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});out.enqueue(new TextEncoder().encode('data: '+JSON.stringify({error:{code:'UPSTREAM_STREAM_INTERRUPTED'}})+'\n\n'));out.close();}
+     }catch{
+      if(!closed){closed=true;cleanup();controller.abort();reader.cancel().catch(()=>{});out.enqueue(new TextEncoder().encode('data: '+JSON.stringify({error:{code:'UPSTREAM_STREAM_INTERRUPTED'}})+'\n\n'));out.close();}
+     }finally{clearInterval(heartbeat);}
     },
-    async cancel(){clearTimeout(timer);controller.abort();await reader.cancel().catch(()=>{});}
+    async cancel(){closed=true;cleanup();controller.abort();await reader.cancel().catch(()=>{});}
    });
-   return new Response(stream,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache'}});
+   return new Response(stream,{headers:{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'}});
   }
   const result=await response.json();
   if(result.error)return fail('Dịch vụ AI trả lỗi. Kiểm tra mã AI '+selectedModel+' và quyền API của tài khoản.',502);

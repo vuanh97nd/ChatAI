@@ -127,3 +127,19 @@ for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',
   }finally{globalThis.fetch=original;env.DB.raw.close();}
  });
 }
+
+for(const [name,worker] of [['Dashboard work.js',dashboard],['server worker.js',server]]){
+ test(`${name}: idle provider stream sends heartbeat without fabricating answer text`,async(t)=>{
+  t.mock.timers.enable({apis:['setInterval']});
+  const env={DB:database(),ADMIN_KEY:'test-admin-key-with-enough-length',NVIDIA_API_KEY:'test-only-key'};
+  const original=globalThis.fetch;let reader;
+  try{
+   globalThis.fetch=async()=>new Response(new ReadableStream({start(){}}),{headers:{'Content-Type':'text/event-stream'}});
+   const response=await worker.fetch(new Request('https://example.org/api/provider/model',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',key:env.ADMIN_KEY,provider:'nvidia',stream:true,messages:[{role:'user',content:'Hi'}]})}),env,{});
+   reader=response.body.getReader();const pending=reader.read();
+   for(let i=0;i<8;i++)await Promise.resolve();
+   t.mock.timers.tick(10000);
+   const chunk=await pending;assert.equal(new TextDecoder().decode(chunk.value),': keep-alive\n\n');
+  }finally{if(reader)await reader.cancel();globalThis.fetch=original;t.mock.timers.reset();env.DB.raw.close();}
+ });
+}

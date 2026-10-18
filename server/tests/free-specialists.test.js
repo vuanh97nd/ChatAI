@@ -18,3 +18,13 @@ test('knowledge uses Wikipedia and returns attributed extracts',async()=>{
 test('specialist failure does not fall back to another or paid service',async()=>{
  let calls=0;await assert.rejects(requestFreeSpecialist('news','Failure test',async()=>{calls++;return new Response('down',{status:503});}));assert.equal(calls,1);
 });
+
+test('gold prices preserve PNJ units and never fabricate a publication timestamp',async()=>{
+ const {requestGoldPrice}=await import('../../work.js');
+ const result=await requestGoldPrice(async url=>{
+  assert.equal(url,'https://www.pnj.com.vn/blog/gia-vang/');
+  return new Response('<h2>Cập nhật ngày: <span id="time-now"></span></h2><table><th>Loại vàng | ĐVT: 1.000đ/Chỉ</th><tbody id="content-price"><tr><td>Vàng miếng SJC</td><td><span>14,060</span></td><td>14,360</td></tr></tbody></table>');
+ });
+ assert.equal(result.items[0].buy,'14,060');assert.equal(result.unit,'1.000 đồng/chỉ');assert.equal(result.updated_at,null);assert.match(result.answer,/không xác nhận/);
+ await assert.rejects(requestGoldPrice(async()=>new Response('no price table')),/đổi cấu trúc/);
+});
