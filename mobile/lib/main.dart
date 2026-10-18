@@ -563,7 +563,19 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Widget chat() => Column(children: [
     Expanded(child: messages.isEmpty && !sending ? ChatWelcome(onPrompt: (text) => changed(() => input.text = text)) :
-      ListView.builder(reverse: true, itemCount: messages.length + (sending ? 1 : 0), itemBuilder: (c, position) {
+      ListView.builder(reverse: true, itemCount: messages.length + (sending ? 1 : 0),
+        findChildIndexCallback: (key) {
+          if (key is! ValueKey<String>) return null;
+          final value = key.value;
+          int? index;
+          if (value.startsWith('tool:')) {
+            final id = value.substring(5);
+            final found = messages.indexWhere((m) => m['tool_id'] == id);
+            index = found >= 0 ? found : int.tryParse(id);
+          } else if (value.startsWith('message:$conversation:')) { index = int.tryParse(value.split(':').last); }
+          if (index == null || index < 0 || index >= messages.length) return null;
+          return messages.length + (sending ? 1 : 0) - index - 1;
+        }, itemBuilder: (c, position) {
         final i = messages.length + (sending ? 1 : 0) - position - 1;
         if (i == messages.length) return ReplyIndicator(status: replyStatus);
         final m = messages[i];

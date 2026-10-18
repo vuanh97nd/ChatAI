@@ -37,6 +37,7 @@ void main() {
     await tester.tap(find.byTooltip('Gửi tin nhắn')); await tester.pumpAndSettle();
     expect(tester.widget<ConnectedAppsPage>(find.byType(ConnectedAppsPage)).inline, isTrue);
     expect(find.byType(Scaffold), findsOneWidget);
+    expect(paths.where((p) => p == '/api/media/capabilities').length, 1);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
   });
