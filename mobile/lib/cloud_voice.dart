@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'api.dart';
 import 'voice.dart';
+import 'pcm_endpoint.dart';
 import 'speech_transcript.dart';
 import 'tts_text.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -26,10 +27,17 @@ Uint8List pcmWave(Uint8List pcm) {
 /// Records PCM directly. Android SpeechRecognizer is never used here.
 class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
-  bool get recordsAudio => true;
+  bool get recordsAudio => !_useDeviceRecognition;
+  bool _useDeviceRecognition = false;
+  bool preferDeviceRecognition;
+  final VoiceEngine deviceRecognizer;
+  final void Function(String)? onRecognitionMode;
+  PcmEndpoint endpoint = PcmEndpoint();
   final ChatApi api;
-  final AudioRecorder recorder = AudioRecorder();
-  final AudioPlayer speaker = AudioPlayer();
+  AudioRecorder? _recorder;
+  AudioRecorder get recorder => _recorder ??= AudioRecorder();
+  AudioPlayer? _speaker;
+  AudioPlayer get speaker => _speaker ??= AudioPlayer();
   bool cloudSpeechAvailable = true;
   bool useCloudSpeech = true;
   String speechProvider = 'auto';
@@ -91,10 +99,10 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     }
   }
   @override
-  Future<void> stopSpeaking() async { speechRun++; await speaker.stop(); await super.stopSpeaking(); }
+  Future<void> stopSpeaking() async { speechRun++; await _speaker?.stop(); await super.stopSpeaking(); }
 
   final void Function(String)? onSpeechMode;
-  CloudVoiceEngine(this.api, {this.onSpeechMode});
+  CloudVoiceEngine(this.api, {this.onSpeechMode, this.onRecognitionMode, this.preferDeviceRecognition = true, VoiceEngine? deviceRecognizer}) : deviceRecognizer = deviceRecognizer ?? AndroidVoiceEngine();
   StreamSubscription<Uint8List>? audioSub;
   StreamSubscription<Amplitude>? levelSub;
   Timer? limit, silence;
@@ -107,45 +115,56 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) async {
     this.status = status; failure = error;
-    if (api.session == null) throw Exception('Đăng nhập để dùng nhận dạng giọng nói Cloudflare.');
+    _useDeviceRecognition = false;
+    if (preferDeviceRecognition) {
+      try {
+        final ready = await deviceRecognizer.initialize((value) { if (_useDeviceRecognition) status(value); }, (value) {
+          if (_useDeviceRecognition) {
+            if (value.contains('language_')) preferDeviceRecognition = false;
+            error(value);
+          }
+        }).timeout(const Duration(seconds: 3));
+        if (ready) { _useDeviceRecognition = true; onRecognitionMode?.call('Nhận dạng Android'); return true; }
+      } catch (_) {}
+      await deviceRecognizer.cancel().timeout(const Duration(seconds: 1), onTimeout: () {}).catchError((Object _) {});
+    }
+    onRecognitionMode?.call('Nhận dạng trực tuyến');
+    if (api.session == null) throw Exception('Đăng nhập để dùng nhận dạng giọng nói trực tuyến.');
     return recorder.hasPermission();
   }
   @override
-  Future<List<String>> locales() async => ['vi-VN'];
+  Future<List<String>> locales() async => _useDeviceRecognition ? deviceRecognizer.locales() : ['vi-VN'];
   @override
   Future<void> listen(String locale, void Function(String) words) async {
+    if (_useDeviceRecognition) {
+      if (deviceRecognizer is AndroidVoiceEngine) (deviceRecognizer as AndroidVoiceEngine).onLevel = onLevel;
+      return deviceRecognizer.listen(locale, words);
+    }
     final run = ++generation;
+    endpoint = PcmEndpoint();
     this.words = words; audio = BytesBuilder(copy: false); heardSound = false; noiseFloor = -50; voicedFrames = 0;
     final stream = await recorder.startStream(const RecordConfig(
-      encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1));
+      encoder: AudioEncoder.pcm16bits, sampleRate: 16000, numChannels: 1, echoCancel: true, noiseSuppress: true));
     if (run != generation) { await recorder.stop(); return; }
     recording = true; status?.call('listening');
     audioSub = stream.listen((bytes) {
       if (run != generation || !recording) return;
       final remaining = 960000 - (audio?.length ?? 0);
       if (remaining > 0) audio?.add(bytes.length <= remaining ? bytes : bytes.sublist(0, remaining));
-      if ((audio?.length ?? 0) >= 960000) unawaited(finish());
+      if (endpoint.add(bytes) || (audio?.length ?? 0) >= 960000) unawaited(finish());
     }, onError: (Object _) { unawaited(cancel()); failure?.call('Không thu được âm thanh từ micro.'); });
     levelSub = recorder.onAmplitudeChanged(const Duration(milliseconds: 150)).listen((level) {
       if (run != generation || !recording) return;
       onLevel?.call(((level.current + 60) / 60).clamp(0.0, 1.0) * 12 - 2);
-      final threshold = (noiseFloor + 10).clamp(-50.0, -30.0);
-      if (level.current > threshold) {
-        voicedFrames++;
-        if (voicedFrames >= 2) heardSound = true;
-        silence?.cancel(); silence = null;
-      } else {
-        voicedFrames = 0;
-        if (!heardSound) noiseFloor = (noiseFloor * .8 + level.current * .2).clamp(-65.0, -38.0);
-        if (heardSound && silence == null) {
-          silence = Timer(const Duration(milliseconds: 850), () { silence = null; unawaited(finish()); });
-        }
-      }
     });
-    limit = Timer(const Duration(seconds: 30), () => unawaited(finish()));
+    limit = Timer(const Duration(seconds: 8), () {
+      if (!endpoint.heardSpeech) { unawaited(finish()); }
+      else { limit = Timer(const Duration(seconds: 22), () => unawaited(finish())); }
+    });
   }
   @override
   Future<void> finish() async {
+    if (_useDeviceRecognition) return deviceRecognizer.finish();
     if (!recording || transcribing) return;
     final run = generation;
     recording = false; transcribing = true; limit?.cancel(); silence?.cancel(); silence = null;
@@ -155,7 +174,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
       final pcm = audio?.takeBytes() ?? Uint8List(0); audio = null;
       if (pcm.length < 3200 || !hasSpeechEnergy(pcm)) throw Exception('Chưa nghe rõ lời nói. Hãy nói gần micro rồi bấm gửi.');
       final result = await api.post('/api/voice/transcribe', {'audio': base64Encode(pcmWave(pcm))})
-        .timeout(const Duration(seconds: 45));
+        .timeout(const Duration(seconds: 15), onTimeout: () => throw TimeoutException('Dịch vụ nhận dạng trực tuyến không trả kết quả sau 15 giây. Chọn bộ nhận dạng Android rồi nói lại.'));
       if (run != generation) return;
       final text=cleanRecognizedSpeech(result['text'] as String);
       if(text.isEmpty) throw Exception('Chưa nhận được lời nói rõ ràng. Vui lòng thu lại.');
@@ -165,12 +184,13 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   }
   @override
   Future<void> cancel() async {
+    if (_useDeviceRecognition) { await deviceRecognizer.cancel(); return; }
     generation++; recording = false; transcribing = false;
     limit?.cancel(); silence?.cancel(); silence = null;
-    try { await recorder.stop().timeout(const Duration(seconds: 5)); } finally {
+    try { if (_recorder != null) await _recorder!.stop().timeout(const Duration(seconds: 5)); } finally {
       await audioSub?.cancel(); await levelSub?.cancel(); audio = null;
     }
   }
   @override
-  Future<void> close() async { await cancel(); await recorder.dispose(); await speaker.dispose(); }
+  Future<void> close() async { await deviceRecognizer.close(); await cancel(); await _recorder?.dispose(); await _speaker?.dispose(); }
 }

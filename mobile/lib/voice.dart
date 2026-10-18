@@ -49,13 +49,20 @@ class AndroidVoiceEngine extends VoiceEngine {
   // Route those callbacks to the current dictation/voice-chat session.
   static void Function(String)? _status;
   static void Function(String)? _error;
+  static Timer? _doneTimer;
   final SpeechToText speech = SpeechToText();
   final FlutterTts tts = FlutterTts();
   bool _ttsConfigured = false;
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) {
+    _doneTimer?.cancel();
     _status = status; _error = error;
-    return speech.initialize(onStatus: (value) => _status?.call(value),
+    return speech.initialize(onStatus: (value) {
+      if (value == 'done' || value == 'notListening') {
+        _doneTimer?.cancel();
+        _doneTimer = Timer(const Duration(milliseconds: 500), () => _status?.call(value));
+      } else { _status?.call(value); }
+    },
       onError: (e) => _error?.call(e.errorMsg));
   }
   @override
@@ -64,22 +71,25 @@ class AndroidVoiceEngine extends VoiceEngine {
   Future<List<String>> locales() async => ['vi-VN'];
   @override
   Future<void> listen(String locale, void Function(String) words) async {
+    var finalized = false;
     await speech.listen(listenFor: const Duration(seconds: 60),
-      pauseFor: const Duration(seconds: 4),
+      pauseFor: const Duration(milliseconds: 900),
       listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),
       onSoundLevelChange: (level) => onLevel?.call(level),
-      onResult: (result) => words(result.recognizedWords));
+      onResult: (result) { words(result.recognizedWords); if (result.finalResult) { finalized = true; _doneTimer?.cancel(); _status?.call('done'); } });
     // Some Android recognition services return without starting or throwing.
-    for (var attempt = 0; attempt < 10 && !speech.isListening; attempt++) {
+    for (var attempt = 0; attempt < 10 && !speech.isListening && !finalized; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    if (!speech.isListening) {
+    if (!speech.isListening && !finalized) {
       throw Exception('Không mở được nhận dạng giọng nói. Kiểm tra quyền micro và bật dịch vụ nhận dạng giọng nói trong cài đặt Android.');
     }
   }
   @override
-  Future<void> cancel() => speech.cancel();
+  Future<void> cancel() { _doneTimer?.cancel(); return speech.cancel(); }
+  @override
+  Future<void> finish() => speech.stop();
   @override
   Future<void> speak(String text) async {
     final run = ++_readRun;

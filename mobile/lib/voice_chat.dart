@@ -26,6 +26,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   String speechMode = 'Giọng AI trực tuyến';
   bool showContent = true;
   String selectedVoice = 'auto';
+  String recognitionMode = 'Đang chọn bộ nhận dạng…';
   bool processing = false, paused = false, closed = false;
   int generation = 0;
   bool startCuePlayed = false;
@@ -34,7 +35,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    voice = VoiceController(engine: CloudVoiceEngine(widget.api, onSpeechMode: (value) {
+    voice = VoiceController(engine: CloudVoiceEngine(widget.api, onRecognitionMode: (value) { if (mounted && !closed) setState(() => recognitionMode = value); }, onSpeechMode: (value) {
       if (mounted && !closed) setState(() => speechMode = value);
     }))..addListener(changed);
     WidgetsBinding.instance.addPostFrameCallback((_) => listen());
@@ -114,6 +115,17 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Trò chuyện giọng nói'), actions: [
+      IconButton(tooltip: 'Bộ nhận dạng', icon: const Icon(CupertinoIcons.mic), onPressed: () async {
+        final value = await showCupertinoModalPopup<bool>(context: context, builder: (sheet) => CupertinoActionSheet(
+          title: const Text('Bộ nhận dạng giọng nói'), actions: [
+            CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet, true), child: const Text('Ưu tiên Android · có chữ khi đang nói')),
+            CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet, false), child: const Text('Trực tuyến · gửi âm thanh sau khi nói')),
+          ], cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet), child: const Text('Hủy'))));
+        if (value == null || !mounted) return;
+        await pause();
+        (voice.engine as CloudVoiceEngine).preferDeviceRecognition = value;
+        if (mounted) await listen();
+      }),
       IconButton(tooltip: 'Chọn giọng đọc', icon: const Icon(CupertinoIcons.speaker_2),
         onPressed: () async {
           final value = await showCupertinoModalPopup<String>(context: context, builder: (sheet) => CupertinoActionSheet(
@@ -147,12 +159,11 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         VoiceWave(speaking: voice.speaking, listening: voice.listening, level: voice.soundLevel),
         const SizedBox(height: 12), Text(phase, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
-        Text(speechMode, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+        Text('$recognitionMode · $speechMode', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),
         TextButton(onPressed: () => setState(() => showContent = !showContent), child: Text(showContent ? 'Ẩn nội dung' : 'Xem nội dung')),
+        if (voice.listening) TextButton.icon(onPressed: voice.finishListening, icon: const Icon(CupertinoIcons.check_mark), label: const Text('Nói xong · trả lời ngay')),
         if (showContent && draft.isNotEmpty) GlassPanel(child: Padding(padding: const EdgeInsets.all(16), child: Text('Bạn: $draft', textAlign: TextAlign.center))),
-        if (voice.listening && !processing)
-          FilledButton.icon(onPressed: voice.finishListening, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (!processing && !voice.listening && draft.trim().isNotEmpty)
           FilledButton.icon(onPressed: reply, icon: const Icon(Icons.send), label: const Text('Đã nói xong')),
         if (voice.listening && draft.isEmpty && !processing)
