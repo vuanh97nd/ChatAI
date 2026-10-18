@@ -16,6 +16,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('QUYỀN RIÊNG TƯ VÀ ÂM THANH'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Tắt hiệu ứng'), 250, scrollable: find.byType(Scrollable).first);
+      await Scrollable.ensureVisible(tester.element(find.text('Tắt hiệu ứng')), alignment: .5);
+      await tester.pumpAndSettle();
+      expect(find.text('Tắt hiệu ứng').hitTestable(), findsOneWidget);
       await tester.tap(find.text('Tắt hiệu ứng')); await tester.pumpAndSettle();
       expect(visualEffects.value, VisualEffects.off);
       expect(tester.takeException(), isNull);

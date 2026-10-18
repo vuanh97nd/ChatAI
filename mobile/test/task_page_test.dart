@@ -15,7 +15,9 @@ void main() {
     await tester.tap(find.text('Thêm thủ công')); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last,'Chuẩn bị báo cáo');
     await tester.tap(find.text('Lưu')); await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(CheckboxListTile));
+    await Scrollable.ensureVisible(tester.element(find.byType(CheckboxListTile)), alignment: .5);
+    await tester.pumpAndSettle();
+    expect(find.byType(CheckboxListTile).hitTestable(), findsOneWidget);
     await tester.tap(find.byType(CheckboxListTile)); await tester.pumpAndSettle();
     expect(tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,true);
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
