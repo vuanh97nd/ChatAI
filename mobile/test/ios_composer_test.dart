@@ -5,6 +5,14 @@ import '../lib/ios_composer.dart';
 import '../lib/visual_style.dart';
 
 void main(){
+ testWidgets('image and video icons replace the old wand and call their own actions',(tester) async {
+  final input=TextEditingController(text:'Con mèo');addTearDown(input.dispose);
+  var images=0,videos=0;
+  await tester.pumpWidget(MaterialApp(home:Scaffold(body:IosChatComposer(controller:input,provider:'nvidia',busy:false,hasAttachments:false,listening:false,onChanged:(){},onProvider:(_){},onImage:()=>images++,onVideo:()=>videos++))));
+  expect(find.byIcon(CupertinoIcons.wand_stars),findsNothing);
+  await tester.tap(find.byTooltip('Tạo ảnh'));await tester.tap(find.byTooltip('Tạo video'));
+  expect(images,1);expect(videos,1);expect(tester.takeException(),isNull);
+ });
  testWidgets('iOS composer fits narrow phone and chooses provider from a sheet',(tester) async {
   tester.view.physicalSize=const Size(320,740);tester.view.devicePixelRatio=1;
   addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);

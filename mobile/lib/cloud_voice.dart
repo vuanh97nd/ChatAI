@@ -40,7 +40,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     onSpeechMode?.call('Giọng AI trực tuyến');
     var localForTurn = false;
     try {
-      for (final chunk in speechChunks(text, 1200)) {
+      for (final chunk in speechChunks(text, 320)) {
         if (run != speechRun) return;
         if (localForTurn) { await super.speak(chunk); continue; }
         final session = api.session;
@@ -125,7 +125,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
         voicedFrames = 0;
         if (!heardSound) noiseFloor = (noiseFloor * .8 + level.current * .2).clamp(-65.0, -38.0);
         if (heardSound && silence == null) {
-          silence = Timer(const Duration(milliseconds: 1500), () { silence = null; unawaited(finish()); });
+          silence = Timer(const Duration(milliseconds: 850), () { silence = null; unawaited(finish()); });
         }
       }
     });

@@ -51,6 +51,7 @@ class AndroidVoiceEngine extends VoiceEngine {
   static void Function(String)? _error;
   final SpeechToText speech = SpeechToText();
   final FlutterTts tts = FlutterTts();
+  bool _ttsConfigured = false;
   @override
   Future<bool> initialize(void Function(String) status, void Function(String) error) {
     _status = status; _error = error;
@@ -82,6 +83,7 @@ class AndroidVoiceEngine extends VoiceEngine {
   @override
   Future<void> speak(String text) async {
     final run = ++_readRun;
+    if (!_ttsConfigured) {
     var selected = vietnameseVoice(await tts.getVoices.timeout(const Duration(seconds: 12)));
     if (run != _readRun) return;
     if (selected == null) {
@@ -107,6 +109,9 @@ class AndroidVoiceEngine extends VoiceEngine {
     await tts.setSpeechRate(0.48);
     await tts.setPitch(1.0);
     await tts.awaitSpeakCompletion(true);
+    if (run != _readRun) return;
+    _ttsConfigured = true;
+    }
     // Keep each utterance within Android's TTS input limit; preserve full answer.
     final limit = await tts.getMaxSpeechInputLength ?? 4000;
     final size = limit > 0 ? limit.clamp(2, 1200).toInt() : 1200;

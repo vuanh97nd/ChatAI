@@ -35,7 +35,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.2');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.3');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -210,10 +210,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     SoundEffects.suspended = true;
     try {
     await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => VoiceChatPage(api: api,
-      answer: (words) async {
+      answerStream: (words, progress) async {
         input.text = words;
         final count = messages.length;
-        await send();
+        await send(onAnswer: progress, voiceMode: true);
         if (messages.length <= count || messages.last['role'] != 'assistant') {
           throw Exception(error ?? 'Chưa nhận được câu trả lời.');
         }
@@ -337,10 +337,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
       conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); input.clear(); });
   }
-  Future<void> addToolRequest(String question) async {
+  Future<void> addToolRequest(String question, {bool startMedia = false}) async {
     if (question.trim().isEmpty) return;
     unawaited(voice.stop());
-    changed(() { messages.add({'role': 'user', 'content': question, 'tool_id': uuid.v4()}); input.clear(); tab = 0; });
+    changed(() { messages.add({'role': 'user', 'content': question, 'tool_id': uuid.v4(), if (startMedia) 'auto_start': 'true'}); input.clear(); tab = 0; });
     if (api.session == null) return;
     await guard(() async {
       if (conversation == null) {
@@ -349,6 +349,16 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       }
       await api.post('/api/conversations/append', {'conversation_id': conversation, 'role': 'user', 'content': question, 'client_id': uuid.v4()});
     });
+  }
+  void createMediaFromComposer(bool video) {
+    final prompt = input.text.trim();
+    if (prompt.isEmpty) {
+      changed(() => input.text = video ? 'Tạo video ' : 'Tạo ảnh ');
+      return;
+    }
+    final description = prompt.replaceFirst(RegExp(r'^(?:tạo|vẽ)\s+(?:ảnh|video|hình)\s*', caseSensitive: false), '').trim();
+    if (description.isEmpty) return;
+    unawaited(addToolRequest('${video ? 'Tạo video' : 'Tạo ảnh'} $description', startMedia: true));
   }
   Future<void> chooseTool() async {
     final choice = await showCupertinoModalPopup<String>(context: context, builder: (sheet) => CupertinoActionSheet(
@@ -362,7 +372,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (choice.startsWith('Tạo')) { changed(() { tab = 0; input.text = choice; }); }
     else { await addToolRequest(choice); }
   }
-  Future<void> send() async {
+  Future<void> send({void Function(String)? onAnswer, bool voiceMode = false}) async {
     final question = input.text.trim();
     if ((question.isEmpty && attachments.isEmpty) || sending || working) return;
     final linkedApp = requestedApp(question);
@@ -399,10 +409,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final normalMessages = messages.where((m) => requestedApp(m['content']!) == null && !isMediaCreationRequest(m['content']!)).toList();
       final history = normalMessages.length > 24 ? normalMessages.sublist(normalMessages.length - 24) : normalMessages;
       if (stop.isCompleted) throw Exception('Đã dừng chờ.');
-      final answer = await Future.any<String>([api.answer(provider, history, memories,
+      final answer = await Future.any<String>([api.answer(provider, history, memories, voiceMode: voiceMode,
         onStage: (status) { if (!stop.isCompleted) changed(() => replyStatus = status); },
         onText: (chunk) {
           if (stop.isCompleted || !mounted) return;
+          onAnswer?.call(chunk);
           changed(() {
             replyStatus = 'Đang trả lời…';
             if (streamingIndex == null) {
@@ -413,6 +424,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         },
         cancelled: () => stop.isCompleted, imageUrls: attachments.where((a) => a.imageUrl != null).map((a) => a.imageUrl!).toList()),
         stop.future.then<String>((_) => throw Exception('Đã dừng chờ. Yêu cầu đã gửi có thể vẫn được server xử lý và tính phí.'))]);
+      onAnswer?.call(answer);
       changed(() {
         if (streamingIndex == null) {
           messages.add({'role': 'assistant', 'content': answer, 'provider': provider});
@@ -586,7 +598,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           return Padding(key: ValueKey('tool:${m['tool_id'] ?? i}'), padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(padding: const EdgeInsets.all(12), child: Text(request)),
             if (app != null) ConnectedAppsPage(initialApp: app, initialRequest: request, inline: true)
-            else MediaPage(api: api, initialPrompt: request, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(request), inline: true),
+            else MediaPage(api: api, initialPrompt: request, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(request), inline: true, autoStart: m['auto_start'] == 'true', onAutoStartConsumed: () => m.remove('auto_start')),
           ]));
         }
         return MessageEntrance(key: ValueKey('message:$conversation:$i'), child: Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
@@ -612,8 +624,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
     IosChatComposer(canChooseProvider:api.session!=null,controller:input,provider:provider,busy:sending&&api.session!=null,hasAttachments:attachments.isNotEmpty,listening:voice.listening||voice.starting,
       onChanged:()=>changed((){}),onProvider:(value)=>changed(()=>provider=value),
-      onMedia:null,
-      onAttach:sending||working?null:chooseTool,onMicrophone:sending||working?null:dictate,
+      onMedia:null, onImage:api.session==null||sending||working?null:()=>createMediaFromComposer(false), onVideo:api.session==null||sending||working?null:()=>createMediaFromComposer(true),
+      onAttach:sending||working?null:pickAttachment,onMicrophone:sending||working?null:dictate,
       onAction:sending&&api.session!=null?stopReply:sending||working||voice.starting?null:input.text.trim().isEmpty&&attachments.isEmpty?openVoiceChat:send,
       attachmentChips:[for(final a in attachments)Padding(padding:const EdgeInsets.only(right:6),child:InputChip(label:Text(a.name),onDeleted:sending?null:()=>changed(()=>attachments.remove(a))))]),
   ]);

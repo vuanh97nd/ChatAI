@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'voice.dart';
+import 'streaming_speech.dart';
 import 'cloud_voice.dart';
 import 'api.dart';
 import 'voice_robot.dart';
@@ -13,8 +14,9 @@ import 'package:flutter/cupertino.dart';
 /// Text-only conversation: never dispatches computer or payment operations.
 class VoiceChatPage extends StatefulWidget {
   final ChatApi api;
-  final Future<String> Function(String) answer;
-  const VoiceChatPage({super.key, required this.answer, required this.api});
+  final Future<String> Function(String)? answer;
+  final Future<String> Function(String, void Function(String))? answerStream;
+  const VoiceChatPage({super.key, this.answer, this.answerStream, required this.api}) : assert(answer != null || answerStream != null);
   @override
   State<VoiceChatPage> createState() => _VoiceChatPageState();
 }
@@ -27,6 +29,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   bool processing = false, paused = false, closed = false;
   int generation = 0;
   bool startCuePlayed = false;
+  StreamingSpeech? speechQueue;
   @override
   void initState() {
     super.initState();
@@ -39,7 +42,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive) return;
-    if (state != AppLifecycleState.resumed) { paused = true; generation++; unawaited(voice.stop()); }
+    if (state != AppLifecycleState.resumed) { paused = true; generation++; speechQueue?.cancel(); unawaited(voice.stop()); }
   }
   void changed() {
     if (!mounted || closed) return;
@@ -67,13 +70,25 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     setState(() { processing = true; phase = 'Đang suy nghĩ…'; });
     await voice.stop();
     try {
-      final text = await widget.answer(question);
-      if (!mounted || closed || run != generation) return;
-      setState(() { response = text; showContent = true; phase = 'Đang trả lời…'; });
-      await voice.read(text);
+      final queue = StreamingSpeech((part) async {
+        if (!mounted || closed || paused || run != generation) return;
+        setState(() => phase = 'Đang trả lời…');
+        await voice.read(part);
+        if (voice.error != null) throw Exception(voice.error);
+      });
+      speechQueue = queue;
+      void progress(String text) {
+        if (!mounted || closed || run != generation) return;
+        setState(() { response = text; showContent = true; });
+        queue.add(text);
+      }
+      final text = widget.answerStream != null ? await widget.answerStream!(question, progress) : await widget.answer!(question);
+      if (!mounted || closed || run != generation) { queue.cancel(); return; }
+      setState(() { response = text; showContent = true; });
+      await queue.finish(text);
       if (!mounted || closed || run != generation) return;
       if (voice.error != null) { paused = true; failure = voice.error!; }
-    } catch (e) { if (mounted && run == generation) { paused = true; failure = '$e'; } }
+    } catch (e) { speechQueue?.cancel(); await voice.stop(); if (mounted && run == generation) { paused = true; failure = '$e'; } }
     finally {
       if (mounted && !closed && run == generation) {
         setState(() { processing = false; draft = ''; phase = failure.isEmpty ? 'Sẵn sàng' : 'Giọng nói tạm dừng'; });
@@ -82,12 +97,12 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
     }
   }
   Future<void> pause() async {
-    paused = true; generation++; await voice.stop();
+    paused = true; generation++; speechQueue?.cancel(); await voice.stop();
     if (mounted) setState(() => phase = 'Đã tạm dừng');
   }
   @override
   void dispose() {
-    closed = true; SoundEffects.microphoneActive=false; generation++; WidgetsBinding.instance.removeObserver(this);
+    closed = true; speechQueue?.cancel(); SoundEffects.microphoneActive=false; generation++; WidgetsBinding.instance.removeObserver(this);
     voice.removeListener(changed); voice.dispose(); super.dispose();
   }
   Widget voiceControl(IconData icon,String label,VoidCallback? action,{bool destructive=false}) => Column(mainAxisSize:MainAxisSize.min,children:[

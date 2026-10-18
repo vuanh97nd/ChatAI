@@ -14,9 +14,11 @@ class MediaPage extends StatefulWidget {
   final ChatApi api;
   final bool embedded;
   final bool inline;
+  final bool autoStart;
+  final VoidCallback? onAutoStartConsumed;
   final String initialPrompt;
   final bool initialVideo;
-  const MediaPage({super.key, required this.api, this.embedded = false, this.inline = false, this.initialPrompt = '', this.initialVideo = false});
+  const MediaPage({super.key, required this.api, this.embedded = false, this.inline = false, this.autoStart = false, this.onAutoStartConsumed, this.initialPrompt = '', this.initialVideo = false});
   @override
   State<MediaPage> createState() => _MediaPageState();
 }
@@ -36,7 +38,7 @@ class _MediaPageState extends State<MediaPage> with AutomaticKeepAliveClientMixi
     try {
       final saved = await const FlutterSecureStorage().read(key: jobKey);
       if (mounted && saved != null) setState(() { job = saved; status = 'unknown'; if (widget.initialPrompt.isEmpty) video = true; });
-      final value = await widget.api.post('/api/media/capabilities', {}); if (mounted) setState(() => capabilities = value); }
+      final value = await widget.api.post('/api/media/capabilities', {}); if (mounted) { setState(() => capabilities = value); if (widget.autoStart) { widget.onAutoStartConsumed?.call(); await generate(); } } }
     catch (e) { if (mounted) setState(() => message = '$e'); }
   }
   @override
@@ -49,12 +51,8 @@ class _MediaPageState extends State<MediaPage> with AutomaticKeepAliveClientMixi
   Future<void> generate() async {
     final text = prompt.text.trim();
     if (text.isEmpty) return;
-    final confirmed = await showDialog<bool>(context: context, builder: (context) => IosAlertDialog(
-      title: const Text('Xác nhận tạo nội dung'),
-      content: Text(video ? 'Tạo video Sora 4 giây có thể tính phí OpenAI. Không tự gửi lại nếu yêu cầu chưa xác nhận.' : 'Tạo ảnh dùng hạn mức Workers AI của server.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Tạo'))]));
-    if (confirmed != true || !mounted) return;
+    if (busy || capabilities?[video ? 'video_available' : 'image_available'] != true) return;
+    if (video && job.isNotEmpty && status != 'completed' && status != 'failed') return;
     await run(() async {
       if (!video) {
         final value = await widget.api.post('/api/media/image', {'prompt': text});

@@ -10,9 +10,9 @@ class IosChatComposer extends StatelessWidget {
  final bool busy,hasAttachments,listening,canChooseProvider;
  final VoidCallback onChanged;
  final ValueChanged<String> onProvider;
- final VoidCallback? onAttach,onMedia,onMicrophone,onAction;
+ final VoidCallback? onAttach,onMedia,onImage,onVideo,onMicrophone,onAction;
  final List<Widget> attachmentChips;
- const IosChatComposer({super.key,required this.controller,required this.provider,required this.busy,required this.hasAttachments,required this.listening,required this.onChanged,required this.onProvider,this.onAttach,this.onMedia,this.onMicrophone,this.onAction,this.attachmentChips=const [],this.canChooseProvider=true});
+ const IosChatComposer({super.key,required this.controller,required this.provider,required this.busy,required this.hasAttachments,required this.listening,required this.onChanged,required this.onProvider,this.onAttach,this.onMedia,this.onImage,this.onVideo,this.onMicrophone,this.onAction,this.attachmentChips=const [],this.canChooseProvider=true});
  static const names={'openrouter':'OpenRouter','nvidia':'NVIDIA','deepseek_flash':'DeepSeek','cloudflare':'Cloudflare AI','gemini':'Gemini','groq':'Groq'};
  Future<void> chooseProvider(BuildContext context) async {
   final selected=await showCupertinoModalPopup<String>(context:context,builder:(c)=>CupertinoActionSheet(
@@ -28,7 +28,8 @@ class IosChatComposer extends StatelessWidget {
   return Padding(padding:const EdgeInsets.fromLTRB(12,6,12,10),child:GlassPanel(radius:BorderRadius.circular(24),child:Padding(
    padding:const EdgeInsets.fromLTRB(5,0,5,5),child:Column(mainAxisSize:MainAxisSize.min,children:[
     Row(children:[Expanded(child:Align(alignment:Alignment.centerLeft,child:CupertinoButton(padding:const EdgeInsets.symmetric(horizontal:12,vertical:6),onPressed:busy||!canChooseProvider?null:()=>chooseProvider(context),child:Row(mainAxisSize:MainAxisSize.min,children:[ProviderIcon(provider:provider,size:17),const SizedBox(width:7),Flexible(child:Text(names[provider]??'Chọn AI',maxLines:1,overflow:TextOverflow.ellipsis,style:TextStyle(fontFamily:'Roboto',fontSize:13,color:color.onSurfaceVariant))),const SizedBox(width:4),Icon(CupertinoIcons.chevron_down,size:12,color:color.onSurfaceVariant)])))),
-     IconButton(tooltip:'Tạo ảnh/video',onPressed:onMedia,icon:Icon(CupertinoIcons.wand_stars,size:21,color:color.primary)),
+     IconButton(tooltip:'Tạo ảnh',onPressed:onImage,icon:Icon(CupertinoIcons.photo,size:22,color:color.primary)),
+     IconButton(tooltip:'Tạo video',onPressed:onVideo,icon:Icon(CupertinoIcons.videocam,size:23,color:color.primary)),
     ]),
     if(attachmentChips.isNotEmpty)SingleChildScrollView(scrollDirection:Axis.horizontal,child:Row(children:attachmentChips)),
     Row(crossAxisAlignment:CrossAxisAlignment.end,children:[
