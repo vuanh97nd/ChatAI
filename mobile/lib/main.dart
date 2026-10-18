@@ -704,7 +704,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         buildInfoButton(context),
       ])),
       Expanded(child: ListView(key: const ValueKey('drawer-history'), padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-        ListTile(leading: const Icon(CupertinoCupertinoIcons.chat_bubble_fill), title: const Text('Chat'),
+        ListTile(leading: const Icon(CupertinoIcons.chat_bubble_fill), title: const Text('Chat'),
           onTap: sending ? null : () {
             Navigator.pop(drawerContext); unawaited(voice.stop()); selectPage(0);
           }),
@@ -784,7 +784,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return ListView(children: [
           ListTile(title: const Text('Hội thoại đã lưu'), trailing: IconButton(
             tooltip: 'Làm mới', onPressed: working || sending ? null : () => guard(refresh), icon: const Icon(Icons.refresh))),
-          for (final item in conversations) ListTile(leading: const Icon(CupertinoCupertinoIcons.chat_bubble_fill),
+          for (final item in conversations) ListTile(leading: const Icon(CupertinoIcons.chat_bubble_fill),
             title: Text(item['title'] as String, maxLines: 2, overflow: TextOverflow.ellipsis),
             onTap: sending ? null : () => openConversation(item as Map<String, dynamic>)),
           const Padding(padding: EdgeInsets.all(16), child: Text('Hiển thị hội thoại Android. Hội thoại desktop dùng kho đồng bộ riêng.')),
@@ -816,7 +816,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (index == 0 || index == 3) { selectPage(index == 0 ? 0 : 3); return; }
       if (index == 1) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => TaskPage(api: api, provider: provider, initialGoal: input.text.trim()))); }
       else if (index == 2) { await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => MediaPage(api: api))); }
-    }, destinations: const [NavigationDestination(icon: Icon(CupertinoCupertinoIcons.chat_bubble_fill), selectedIcon: Icon(CupertinoIcons.chat_bubble_fill), label: 'Chat'),
+    }, destinations: const [NavigationDestination(icon: Icon(CupertinoIcons.chat_bubble_fill), selectedIcon: Icon(CupertinoIcons.chat_bubble_fill), label: 'Chat'),
       NavigationDestination(icon: Icon(CupertinoIcons.check_mark_circled), label: 'Công việc'),
       NavigationDestination(icon: Icon(CupertinoIcons.photo_on_rectangle), label: 'Sáng tạo'),
       NavigationDestination(icon: Icon(CupertinoIcons.person), selectedIcon: Icon(CupertinoIcons.person_fill), label: 'Tài khoản')])));
