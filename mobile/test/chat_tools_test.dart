@@ -9,6 +9,7 @@ import 'package:chatai_mobile/api.dart';
 import 'package:chatai_mobile/media_page.dart';
 import 'package:chatai_mobile/connected_apps.dart';
 import 'package:chatai_mobile/visual_style.dart';
+import 'package:chatai_mobile/ios_composer.dart';
 import 'voice_test.dart' show FakeVoice;
 
 void main() {
@@ -23,17 +24,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(theme: futuristicTheme(Brightness.light), builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!), home: Home(api: api, voiceEngine: FakeVoice(), updateCheck: () async => throw Exception('Offline'))));
     await tester.pumpAndSettle();
     expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).destinations.length, 3);
-    await tester.enterText(find.byType(TextField).last, 'Tạo ảnh con mèo');
+    final composer = find.descendant(of: find.byType(IosChatComposer), matching: find.byType(TextField));
+    await tester.enterText(composer, 'Tạo ảnh con mèo');
     await tester.pump(); await tester.tap(find.byTooltip('Gửi tin nhắn')); await tester.pumpAndSettle();
     expect(tester.widget<MediaPage>(find.byType(MediaPage)).inline, isTrue);
     expect(find.byType(Scaffold), findsOneWidget);
     expect(paths.where((p) => p == '/api/media/image'), isEmpty);
     expect(paths.where((p) => p == '/api/provider/model'), isEmpty);
-    // Locate the main composer by its send/voice controls rather than the media prompt.
-    final fields = tester.widgetList<TextField>(find.byType(TextField)).toList();
-    final chatField = fields.last;
-    chatField.controller!.text = 'Mở Grab';
-    await tester.enterText(find.byType(TextField).last, 'Mở Grab'); await tester.pump();
+    await tester.enterText(composer, 'Mở Grab'); await tester.pump();
     await tester.tap(find.byTooltip('Gửi tin nhắn')); await tester.pumpAndSettle();
     expect(tester.widget<ConnectedAppsPage>(find.byType(ConnectedAppsPage)).inline, isTrue);
     expect(find.byType(Scaffold), findsOneWidget);
