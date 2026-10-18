@@ -26,7 +26,7 @@ ThemeData futuristicTheme(Brightness brightness) {
     filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)))),
     navigationBarTheme: NavigationBarThemeData(backgroundColor: Colors.transparent, elevation: 0,
-      indicatorColor: Colors.transparent, labelTextStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 11, fontWeight: FontWeight.w500)), height: 62),
+      indicatorColor: Colors.transparent, iconTheme: WidgetStateProperty.resolveWith((states)=>IconThemeData(color:states.contains(WidgetState.selected)?scheme.primary:scheme.onSurfaceVariant,size:24)), labelTextStyle: WidgetStateProperty.resolveWith((states)=>TextStyle(fontSize:11,fontWeight:FontWeight.w500,color:states.contains(WidgetState.selected)?scheme.primary:scheme.onSurfaceVariant)), height: 62),
     snackBarTheme: SnackBarThemeData(behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
   );
 }
