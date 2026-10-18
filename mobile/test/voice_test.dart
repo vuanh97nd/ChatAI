@@ -46,6 +46,12 @@ class FakeAudioVoice extends FakeVoice {
 }
 
 void main() {
+  testWidgets('a device recognizer that ends without words reports failure instead of silence', (tester) async {
+    final engine = FakeVoice(); final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
+    await voice.start((_) => fail('No words were produced'));
+    final finishing = voice.finishListening(); await tester.pump(); await tester.pump(const Duration(milliseconds: 600)); await finishing;
+    expect(voice.listening, isFalse); expect(voice.error, contains('Bộ nhận dạng chưa trả chữ'));
+  });
   testWidgets('finishing device recognition preserves words and ends a stalled listener', (tester) async {
     final engine = FakeVoice(); final voice = VoiceController(engine: engine); addTearDown(voice.dispose);
     var text = ''; await voice.start((words) => text = words); engine.recognition!('Câu hỏi đã nhận');

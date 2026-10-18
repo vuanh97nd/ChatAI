@@ -142,6 +142,7 @@ class VoiceController extends ChangeNotifier {
   String? error;
   bool recognitionError = false;
   bool _disposed = false;
+  bool _receivedRecognitionWords = false;
   int _generation = 0;
   Timer? _recognitionWatchdog;
   static const noWordsTimeout = Duration(seconds: 12);
@@ -159,6 +160,7 @@ class VoiceController extends ChangeNotifier {
     _recognitionWatchdog?.cancel();
     final run = ++_generation;
     var receivedWords = false;
+    _receivedRecognitionWords = false;
     var ended = false;
     starting = true; recognitionError = true; error = null; _changed();
     try {
@@ -202,6 +204,7 @@ class VoiceController extends ChangeNotifier {
         final cleaned=cleanRecognizedSpeech(words);
         if (!_disposed && run == _generation && cleaned.isNotEmpty) {
           receivedWords = true;
+          _receivedRecognitionWords = true;
           _recognitionWatchdog?.cancel();
           onWords(cleaned);
         }
@@ -242,7 +245,11 @@ class VoiceController extends ChangeNotifier {
     if (!engine.recordsAudio) {
       // Let the recognizer deliver its final words; cancelling discards them.
       await Future<void>.delayed(const Duration(milliseconds: 600));
-      if (!_disposed && run == _generation && listening) { listening = false; _changed(); }
+      if (!_disposed && run == _generation && listening) {
+        listening = false;
+        if (!_receivedRecognitionWords) { error = 'Bộ nhận dạng chưa trả chữ. Đổi bộ nhận dạng bằng nút mic phía trên hoặc thử lại.'; }
+        _changed();
+      }
     }
   }
 
