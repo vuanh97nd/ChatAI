@@ -13,7 +13,7 @@ final visualEffects = ValueNotifier<VisualEffects>(VisualEffects.full);
 ThemeData futuristicTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(seedColor: const Color(0xff007aff), brightness: brightness).copyWith(primary: dark ? const Color(0xff0a84ff) : const Color(0xff007aff), surface: dark ? const Color(0xff1c1c1e) : Colors.white, surfaceContainerLow: dark ? const Color(0xff1c1c1e) : Colors.white, primaryContainer: dark ? const Color(0xff153551) : const Color(0xffe4f0ff));
-  return ThemeData(useMaterial3: true, platform: TargetPlatform.iOS, cupertinoOverrideTheme: CupertinoThemeData(brightness: brightness, primaryColor: scheme.primary), colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
+  return ThemeData(useMaterial3: true, fontFamily: 'Roboto', platform: TargetPlatform.iOS, cupertinoOverrideTheme: CupertinoThemeData(brightness: brightness, primaryColor: scheme.primary), colorScheme: scheme, scaffoldBackgroundColor: Colors.transparent,
     appBarTheme: AppBarTheme(backgroundColor: dark ? const Color(0xe61c1c1e) : const Color(0xe6f2f2f7),
       surfaceTintColor: Colors.transparent, centerTitle: true, elevation: 0,
       titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w600, color: scheme.onSurface)),
