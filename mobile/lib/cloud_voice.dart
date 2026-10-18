@@ -102,7 +102,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   Future<void> stopSpeaking() async { speechRun++; await _speaker?.stop(); await super.stopSpeaking(); }
 
   final void Function(String)? onSpeechMode;
-  CloudVoiceEngine(this.api, {this.onSpeechMode, this.onRecognitionMode, this.preferDeviceRecognition = true, VoiceEngine? deviceRecognizer}) : deviceRecognizer = deviceRecognizer ?? AndroidVoiceEngine();
+  CloudVoiceEngine(this.api, {this.onSpeechMode, this.onRecognitionMode, this.preferDeviceRecognition = true, VoiceEngine? deviceRecognizer, this.microphonePermission}) : deviceRecognizer = deviceRecognizer ?? AndroidVoiceEngine();
+  final Future<bool> Function()? microphonePermission;
   StreamSubscription<Uint8List>? audioSub;
   StreamSubscription<Amplitude>? levelSub;
   Timer? limit, silence;
@@ -116,11 +117,16 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   Future<bool> initialize(void Function(String) status, void Function(String) error) async {
     this.status = status; failure = error;
     _useDeviceRecognition = false;
+    // Request app microphone access before opening the Android recognition service.
+    if (!await (microphonePermission?.call() ?? recorder.hasPermission())) {
+      error('microphone_permission_denied');
+      return false;
+    }
     if (preferDeviceRecognition) {
       try {
         final ready = await deviceRecognizer.initialize((value) { if (_useDeviceRecognition) status(value); }, (value) {
           if (_useDeviceRecognition) {
-            if (value.contains('language_')) preferDeviceRecognition = false;
+            if ((value.contains('language_') || value == 'error_permission')) preferDeviceRecognition = false;
             error(value);
           }
         }).timeout(const Duration(seconds: 3));
@@ -130,7 +136,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
     }
     onRecognitionMode?.call('Nhận dạng trực tuyến');
     if (api.session == null) throw Exception('Đăng nhập để dùng nhận dạng giọng nói trực tuyến.');
-    return recorder.hasPermission();
+    return true;
   }
   @override
   Future<List<String>> locales() async { if (_useDeviceRecognition) return await deviceRecognizer.locales(); return ['vi-VN']; }

@@ -40,8 +40,8 @@ Map<String, String>? vietnameseVoice(dynamic values) {
   }
   return null;
 }
-Future<void> openVoiceSettings(bool tts) => const MethodChannel('vn.chatai/voice_settings')
-    .invokeMethod<void>(tts ? 'tts' : 'speech');
+Future<void> openVoiceSettings(bool tts, {bool permissions = false}) => const MethodChannel('vn.chatai/voice_settings')
+    .invokeMethod<void>(permissions ? 'permissions' : (tts ? 'tts' : 'speech'));
 
 class AndroidVoiceEngine extends VoiceEngine {
   void Function(double)? onLevel;
@@ -57,7 +57,7 @@ class AndroidVoiceEngine extends VoiceEngine {
   Future<bool> initialize(void Function(String) status, void Function(String) error) {
     _doneTimer?.cancel();
     _status = status; _error = error;
-    return speech.initialize(onStatus: (value) {
+    return speech.initialize(options: [SpeechToText.androidNoBluetooth], onStatus: (value) {
       if (value == 'done' || value == 'notListening') {
         _doneTimer?.cancel();
         _doneTimer = Timer(const Duration(milliseconds: 500), () => _status?.call(value));
@@ -185,13 +185,18 @@ class VoiceController extends ChangeNotifier {
         ended = true; transcribing = false;
         _recognitionWatchdog?.cancel();
         listening = false;
-        error = ['error_language_unavailable', 'error_language_not_supported'].contains(message)
+        error = message == 'microphone_permission_denied'
+          ? 'Chưa được cấp quyền micro. Bấm Cài đặt mic → Quyền → Micro → Cho phép khi dùng ứng dụng, rồi thử lại.'
+          : message == 'error_permission'
+          ? 'Dịch vụ nhận dạng Android từ chối quyền ghi âm. Kiểm tra quyền Micro của Chat AI và ứng dụng Google trong Cài đặt. Bấm Thử lại để dùng nhận dạng trực tuyến; bạn vẫn có thể nhập chữ.'
+          : ['error_language_unavailable', 'error_language_not_supported'].contains(message)
           ? 'Dịch vụ nhận dạng trên máy chưa dùng được tiếng Việt. Chọn dịch vụ nhận dạng Google và bật hoặc tải tiếng Việt trong cài đặt giọng nói Android. Bạn vẫn có thể nhập chữ.'
           : 'Chưa nhận dạng được giọng nói: $message. Bạn vẫn có thể nhập chữ.';
         _changed();
       }).timeout(const Duration(seconds: 20), onTimeout: () => throw TimeoutException('Mở micro quá lâu. Kiểm tra quyền micro và dịch vụ nhận dạng giọng nói Android.'));
       if (run != _generation || _disposed) return;
       if (!available) {
+        if (ended) return;
         throw Exception('Chưa được cấp quyền micro hoặc máy chưa có dịch vụ nhận dạng giọng nói.');
       }
       final locales = await engine.locales().timeout(const Duration(seconds: 10), onTimeout: () => throw Exception('Không lấy được ngôn ngữ nhận dạng. Mở cài đặt dịch vụ giọng nói và thử lại.'));

@@ -226,11 +226,14 @@ class MainActivity: FlutterActivity() {
       }
     }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/voice_settings").setMethodCallHandler { call, result ->
-      if (call.method != "tts" && call.method != "speech") { result.notImplemented() }
+      if (call.method != "tts" && call.method != "speech" && call.method != "permissions") { result.notImplemented() }
       else {
         try {
           val action = if (call.method == "tts") "com.android.settings.TTS_SETTINGS" else "android.settings.VOICE_INPUT_SETTINGS"
-          try { startActivity(Intent(action)) }
+          try {
+            if (call.method == "permissions") startActivity(Intent("android.settings.APPLICATION_DETAILS_SETTINGS", Uri.parse("package:$packageName")))
+            else startActivity(Intent(action))
+          }
           catch (e: Exception) { startActivity(Intent("android.settings.APPLICATION_DETAILS_SETTINGS", Uri.parse("package:$packageName"))) }
           result.success(null)
         } catch (e: Exception) { result.error("settings", "Không mở được cài đặt giọng nói", null) }

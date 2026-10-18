@@ -173,7 +173,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
         if (failure.isNotEmpty) Wrap(alignment: WrapAlignment.center, children: [
           TextButton(onPressed: processing ? null : listen, child: const Text('Thử lại')),
           TextButton(onPressed: () async {
-            try { await pause(); await openVoiceSettings(false); }
+            try { await pause(); await openVoiceSettings(false, permissions: true); }
             catch (e) { if (mounted) setState(() => failure = '$e'); }
           }, child: const Text('Cài đặt mic')),
           TextButton(onPressed: () async {
