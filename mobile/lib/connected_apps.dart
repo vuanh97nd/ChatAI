@@ -71,8 +71,9 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> with AutomaticKee
   Widget build(BuildContext context) {
     super.build(context);
     final children = <Widget>[
-    const Text('Mở ứng dụng để tiếp tục công việc. Chat AI chưa có quyền đọc Drive/Gmail và không tự đặt xe hoặc gửi thư.'),
-    if(widget.initialRequest.isNotEmpty) Padding(padding:const EdgeInsets.only(top:12),child:Text('Yêu cầu: ${widget.initialRequest}')),
+    if(widget.inline) Padding(padding:const EdgeInsets.only(bottom:12),child:Text(appNames[selected]!,style:Theme.of(context).textTheme.titleMedium)),
+    const Text('Mở ứng dụng để tiếp tục công việc. Chat AI không tự đặt xe hoặc gửi thư.'),
+    if(widget.initialRequest.isNotEmpty && !widget.inline) Padding(padding:const EdgeInsets.only(top:12),child:Text('Yêu cầu: ${widget.initialRequest}')),
     const SizedBox(height:16),
     if(!widget.inline) IosPicker<LinkedApp>(title:'Ứng dụng',value:selected,options:appNames,onChanged:busy?null:(value)=>setState((){selected=value;message=null;})),
     const SizedBox(height:20),
@@ -96,8 +97,8 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> with AutomaticKee
     ],
     const SizedBox(height:12),OutlinedButton(onPressed:busy?null:()=>open(),child:Text('Mở ứng dụng ${appNames[selected]}')),
     if(message!=null)Padding(padding:const EdgeInsets.symmetric(vertical:16),child:Text(message!)),
-    const Divider(),
-    const ListTile(leading:Icon(Icons.lock_outline),title:Text('Drive / Gmail: chưa kết nối tài khoản'),subtitle:Text('Đọc hoặc làm việc trực tiếp trong Chat AI cần thiết lập OAuth Google. Không nhập mật khẩu Google vào Chat AI.')),
+    if(selected==LinkedApp.drive || selected==LinkedApp.gmail) const Divider(),
+    if(selected==LinkedApp.drive || selected==LinkedApp.gmail) const ListTile(leading:Icon(Icons.lock_outline),title:Text('Drive / Gmail: chưa kết nối tài khoản'),subtitle:Text('Đọc hoặc làm việc trực tiếp trong Chat AI cần thiết lập OAuth Google. Không nhập mật khẩu Google vào Chat AI.')),
     ];
     if(widget.inline) return Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:children)));
     return Scaffold(appBar:AppBar(title:const Text('Ứng dụng & liên kết')),body:IosPageList(title:'Ứng dụng',children:children));

@@ -22,7 +22,7 @@ void main(){
  });
  testWidgets('opening the integration page never launches an app or sends email automatically',(tester) async {
   await tester.pumpWidget(const MaterialApp(home:ConnectedAppsPage(initialApp:LinkedApp.gmail)));
-  expect(find.textContaining('Chat AI chưa có quyền đọc Drive/Gmail'),findsOneWidget);
+  expect(find.textContaining('Chat AI không tự đặt xe hoặc gửi thư'),findsOneWidget);
   final scroll=find.descendant(of:find.byType(ListView),matching:find.byWidgetPredicate((w)=>w is Scrollable && w.axisDirection==AxisDirection.down)).first;
   await tester.scrollUntilVisible(find.text('Mở ứng dụng email để xem và gửi'),150,scrollable:scroll);
   expect(find.text('Mở ứng dụng email để xem và gửi'),findsOneWidget);

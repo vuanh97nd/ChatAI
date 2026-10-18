@@ -353,11 +353,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Future<void> chooseTool() async {
     final choice = await showCupertinoModalPopup<String>(context: context, builder: (sheet) => CupertinoActionSheet(
       title: const Text('Công cụ trong cuộc trò chuyện'), actions: [
-        for (final entry in {'Tạo ảnh': 'Tạo ảnh ', 'Tạo video': 'Tạo video ', for (final app in LinkedApp.values) appNames[app]!: 'Mở ${appNames[app]}'}.entries)
+        for (final entry in {'Đính kèm tệp': 'attach', 'Tạo ảnh': 'Tạo ảnh ', 'Tạo video': 'Tạo video ', for (final app in LinkedApp.values) appNames[app]!: 'Mở ${appNames[app]}'}.entries)
           CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet, entry.value), child: Text(entry.key)),
       ], cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet), child: const Text('Hủy')),
     ));
     if (!mounted || choice == null) return;
+    if (choice == 'attach') { await pickAttachment(); return; }
     if (choice.startsWith('Tạo')) { changed(() { tab = 0; input.text = choice; }); }
     else { await addToolRequest(choice); }
   }
@@ -611,8 +612,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
     IosChatComposer(canChooseProvider:api.session!=null,controller:input,provider:provider,busy:sending&&api.session!=null,hasAttachments:attachments.isNotEmpty,listening:voice.listening||voice.starting,
       onChanged:()=>changed((){}),onProvider:(value)=>changed(()=>provider=value),
-      onMedia:api.session==null||sending?null:chooseTool,
-      onAttach:sending||working?null:pickAttachment,onMicrophone:sending||working?null:dictate,
+      onMedia:null,
+      onAttach:sending||working?null:chooseTool,onMicrophone:sending||working?null:dictate,
       onAction:sending&&api.session!=null?stopReply:sending||working||voice.starting?null:input.text.trim().isEmpty&&attachments.isEmpty?openVoiceChat:send,
       attachmentChips:[for(final a in attachments)Padding(padding:const EdgeInsets.only(right:6),child:InputChip(label:Text(a.name),onDeleted:sending?null:()=>changed(()=>attachments.remove(a))))]),
   ]);
