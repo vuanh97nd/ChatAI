@@ -8,6 +8,9 @@ Uint8List tone(int frames) {
  return bytes;
 }
 void main(){
+ test('speech resumed inside a buffered chunk keeps the microphone open',(){
+  final vad=PcmEndpoint();expect(vad.add(Uint8List.fromList([...tone(20),...Uint8List(40*640),...tone(20)])),isFalse);
+ });
  test('PCM silence ends an utterance without any Android amplitude events',(){
   final vad=PcmEndpoint();expect(vad.add(tone(20)),isFalse);expect(vad.heardSpeech,isTrue);
   expect(vad.add(Uint8List(39*640)),isFalse);expect(vad.add(Uint8List(640)),isTrue);

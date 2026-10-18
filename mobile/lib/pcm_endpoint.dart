@@ -8,7 +8,6 @@ class PcmEndpoint {
   bool add(Uint8List bytes) {
     _pending.addAll(bytes);
     var offset = 0;
-    var end = false;
     while (offset + 640 <= _pending.length) {
       double energy = 0;
       for (var i = offset; i < offset + 640; i += 2) {
@@ -18,10 +17,9 @@ class PcmEndpoint {
       }
       frames++;
       if (energy / 320 > .00001225) { voiced++; lastVoice = frames; }
-      if (heardSpeech && frames - lastVoice >= 40) end = true;
       offset += 640;
     }
     if (offset > 0) _pending.removeRange(0, offset);
-    return end;
+    return heardSpeech && frames - lastVoice >= 40;
   }
 }

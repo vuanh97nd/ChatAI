@@ -72,7 +72,7 @@ class AndroidVoiceEngine extends VoiceEngine {
   @override
   Future<void> listen(String locale, void Function(String) words) async {
     var finalized = false;
-    await speech.listen(listenFor: const Duration(seconds: 60),
+    await speech.listen(listenFor: const Duration(seconds: 30),
       pauseFor: const Duration(milliseconds: 900),
       listenOptions: SpeechListenOptions(localeId: locale, partialResults: true, cancelOnError: true,
         listenMode: ListenMode.dictation),
