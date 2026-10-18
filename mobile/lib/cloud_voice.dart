@@ -24,7 +24,16 @@ Uint8List pcmWave(Uint8List pcm) {
   return result;
 }
 
-/// Records PCM directly. Android SpeechRecognizer is never used here.
+// ChatApi gives transcription 45 seconds: the server's inference limit is 40.
+// Do not wrap this in the shorter timeout used for ordinary API requests.
+Future<String> transcribePcm(ChatApi api, Uint8List pcm) async {
+  final result = await api.post('/api/voice/transcribe', {'audio': base64Encode(pcmWave(pcm))});
+  final text = cleanRecognizedSpeech(result['text'] as String? ?? '');
+  if (text.isEmpty) throw Exception('Chưa nhận được lời nói rõ ràng. Vui lòng thu lại.');
+  return text;
+}
+
+/// Uses Android recognition when available, otherwise records PCM for the server.
 class CloudVoiceEngine extends AndroidVoiceEngine {
   @override
   bool get recordsAudio => !_useDeviceRecognition;
@@ -179,11 +188,8 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
       await recorder.stop().timeout(const Duration(seconds: 5)); await audioSub?.cancel(); await levelSub?.cancel();
       final pcm = audio?.takeBytes() ?? Uint8List(0); audio = null;
       if (pcm.length < 3200 || !hasSpeechEnergy(pcm)) throw Exception('Chưa nghe rõ lời nói. Hãy nói gần micro rồi bấm gửi.');
-      final result = await api.post('/api/voice/transcribe', {'audio': base64Encode(pcmWave(pcm))})
-        .timeout(const Duration(seconds: 15), onTimeout: () => throw TimeoutException('Dịch vụ nhận dạng trực tuyến không trả kết quả sau 15 giây. Chọn bộ nhận dạng Android rồi nói lại.'));
+      final text = await transcribePcm(api, pcm);
       if (run != generation) return;
-      final text=cleanRecognizedSpeech(result['text'] as String);
-      if(text.isEmpty) throw Exception('Chưa nhận được lời nói rõ ràng. Vui lòng thu lại.');
       words?.call(text); status?.call('done');
     } catch (e) { if (run == generation) failure?.call('$e'); }
     finally { if (run == generation) transcribing = false; }

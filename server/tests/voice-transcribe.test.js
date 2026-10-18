@@ -45,3 +45,39 @@ for(const [name,mod] of [['root',root],['server',server]]){
 }
 
 for (const mod of [root,server]) test("subscription caption from Android screenshot is suppressed",()=>{assert.equal(mod.cleanSpeechTranscript("Hãy subscribe cho kênh La La School Để không bỏ lỡ những video hấp dẫn"),"");assert.equal(mod.cleanSpeechTranscript("Kênh La La School là gì?"),"Kênh La La School là gì?");});
+
+for(const [name,mod] of [['root',root],['server',server]]){
+ test(`${name}: configured Groq receives WAV once, bypassing Workers inference`,async()=>{
+  const db=database();let calls=0;
+  try{
+   const env={DB:db,GROQ_API_KEY:'test-secret',AI:{run:()=>assert.fail('Must not call Workers AI')}};
+   const result=await mod.transcribeAudio(env,{username:'alice'},{audio:wav().toString('base64')},async(url,request)=>{
+    calls++;assert.equal(url,'https://api.groq.com/openai/v1/audio/transcriptions');
+    assert.equal(request.headers.Authorization,'Bearer test-secret');
+    assert.equal(request.body.get('language'),'vi');assert.equal(request.body.get('model'),'whisper-large-v3-turbo');
+    assert.deepEqual(Buffer.from(await request.body.get('file').arrayBuffer()),wav());
+    return Response.json({text:'Xin chào bạn'});
+   });
+   assert.equal(result.status,200);assert.equal((await result.json()).text,'Xin chào bạn');assert.equal(calls,1);
+  }finally{db.raw.close();}
+ });
+ test(`${name}: Groq rejection returns actionable code without another transcription`,async()=>{
+  const db=database();let calls=0;
+  try{
+   const env={DB:db,GROQ_API_KEY:'test-secret',AI:{run:()=>assert.fail('No automatic fallback')}};
+   const result=await mod.transcribeAudio(env,{username:'alice'},{audio:wav().toString('base64')},async()=>{calls++;return new Response('',{status:429});});
+   assert.equal(result.status,503);assert.equal((await result.json()).code,'VOICE_UPSTREAM_LIMIT');assert.equal(calls,1);
+  }finally{db.raw.close();}
+ });
+ test(`${name}: stalled transcription returns bounded timeout, no automatic retry`,async(t)=>{
+  const db=database();let calls=0;let entered;
+  const started=new Promise(resolve=>entered=resolve);
+  t.mock.timers.enable({apis:['setTimeout']});
+  try{
+   const pending=mod.transcribeAudio({DB:db,AI:{run:()=>{calls++;entered();return new Promise(()=>{});}}},{username:'alice'},{audio:wav().toString('base64')});
+   await started;t.mock.timers.tick(40000);
+   const result=await pending;
+   assert.equal(result.status,503);assert.equal((await result.json()).code,'VOICE_UPSTREAM_TIMEOUT');assert.equal(calls,1);
+  }finally{t.mock.timers.reset();db.raw.close();}
+ });
+}

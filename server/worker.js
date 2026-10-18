@@ -2894,8 +2894,7 @@ export function cleanSpeechTranscript(text){
  value=value.replace(/\s+/g,' ').trim();
  return /^la\s*la\s*school[.!?]*$/i.test(value)?'':value;
 }
-export async function transcribeAudio(env,actor,body){
- if(typeof env.AI?.run!=='function')return fail('Chưa có Workers AI binding tên AI.',503);
+export async function transcribeAudio(env,actor,body,send=fetch){
  const encoded=body.audio;
  if(typeof encoded!=='string'||encoded.length<100||encoded.length>1280100||!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded))return fail('Âm thanh không hợp lệ hoặc quá 30 giây.',400);
  let audio;try{audio=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));}catch{return fail('Âm thanh không hợp lệ.',400);}
@@ -2905,14 +2904,33 @@ export async function transcribeAudio(env,actor,body){
  let activeFrames=0;
  for(let offset=44;offset+640<=audio.length;offset+=640){let energy=0;for(let i=offset;i<offset+640;i+=2){const sample=view.getInt16(i,true)/32768;energy+=sample*sample;}if(energy/320>0.00001225)activeFrames++;}
  if(activeFrames<13)return fail('Chưa nghe rõ lời nói. Hãy nói gần micro rồi thu lại.',422);
+ let groqKey=String(env.GROQ_API_KEY||'').trim();
+ if(!groqKey){
+  try{await initializeProviderStore(env);groqKey=String((await readProviderConfig(env,'groq')).key||'').trim();}
+  catch{return reply({success:false,code:'VOICE_CONFIG_ERROR',message:'Không đọc được cấu hình nhận dạng. Quản trị viên cần kiểm tra cấu hình Groq trên server.'},503);}
+ }
+ if(!groqKey&&typeof env.AI?.run!=='function')return fail('Chưa có Workers AI binding tên AI hoặc Groq API key.',503);
  const limit=await reserveCloud(env,actor.username);if(limit)return limit;
- let timer;
+ const provider=groqKey?'groq':'workers-ai';
+ const started=Date.now();let timer;const abort=new AbortController();
  try{
-  const result=await Promise.race([env.AI.run('@cf/openai/whisper-large-v3-turbo',{audio:encoded,language:'vi',task:'transcribe'}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('timeout')),40000);})]);
+  const infer=async()=>{
+   if(!groqKey)return env.AI.run('@cf/openai/whisper-large-v3-turbo',{audio:encoded,language:'vi',task:'transcribe'});
+   const form=new FormData();form.append('file',new Blob([audio],{type:'audio/wav'}),'speech.wav');
+   form.append('model','whisper-large-v3-turbo');form.append('language','vi');form.append('response_format','json');form.append('temperature','0');
+   const response=await send('https://api.groq.com/openai/v1/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+groqKey},body:form,signal:abort.signal});
+   if(!response.ok){const error=new Error('upstream');error.status=response.status;throw error;}
+   return response.json();
+  };
+  const result=await Promise.race([infer(),new Promise((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('timeout'));},40000);})]);
   const text=typeof result?.text==='string'?cleanSpeechTranscript(result.text):'';
   if(!text)return fail('Chưa nhận được lời nói. Thu lại trong nơi yên tĩnh.',422);
   return reply({success:true,text:text.slice(0,12000)});
- }catch{return fail('Chưa nhận dạng được âm thanh. Kiểm tra mô hình Whisper và hạn mức Workers AI rồi thử lại.',503);}
+ }catch(error){
+  const code=error.message==='timeout'||error.name==='AbortError'?'VOICE_UPSTREAM_TIMEOUT':error.status===429?'VOICE_UPSTREAM_LIMIT':error.status===401?'VOICE_UPSTREAM_AUTH':'VOICE_UPSTREAM_FAILED';
+  console.warn(JSON.stringify({event:'voice_transcription_failed',provider,code,status:error.status||null,elapsed_ms:Date.now()-started}));
+  return reply({success:false,code,message:code==='VOICE_UPSTREAM_TIMEOUT'?'Dịch vụ nhận dạng chưa trả kết quả trong 40 giây. Âm thanh không được tự gửi lại.':code==='VOICE_UPSTREAM_AUTH'?'Key nhận dạng Groq không hợp lệ. Quản trị viên cần cập nhật key.':code==='VOICE_UPSTREAM_LIMIT'?'Dịch vụ nhận dạng hết hạn mức. Vui lòng đợi rồi thử lại.':'Dịch vụ nhận dạng đang lỗi. Quản trị viên cần kiểm tra Workers Logs với mã '+code+'.'},503);
+ }
  finally{clearTimeout(timer);}
 }
 
