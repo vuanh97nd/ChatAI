@@ -27,7 +27,7 @@ void main(){
    final state=tester.state<ScrollableState>(horizontal);
    expect(state.position.maxScrollExtent,greaterThan(600));
    expect(state.position.pixels,0);
-   await tester.drag(find.byType(Table),const Offset(-800,0));await tester.pumpAndSettle();
+   await tester.drag(horizontal,const Offset(-800,0));await tester.pumpAndSettle();
    expect(state.position.pixels,greaterThan(0));
    expect(find.text('Mưa phùn nhẹ'),findsOneWidget);
    expect(find.textContaining('Đoạn văn sau bảng'),findsOneWidget);
