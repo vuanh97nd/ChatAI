@@ -51,7 +51,7 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
       else {
         try{opened=await channel.invokeMethod<bool>('open',appPackages[selected])??false;}on MissingPluginException{opened=false;}
         if(!opened && mounted){
-          final install=await showDialog<bool>(context:context,builder:(c)=>AlertDialog.adaptive(title:Text('Chưa mở được ${appNames[selected]}'),content:const Text('Ứng dụng có thể chưa được cài. Mở trang Google Play để kiểm tra?'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Hủy')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Google Play'))]));
+          final install=await showDialog<bool>(context:context,builder:(c)=>IosAlertDialog(title:Text('Chưa mở được ${appNames[selected]}'),content:const Text('Ứng dụng có thể chưa được cài. Mở trang Google Play để kiểm tra?'),actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Hủy')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Google Play'))]));
           if(install==true)opened=await launchUrl(Uri.https('play.google.com','/store/apps/details',{'id':appPackages[selected]!}),mode:LaunchMode.externalApplication);
         }
       }

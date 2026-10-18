@@ -75,7 +75,7 @@ class _TaskPageState extends State<TaskPage> {
         'Nếu đã hoàn thành tất cả, hãy nói rõ. Dữ liệu kế hoạch: ${jsonEncode(plan.toJson())}'},
     ], [], autoSearch: false);
     if (!mounted) return;
-    await showDialog<void>(context: context, builder: (context) => AlertDialog.adaptive(title: const Text('Bước tiếp theo'),
+    await showDialog<void>(context: context, builder: (context) => IosAlertDialog(title: const Text('Bước tiếp theo'),
       content: SingleChildScrollView(child: SelectableText(answer)),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Đóng'))]));
   });
@@ -135,7 +135,7 @@ class _TaskPageState extends State<TaskPage> {
     for (final plan in plans) Card(child: Padding(padding: const EdgeInsets.all(8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       ListTile(title: Text(plan.title), subtitle: Text('${plan.items.where((t) => t.done).length}/${plan.items.length} việc đã hoàn thành'),
         trailing: IconButton(tooltip: 'Xóa kế hoạch', icon: const Icon(CupertinoIcons.trash), onPressed: busy ? null : () async {
-          final yes = await showDialog<bool>(context: context, builder: (context) => AlertDialog.adaptive(title: const Text('Xóa kế hoạch?'), content: Text(plan.title),
+          final yes = await showDialog<bool>(context: context, builder: (context) => IosAlertDialog(title: const Text('Xóa kế hoạch?'), content: Text(plan.title),
             actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Giữ lại')),
               FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa'))]));
           if (yes == true && mounted) await run(() => persist(plans.where((p) => p.id != plan.id).toList()));
@@ -164,7 +164,7 @@ class _WorkNameDialogState extends State<_WorkNameDialog> {
   @override
   void dispose() { name.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog.adaptive(title: const Text('Thêm việc thủ công'),
+  Widget build(BuildContext context) => IosAlertDialog(title: const Text('Thêm việc thủ công'),
     content: TextField(controller: name, maxLength: 160, autofocus: true, decoration: const InputDecoration(labelText: 'Việc cần làm')),
     actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
       FilledButton(onPressed: () { if (name.text.trim().isNotEmpty) Navigator.pop(context, name.text.trim()); }, child: const Text('Lưu'))]);

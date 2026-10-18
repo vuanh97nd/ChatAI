@@ -61,3 +61,21 @@ class IosTabHeader extends StatelessWidget implements PreferredSizeWidget {
     ));
   }
 }
+
+/// Cupertino confirmations still provide Material for existing form fields.
+class IosAlertDialog extends StatelessWidget {
+  final Widget? title, content;
+  final List<Widget>? actions;
+  const IosAlertDialog({super.key, this.title, this.content, this.actions});
+  @override
+  Widget build(BuildContext context) {
+    if (Theme.of(context).platform != TargetPlatform.iOS) {
+      return AlertDialog(title: title, content: content, actions: actions);
+    }
+    return CupertinoAlertDialog(title: title,
+      content: content == null ? null : Material(type: MaterialType.transparency, child: content),
+      actions: [for (final action in actions ?? <Widget>[]) if (action is ButtonStyleButton)
+        CupertinoDialogAction(onPressed: action.onPressed, child: action.child ?? const SizedBox.shrink()) else action],
+    );
+  }
+}

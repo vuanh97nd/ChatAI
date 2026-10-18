@@ -46,7 +46,7 @@ class _MediaPageState extends State<MediaPage> {
   Future<void> generate() async {
     final text = prompt.text.trim();
     if (text.isEmpty) return;
-    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog.adaptive(
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => IosAlertDialog(
       title: const Text('Xác nhận tạo nội dung'),
       content: Text(video ? 'Tạo video Sora 4 giây có thể tính phí OpenAI. Không tự gửi lại nếu yêu cầu chưa xác nhận.' : 'Tạo ảnh dùng hạn mức Workers AI của server.'),
       actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),

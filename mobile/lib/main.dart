@@ -453,7 +453,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (error != null) ListTile(
         dense: true, title: Text(voice.error != null ? voice.error! : 'Chưa kết nối được. Vui lòng thử lại sau.'),
         trailing: TextButton(onPressed: () => showDialog<void>(context: context,
-          builder: (c) => AlertDialog.adaptive(title: const Text('Chi tiết lỗi'),
+          builder: (c) => IosAlertDialog(title: const Text('Chi tiết lỗi'),
             content: SingleChildScrollView(child: SelectableText(error!)),
             actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])),
           child: const Text('Chi tiết'))),
@@ -528,7 +528,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
   Future<void> editMemory() async {
     final title = TextEditingController(), text = TextEditingController();
-    final save = await showDialog<bool>(context: context, builder: (c) => AlertDialog.adaptive(
+    final save = await showDialog<bool>(context: context, builder: (c) => IosAlertDialog(
       title: const Text('Thêm ghi nhớ'), content: SingleChildScrollView(child: Column(
         mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: title, maxLength: 120, decoration: const InputDecoration(labelText: 'Tiêu đề')),
@@ -632,7 +632,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     ]);
   }
   Future<bool> confirmDiscard() async => await showDialog<bool>(context: context,
-    builder: (c) => AlertDialog.adaptive(title: const Text('Bỏ nội dung chưa gửi?'),
+    builder: (c) => IosAlertDialog(title: const Text('Bỏ nội dung chưa gửi?'),
       content: const Text('Bản nháp và file đính kèm sẽ được xóa.'), actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Giữ lại')),
         FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Bỏ nội dung')),
@@ -838,7 +838,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       body: SafeArea(child: Column(children: [
         if (error != null) MaterialBanner(content: Text(error!, maxLines: 3, overflow: TextOverflow.ellipsis), actions: [
           TextButton(onPressed: () => showDialog<void>(context: context,
-            builder: (c) => AlertDialog.adaptive(title: const Text('Chi tiết'),
+            builder: (c) => IosAlertDialog(title: const Text('Chi tiết'),
               content: SingleChildScrollView(child: SelectableText(error!)),
               actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Đóng'))])), child: const Text('Chi tiết')),
           if (voice.error != null && (!voice.recognitionError || !voice.engine.recordsAudio)) TextButton(onPressed: () async {
@@ -873,7 +873,7 @@ class _LoginPageState extends State<LoginPage> {
     if (busy) return;
     if (MediaQuery.viewInsetsOf(context).bottom > 0) { FocusScope.of(context).unfocus(); return; }
     if (hasDraft && !discardApproved) {
-      final discard = await showDialog<bool>(context: context, builder: (c) => AlertDialog.adaptive(
+      final discard = await showDialog<bool>(context: context, builder: (c) => IosAlertDialog(
         title: const Text('Bỏ thông tin chưa gửi?'), actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Giữ lại')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Bỏ thông tin')),

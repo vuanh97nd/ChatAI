@@ -1,3 +1,4 @@
+import 'ios_settings.dart';
 import 'package:flutter/material.dart';
 import 'api.dart';
 
@@ -43,7 +44,7 @@ class _BackupProviderPageState extends State<BackupProviderPage> {
       final chosen = await showDialog<String>(context: context, builder: (dialogContext) =>
         StatefulBuilder(builder: (dialogContext, update) {
           final filtered = catalog.where((m) => m.toLowerCase().contains(query.toLowerCase())).toList();
-          return AlertDialog.adaptive(title: Text('Model ${names[selected]} · dự phòng'),
+          return IosAlertDialog(title: Text('Model ${names[selected]} · dự phòng'),
             content: SizedBox(width: double.maxFinite, height: 350, child: Column(children: [
               TextField(onChanged: (value) => update(() => query = value.trim()),
                 decoration: const InputDecoration(labelText: 'Tìm hoặc nhập mã model')),

@@ -101,7 +101,7 @@ class _AdminPageState extends State<AdminPage> {
     setState(() { fee.text = '${config['service_fee']}'; price.text = '${config['token_price']}'; pricesLoaded = true; });
   }
   Future<bool> confirm(String content) async => await showDialog<bool>(context: context,
-    builder: (c) => AlertDialog.adaptive(title: const Text('Xác nhận thao tác Admin'), content: Text(content), actions: [
+    builder: (c) => IosAlertDialog(title: const Text('Xác nhận thao tác Admin'), content: Text(content), actions: [
       TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Hủy')),
       FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Thực hiện'))])) ?? false;
   Future<void> changeUser(Map<String, dynamic> user, String action) async {
