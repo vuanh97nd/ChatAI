@@ -7,6 +7,7 @@ import 'voice.dart';
 import 'speech_transcript.dart';
 import 'tts_text.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
 
 Uint8List pcmWave(Uint8List pcm) {
   final result = Uint8List(44 + pcm.length);
@@ -45,9 +46,18 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
         if (localForTurn) { await super.speak(chunk); continue; }
         final session = api.session;
         if (session == null) throw ApiException('Đăng nhập để dùng giọng đọc AI.', 401);
-        final result = await api.client.post(api.server.resolve('/api/voice/speak'),
+        http.Response result;
+        try {
+        result = await api.client.post(api.server.resolve('/api/voice/speak'),
           headers: {'Content-Type': 'application/json', 'Accept': 'audio/*, application/json', 'User-Agent': 'ChatAI-Android/1.1.2'},
-          body: jsonEncode({'username': session.username, 'key': session.key, 'text': chunk, 'speech_provider': speechProvider})).timeout(const Duration(seconds: 70));
+          body: jsonEncode({'username': session.username, 'key': session.key, 'text': chunk, 'speech_provider': speechProvider})).timeout(const Duration(seconds: 15));
+        } on TimeoutException {
+          if (run != speechRun) return;
+          localForTurn = true;
+          onSpeechMode?.call('Giọng điện thoại · API phản hồi chậm');
+          await super.speak(chunk);
+          continue;
+        }
         if (run != speechRun) return;
         if (result.statusCode != 200 || !(result.headers['content-type'] ?? '').startsWith('audio/')) {
           if (result.statusCode == 503) {
