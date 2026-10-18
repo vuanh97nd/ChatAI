@@ -14,13 +14,17 @@ bool hasSpeechEnergy(Uint8List pcm) {
 }
 
 String cleanRecognizedSpeech(String text) {
-  var result=text.trim();
+  var result=text.replaceAll(RegExp(r'\s+'),' ').trim();
   final folded=foldVietnamese(result);
   // A recurring Whisper training-caption hallucination, not ordinary mentions
   // of the channel name. Do not strip arbitrary words from actual questions.
   final caption=RegExp(r'(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+la\s*la\s*school\s+de\s+khong\s+bo\s+lo\s+nhung\s+video\s+hap\s+dan[.!?]*',caseSensitive:false);
   for(final match in caption.allMatches(folded).toList().reversed) {
     result=result.replaceRange(match.start,match.end,' ');
+  }
+  final generic=RegExp(r'(^|[.!?]\s+)(?:cac ban\s+)?(?:hay\s+|dung quen\s+)?(?:dang k[yi]|subscribe)\s+(?:cho\s+)?kenh\s+de\s+ung ho\s+kenh\s+(?:cua\s+)?(?:minh|toi)\s*(?:nhe|nha)?[.!?]*(?=\s|$)');
+  for(final match in generic.allMatches(foldVietnamese(result)).toList().reversed) {
+    result=result.replaceRange(match.start+(match.group(1)?.length??0),match.end,' ');
   }
   result=result.replaceAll(RegExp(r'\s+'),' ').trim();
   if(RegExp(r'^la\s*la\s*school[.!?]*$').hasMatch(foldVietnamese(result)))return '';

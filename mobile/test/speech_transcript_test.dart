@@ -3,6 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chatai_mobile/speech_transcript.dart';
 void main(){
+ test('device recognition filters the same full promotional caption as cloud recognition',(){
+  expect(cleanRecognizedSpeech('Các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé.'),'');
+  expect(cleanRecognizedSpeech('Hôm nay trời thế nào? Các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé.'),'Hôm nay trời thế nào?');
+  expect(cleanRecognizedSpeech('Vì sao AI nói các bạn hãy đăng ký kênh để ủng hộ kênh của mình nhé?'),startsWith('Vì sao'));
+ });
+
  test('silence and microphone clicks do not qualify as speech',(){
   final pcm=Uint8List(32000);expect(hasSpeechEnergy(pcm),false);
   ByteData.sublistView(pcm).setInt16(100,30000,Endian.little);expect(hasSpeechEnergy(pcm),false);
