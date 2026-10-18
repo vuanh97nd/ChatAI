@@ -44,6 +44,14 @@ class _AssistantReplyState extends State<AssistantReply> {
           style: Theme.of(context).textTheme.labelLarge))]),
       const SizedBox(height: 12),
       MarkdownBody(data: widget.text, selectable: true,
+        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+          // Fixed widths activate flutter_markdown's per-table horizontal scroller.
+          // Paragraphs retain their normal phone-width wrapping.
+          tableColumnWidth: const FixedColumnWidth(176),
+          tableScrollbarThumbVisibility: true,
+          tableVerticalAlignment: TableCellVerticalAlignment.top,
+          tableCellsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          tablePadding: const EdgeInsets.only(bottom: 12)),
         inlineSyntaxes: [MathSyntax()],
         builders: {'math-inline': MathBuilder(), 'math-block': MathBuilder(display: true)},
         onTapLink: (_, href, _) => openLink(href)),
