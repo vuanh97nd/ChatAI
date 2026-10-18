@@ -84,15 +84,12 @@ class _TaskPageState extends State<TaskPage> {
   Future<void> setDue(TaskPlan plan, WorkItem item) async {
     final now = DateTime.now();
     final initial = item.due != null && item.due!.isAfter(now) ? item.due! : now;
-    final date = await showDatePicker(context: context, initialDate: initial, firstDate: DateTime(now.year, now.month, now.day), lastDate: DateTime(now.year + 5));
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(initial));
-    if (time == null || !mounted) return;
-    final due = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final due = await showIosDateTime(context, initial: initial);
+    if (due == null || !mounted) return;
     if (!due.isAfter(DateTime.now())) { setState(() => message = 'Chọn thời gian trong tương lai.'); return; }
     await run(() async {
       await updateItem(plan, item.change(due: due));
-      if (mounted) setState(() => message = 'Đã lưu hạn việc. Bấm Bật nhắc việc để nhận thông báo nền.');
+      if (mounted) setState(() => message = 'Đã lưu hạn việc. Bật công tắc Nhắc việc nền để nhận thông báo.');
     });
   }
   String dueLabel(DateTime value) => '${value.day}/${value.month}/${value.year} ${value.hour.toString().padLeft(2,'0')}:${value.minute.toString().padLeft(2,'0')}';

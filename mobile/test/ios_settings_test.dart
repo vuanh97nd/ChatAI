@@ -6,6 +6,23 @@ import '../lib/ios_settings.dart';
 import '../lib/visual_style.dart';
 
 void main() {
+  testWidgets('deadline wheel requires confirmation and cancel returns no date', (tester) async {
+    tester.view.physicalSize = const Size(320, 740); tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
+    final initial = DateTime.now().add(const Duration(days: 1));
+    DateTime? result;
+    await tester.pumpWidget(MaterialApp(theme: futuristicTheme(Brightness.light), home: Scaffold(body: Builder(builder: (context) =>
+      TextButton(onPressed: () async { result = await showIosDateTime(context, initial: initial); }, child: const Text('Mở lịch'))))));
+    await tester.tap(find.text('Mở lịch')); await tester.pumpAndSettle();
+    expect(find.byType(CupertinoDatePicker), findsOneWidget);
+    expect(result, isNull);
+    await tester.tap(find.text('Hủy')); await tester.pumpAndSettle();
+    expect(result, isNull);
+    await tester.tap(find.text('Mở lịch')); await tester.pumpAndSettle();
+    await tester.tap(find.text('Xong')); await tester.pumpAndSettle();
+    expect(result?.day, initial.day); expect(result?.hour, initial.hour);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('picker opens an iOS sheet and returns the selected value', (tester) async {
     String? selected;
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: IosPicker<String>(

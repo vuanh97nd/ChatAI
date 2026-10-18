@@ -105,3 +105,21 @@ class IosLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Center(child: CupertinoActivityIndicator()));
 }
+
+Future<DateTime?> showIosDateTime(BuildContext context, {required DateTime initial}) {
+  final now = DateTime.now();
+  final minimum = DateTime(now.year, now.month, now.day);
+  final maximum = DateTime(now.year + 5, now.month, now.day, 23, 59);
+  var selected = initial.isBefore(minimum) ? now : initial.isAfter(maximum) ? maximum : initial;
+  return showCupertinoModalPopup<DateTime>(context: context, builder: (sheet) => Material(
+    color: Theme.of(context).colorScheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+    clipBehavior: Clip.antiAlias, child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Row(children: [CupertinoButton(onPressed: () => Navigator.pop(sheet), child: const Text('Hủy')),
+        const Expanded(child: Text('Hạn công việc', textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+        CupertinoButton(onPressed: () => Navigator.pop(sheet, selected), child: const Text('Xong'))]),
+      SizedBox(height: 230, child: CupertinoDatePicker(mode: CupertinoDatePickerMode.dateAndTime,
+        initialDateTime: selected, minimumDate: minimum, maximumDate: maximum, use24hFormat: true,
+        onDateTimeChanged: (value) => selected = value)),
+    ])),
+  ));
+}
