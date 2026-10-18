@@ -129,6 +129,7 @@ class _VoiceChatPageState extends State<VoiceChatPage> with WidgetsBindingObserv
           engine.useCloudSpeech = value != 'phone';
           engine.speechProvider = value == 'phone' ? 'auto' : value;
           engine.cloudSpeechAvailable = true;
+          engine.retryCloudSpeechAfter = null;
           setState(() { selectedVoice = value; speechMode = value == 'phone' ? 'Giọng trên điện thoại' : 'Giọng AI trực tuyến'; });
         }),
     ]),

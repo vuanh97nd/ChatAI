@@ -34,9 +34,11 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
   bool useCloudSpeech = true;
   String speechProvider = 'auto';
   int speechRun = 0;
+  DateTime? retryCloudSpeechAfter;
   @override
   Future<void> speak(String text) async {
     final run = ++speechRun;
+    if (retryCloudSpeechAfter != null && DateTime.now().isBefore(retryCloudSpeechAfter!)) { onSpeechMode?.call('Giọng điện thoại · API phản hồi chậm'); await super.speak(text); return; }
     if (!useCloudSpeech || !cloudSpeechAvailable) { onSpeechMode?.call(!useCloudSpeech ? 'Giọng trên điện thoại' : 'Giọng điện thoại · API chưa cấu hình'); await super.speak(text); return; }
     onSpeechMode?.call('Giọng AI trực tuyến');
     var localForTurn = false;
@@ -54,6 +56,7 @@ class CloudVoiceEngine extends AndroidVoiceEngine {
         } on TimeoutException {
           if (run != speechRun) return;
           localForTurn = true;
+          retryCloudSpeechAfter = DateTime.now().add(const Duration(minutes: 1));
           onSpeechMode?.call('Giọng điện thoại · API phản hồi chậm');
           await super.speak(chunk);
           continue;
