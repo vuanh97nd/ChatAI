@@ -51,6 +51,19 @@ void main() {
         final output = File('build/ui-preview/android-dark-home.png'); await output.parent.create(recursive:true); await output.writeAsBytes(bytes!.buffer.asUint8List()); image.dispose();
       });
     }
+    if (Platform.environment['CHAT_AI_UI_PREVIEW'] == 'true') {
+      for (final destination in {'Tài khoản': 'account', 'Công việc': 'tasks', 'Sáng tạo': 'media'}.entries) {
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(destination.key)));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await tester.runAsync(() async {
+          final image = await (capture.currentContext!.findRenderObject()! as RenderRepaintBoundary).toImage(pixelRatio: 2);
+          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+          await File('build/ui-preview/ios-${destination.value}.png').writeAsBytes(bytes!.buffer.asUint8List());
+          image.dispose();
+        });
+      }
+    }
     await tester.pumpWidget(const SizedBox()); await tester.pumpAndSettle();
   });
   testWidgets('turning off effects produces a settled scene without recurring frames', (tester) async {
