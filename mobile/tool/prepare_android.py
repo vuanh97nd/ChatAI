@@ -194,11 +194,19 @@ class MainActivity: FlutterActivity() {
     }
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "vn.chatai/linked_apps").setMethodCallHandler { call, result ->
       val allowed = setOf("com.google.android.apps.maps", "com.google.android.apps.docs", "com.google.android.gm", "com.grabtaxi.passenger", "xyz.be.customer", "com.gsm.customer")
-      val target = call.arguments as? String
+      val args = call.arguments as? Map<*, *>
+      val target = (args?.get("package") as? String) ?: (call.arguments as? String)
+      val uriText = args?.get("uri") as? String
       if (call.method != "open" || target !in allowed) { result.notImplemented() }
       else {
         try {
-          val intent = packageManager.getLaunchIntentForPackage(target!!)
+          val uri = uriText?.let { android.net.Uri.parse(it) }
+          if (uri != null && !(uri.scheme == "mailto" || (uri.scheme == "https" && uri.host in setOf("www.google.com", "drive.google.com")))) {
+            result.success(false)
+            return@setMethodCallHandler
+          }
+          val intent = if (uri != null) android.content.Intent(if (uri.scheme == "mailto") android.content.Intent.ACTION_SENDTO else android.content.Intent.ACTION_VIEW, uri).setPackage(target!!)
+            else packageManager.getLaunchIntentForPackage(target!!)
           if (intent == null) result.success(false)
           else { startActivity(intent); result.success(true) }
         } catch (_: Exception) { result.success(false) }

@@ -11,6 +11,7 @@ const appPackages = {LinkedApp.maps:'com.google.android.apps.maps', LinkedApp.dr
 
 LinkedApp? requestedApp(String text) {
   final q=foldVietnamese(text);
+  if (RegExp(r'^(?:mo (?:google maps|ban do)|chi duong|tim duong)\b').hasMatch(q)) return LinkedApp.maps;
   if (!RegExp(r'^(?:hay |vui long )?(?:mo|tim|tra cuu|soan|goi|dat)\b').hasMatch(q)) return null;
   if (RegExp(r'\b(gmail|email|thu dien tu)\b').hasMatch(q)) return LinkedApp.gmail;
   if (RegExp(r'\b(?:google )?drive\b').hasMatch(q)) return LinkedApp.drive;
@@ -28,11 +29,14 @@ Uri emailDraft(String to,String subject,String body) => Uri(scheme:'mailto',path
 class ConnectedAppsPage extends StatefulWidget {
   final LinkedApp initialApp;
   final String initialRequest;
-  const ConnectedAppsPage({super.key,this.initialApp=LinkedApp.maps,this.initialRequest=''});
+  final bool inline;
+  const ConnectedAppsPage({super.key,this.initialApp=LinkedApp.maps,this.initialRequest='',this.inline=false});
   @override
   State<ConnectedAppsPage> createState()=>_ConnectedAppsPageState();
 }
-class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
+class _ConnectedAppsPageState extends State<ConnectedAppsPage> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   static const channel=MethodChannel('vn.chatai/linked_apps');
   final query=TextEditingController(),recipient=TextEditingController(),subject=TextEditingController(),body=TextEditingController();
   late LinkedApp selected;
@@ -40,6 +44,7 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
   String? message;
   @override
   void initState(){super.initState();selected=widget.initialApp;
+    if(selected==LinkedApp.maps && !foldVietnamese(widget.initialRequest).startsWith('mo ')) query.text=widget.initialRequest.replaceFirst(RegExp(r'^(?:chỉ đường|tìm đường)(?: đến| tới)?\s*',caseSensitive:false),'').trim();
     if(selected==LinkedApp.drive && RegExp(r'^(?:hãy |vui lòng )?(?:tìm|tra cứu)\b',caseSensitive:false).hasMatch(widget.initialRequest)){query.text=widget.initialRequest.replaceFirst(RegExp(r'^(?:hãy |vui lòng )?(?:tìm|tra cứu)(?: tệp| file)?\s+',caseSensitive:false),'').replaceFirst(RegExp(r'\s+(?:trên |trong )?(?:google )?drive.*$',caseSensitive:false),'').trim();}}
   @override
   void dispose(){for(final c in [query,recipient,subject,body]){c.dispose();}super.dispose();}
@@ -47,7 +52,10 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
     setState((){busy=true;message=null;});
     try {
       bool opened=false;
-      if(uri!=null){opened=await launchUrl(uri,mode:LaunchMode.externalApplication);}
+      if(uri!=null){
+        try { opened=await channel.invokeMethod<bool>('open',{'package':appPackages[selected],'uri':uri.toString()})??false; } on MissingPluginException { opened=false; } on PlatformException { opened=false; }
+        if(!opened) opened=await launchUrl(uri,mode:LaunchMode.externalApplication);
+      }
       else {
         try{opened=await channel.invokeMethod<bool>('open',appPackages[selected])??false;}on MissingPluginException{opened=false;}
         if(!opened && mounted){
@@ -60,11 +68,13 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
     finally{if(mounted)setState(()=>busy=false);}
   }
   @override
-  Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Ứng dụng & liên kết')),body:IosPageList(title:'Ứng dụng',subtitle:'Tiếp tục công việc trong ứng dụng bạn dùng mỗi ngày.',children:[
+  Widget build(BuildContext context) {
+    super.build(context);
+    final children = <Widget>[
     const Text('Mở ứng dụng để tiếp tục công việc. Chat AI chưa có quyền đọc Drive/Gmail và không tự đặt xe hoặc gửi thư.'),
     if(widget.initialRequest.isNotEmpty) Padding(padding:const EdgeInsets.only(top:12),child:Text('Yêu cầu: ${widget.initialRequest}')),
     const SizedBox(height:16),
-    IosPicker<LinkedApp>(title:'Ứng dụng',value:selected,options:appNames,onChanged:busy?null:(value)=>setState((){selected=value;message=null;})),
+    if(!widget.inline) IosPicker<LinkedApp>(title:'Ứng dụng',value:selected,options:appNames,onChanged:busy?null:(value)=>setState((){selected=value;message=null;})),
     const SizedBox(height:20),
     if(selected==LinkedApp.maps)...[
       TextField(controller:query,decoration:const InputDecoration(labelText:'Địa điểm hoặc điểm đến',hintText:'Ví dụ: Sân bay Nội Bài'),maxLength:300),
@@ -88,5 +98,8 @@ class _ConnectedAppsPageState extends State<ConnectedAppsPage> {
     if(message!=null)Padding(padding:const EdgeInsets.symmetric(vertical:16),child:Text(message!)),
     const Divider(),
     const ListTile(leading:Icon(Icons.lock_outline),title:Text('Drive / Gmail: chưa kết nối tài khoản'),subtitle:Text('Đọc hoặc làm việc trực tiếp trong Chat AI cần thiết lập OAuth Google. Không nhập mật khẩu Google vào Chat AI.')),
-  ]));
+    ];
+    if(widget.inline) return Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:children)));
+    return Scaffold(appBar:AppBar(title:const Text('Ứng dụng & liên kết')),body:IosPageList(title:'Ứng dụng',children:children));
+  }
 }

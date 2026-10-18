@@ -13,14 +13,17 @@ import 'sound_effects.dart';
 class MediaPage extends StatefulWidget {
   final ChatApi api;
   final bool embedded;
+  final bool inline;
   final String initialPrompt;
   final bool initialVideo;
-  const MediaPage({super.key, required this.api, this.embedded = false, this.initialPrompt = '', this.initialVideo = false});
+  const MediaPage({super.key, required this.api, this.embedded = false, this.inline = false, this.initialPrompt = '', this.initialVideo = false});
   @override
   State<MediaPage> createState() => _MediaPageState();
 }
 
-class _MediaPageState extends State<MediaPage> {
+class _MediaPageState extends State<MediaPage> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
   final prompt = TextEditingController();
   bool busy = false, video = false;
   String message = '', status = '', job = '';
@@ -83,8 +86,9 @@ class _MediaPageState extends State<MediaPage> {
     if (mounted && path != null) setState(() => message = 'Đã lưu video. Mở bằng ứng dụng xem video trên điện thoại.');
   });
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Tạo ảnh và video')),
-    body: IosPageList(title: 'Sáng tạo', subtitle: 'Biến ý tưởng thành hình ảnh và video.', children: [
+  Widget build(BuildContext context) {
+    super.build(context);
+    final children = <Widget>[
       CupertinoSlidingSegmentedControl<bool>(groupValue: video, children: const {false: Padding(padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20), child: Text('Ảnh')), true: Padding(padding: EdgeInsets.symmetric(vertical: 10, horizontal: 20), child: Text('Video'))}, onValueChanged: (value) { if (!busy && value != null) setState(() { video = value; message = ''; }); }),
       const SizedBox(height: 16),
       Text(video ? 'Sora 2 · 4 giây · 720 × 1280. Cần OpenAI key có quyền tạo video trên server chính.' : 'FLUX Schnell · Workers AI trên server chính.'),
@@ -104,12 +108,16 @@ class _MediaPageState extends State<MediaPage> {
       if (!video && image != null) ...[
         InkWell(onTap: () => Navigator.push<void>(context, MaterialPageRoute(builder: (_) => Scaffold(
           backgroundColor: Colors.black, appBar: AppBar(title: const Text('Ảnh đã tạo'), backgroundColor: Colors.black, foregroundColor: Colors.white),
-          body: Center(child: InteractiveViewer(minScale: .5, maxScale: 5, child: Hero(tag: 'generated-image', child: Image.memory(image!, fit: BoxFit.contain))))))),
-          child: Hero(tag: 'generated-image', child: ClipRRect(borderRadius: BorderRadius.circular(24), child: Image.memory(image!)))),
+          body: Center(child: InteractiveViewer(minScale: .5, maxScale: 5, child: Hero(tag: 'generated-image-${identityHashCode(this)}', child: Image.memory(image!, fit: BoxFit.contain))))))),
+          child: Hero(tag: 'generated-image-${identityHashCode(this)}', child: ClipRRect(borderRadius: BorderRadius.circular(24), child: Image.memory(image!)))),
         OutlinedButton(onPressed: busy ? null : () => run(() async {
           final path = await FilePicker.platform.saveFile(dialogTitle: 'Lưu ảnh', fileName: 'ChatAI.jpg', bytes: image!);
           if (mounted && path != null) { setState(() => message = 'Đã lưu ảnh.'); unawaited(SoundEffects.play(AppSound.saved)); }
         }), child: const Text('Lưu ảnh')),
       ],
-    ]));
+    ];
+    if (widget.inline) return Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)));
+    return Scaffold(appBar: widget.embedded ? null : AppBar(title: const Text('Tạo ảnh và video')),
+      body: IosPageList(title: 'Sáng tạo', subtitle: 'Biến ý tưởng thành hình ảnh và video.', children: children));
+  }
 }

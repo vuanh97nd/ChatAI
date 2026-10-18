@@ -35,7 +35,7 @@ import 'animated_logo.dart';
 const storage = FlutterSecureStorage();
 const uuid = Uuid();
 final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.dark);
-const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.1');
+const appVersion = String.fromEnvironment('CHAT_AI_VERSION', defaultValue: '1.4.2');
 const appCommit = String.fromEnvironment('CHAT_AI_COMMIT', defaultValue: 'local');
 String money(num value) => '${NumberFormat.decimalPattern('vi').format(value)} đ';
 
@@ -337,19 +337,36 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     changed(() { messages = []; memories = []; notifications = []; conversations = [];
       conversation = null; billing = null; order = null; paymentRequest = null; requestedAmount = null; error = null; tab = 0; provider = 'nvidia'; attachments.clear(); pageHistory.clear(); input.clear(); });
   }
+  Future<void> addToolRequest(String question) async {
+    if (question.trim().isEmpty) return;
+    unawaited(voice.stop());
+    changed(() { messages.add({'role': 'user', 'content': question, 'tool_id': uuid.v4()}); input.clear(); tab = 0; });
+    if (api.session == null) return;
+    await guard(() async {
+      if (conversation == null) {
+        final result = await api.post('/api/conversations/create', {'title': question});
+        conversation = (result['conversation'] as Map<String, dynamic>)['id'] as String;
+      }
+      await api.post('/api/conversations/append', {'conversation_id': conversation, 'role': 'user', 'content': question, 'client_id': uuid.v4()});
+    });
+  }
+  Future<void> chooseTool() async {
+    final choice = await showCupertinoModalPopup<String>(context: context, builder: (sheet) => CupertinoActionSheet(
+      title: const Text('Công cụ trong cuộc trò chuyện'), actions: [
+        for (final entry in {'Tạo ảnh': 'Tạo ảnh ', 'Tạo video': 'Tạo video ', for (final app in LinkedApp.values) appNames[app]!: 'Mở ${appNames[app]}'}.entries)
+          CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet, entry.value), child: Text(entry.key)),
+      ], cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(sheet), child: const Text('Hủy')),
+    ));
+    if (!mounted || choice == null) return;
+    if (choice.startsWith('Tạo')) { changed(() { tab = 0; input.text = choice; }); }
+    else { await addToolRequest(choice); }
+  }
   Future<void> send() async {
     final question = input.text.trim();
     if ((question.isEmpty && attachments.isEmpty) || sending || working) return;
     final linkedApp = requestedApp(question);
-    if (linkedApp != null && attachments.isEmpty && !SoundEffects.suspended) {
-      await voice.stop();
-      if (!mounted) return;
-      await Navigator.push<void>(context, MaterialPageRoute(builder: (_) => ConnectedAppsPage(initialApp: linkedApp, initialRequest: question)));
-      return;
-    }
-    if (api.session != null && attachments.isEmpty && isMediaCreationRequest(question)) {
-      await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => MediaPage(
-        api: api, initialPrompt: question, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(question))));
+    if (attachments.isEmpty && !SoundEffects.suspended && (linkedApp != null || (api.session != null && isMediaCreationRequest(question)))) {
+      await addToolRequest(question);
       return;
     }
     if (api.session != null && attachments.isEmpty && isTaskRequest(question)) {
@@ -378,7 +395,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       await api.post('/api/conversations/append', {'conversation_id': conversation,
         'role': 'user', 'content': text, 'client_id': uuid.v4()});
       userSaved = true;
-      final history = messages.length > 24 ? messages.sublist(messages.length - 24) : messages;
+      final normalMessages = messages.where((m) => requestedApp(m['content']!) == null && !isMediaCreationRequest(m['content']!)).toList();
+      final history = normalMessages.length > 24 ? normalMessages.sublist(normalMessages.length - 24) : normalMessages;
       if (stop.isCompleted) throw Exception('Đã dừng chờ.');
       final answer = await Future.any<String>([api.answer(provider, history, memories,
         onStage: (status) { if (!stop.isCompleted) changed(() => replyStatus = status); },
@@ -549,6 +567,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         final i = messages.length + (sending ? 1 : 0) - position - 1;
         if (i == messages.length) return ReplyIndicator(status: replyStatus);
         final m = messages[i];
+        final request = m['content']!;
+        if (m['role'] == 'user' && (requestedApp(request) != null || (api.session != null && isMediaCreationRequest(request)))) {
+          final app = requestedApp(request);
+          return Padding(key: ValueKey('tool:${m['tool_id'] ?? i}'), padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(padding: const EdgeInsets.all(12), child: Text(request)),
+            if (app != null) ConnectedAppsPage(initialApp: app, initialRequest: request, inline: true)
+            else MediaPage(api: api, initialPrompt: request, initialVideo: RegExp(r'\bvideo\b', caseSensitive: false).hasMatch(request), inline: true),
+          ]));
+        }
         return MessageEntrance(key: ValueKey('message:$conversation:$i'), child: Align(alignment: m['role'] == 'user' ? Alignment.centerRight : Alignment.centerLeft,
           child: Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(color: m['role'] == 'user' ? Theme.of(context).colorScheme.primaryContainer : Colors.transparent,
@@ -572,7 +599,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       child: Text(voice.transcribing ? 'Đang nhận dạng tiếng Việt trên Cloudflare…' : voice.starting ? 'Đang mở micro…' : 'Đang thu âm… Bấm micro để nhận dạng.')),
     IosChatComposer(canChooseProvider:api.session!=null,controller:input,provider:provider,busy:sending&&api.session!=null,hasAttachments:attachments.isNotEmpty,listening:voice.listening||voice.starting,
       onChanged:()=>changed((){}),onProvider:(value)=>changed(()=>provider=value),
-      onMedia:api.session==null||sending?null:()=>Navigator.push(context,MaterialPageRoute<void>(builder:(_)=>MediaPage(api:api))),
+      onMedia:api.session==null||sending?null:chooseTool,
       onAttach:sending||working?null:pickAttachment,onMicrophone:sending||working?null:dictate,
       onAction:sending&&api.session!=null?stopReply:sending||working||voice.starting?null:input.text.trim().isEmpty&&attachments.isEmpty?openVoiceChat:send,
       attachmentChips:[for(final a in attachments)Padding(padding:const EdgeInsets.only(right:6),child:InputChip(label:Text(a.name),onDeleted:sending?null:()=>changed(()=>attachments.remove(a))))]),
@@ -729,7 +756,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ListTile(leading: const Icon(Icons.account_balance_wallet_outlined), title: const Text('Số dư và nạp tiền'),
           onTap: sending ? null : () => navigateTo(3, drawerContext)),
         ListTile(leading: const Icon(Icons.apps_outlined), title: const Text('Ứng dụng & liên kết'),
-          onTap: () { Navigator.pop(drawerContext); unawaited(voice.stop()); Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const ConnectedAppsPage())); }),
+          onTap: () { Navigator.pop(drawerContext); unawaited(voice.stop()); unawaited(chooseTool()); }),
         ListTile(leading: const Icon(Icons.auto_awesome_outlined), title: const Text('Hiệu ứng giao diện'),
           onTap: () { Navigator.pop(drawerContext); Navigator.push<void>(context, MaterialPageRoute(builder: (_) => const EffectsPage())); }),
         ListTile(leading: const Icon(Icons.brightness_6_outlined),
@@ -802,7 +829,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           if (memories.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('Chưa có ghi nhớ. Bấm + để thêm thông tin bạn muốn AI nhớ.')),
         ])]);
       case 6: return TaskPage(api: api, provider: provider, embedded: true);
-      case 7: return MediaPage(api: api, embedded: true);
       case 3: return account();
       case 4: return ComputerPage(key: ValueKey(api.session!.username), api: api, mobileId: device);
       case 5:
@@ -817,14 +843,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Widget quickNavigation() => Padding(padding: EdgeInsets.zero, child: GlassPanel(radius:BorderRadius.zero,child: NavigationBar(
-    selectedIndex: switch (tab) { 6 => 1, 7 => 2, 3 => 3, _ => 0 },
+    selectedIndex: switch (tab) { 6 => 1, 3 => 2, _ => 0 },
     onDestinationSelected: sending ? null : (index) {
       FocusScope.of(context).unfocus();
-      selectPage(const [0, 6, 7, 3][index]);
+      selectPage(const [0, 6, 3][index]);
       unawaited(voice.stop());
     }, destinations: const [NavigationDestination(icon: Icon(CupertinoIcons.chat_bubble_fill), selectedIcon: Icon(CupertinoIcons.chat_bubble_fill), label: 'Chat'),
       NavigationDestination(icon: Icon(CupertinoIcons.check_mark_circled), label: 'Công việc'),
-      NavigationDestination(icon: Icon(CupertinoIcons.photo_on_rectangle), label: 'Sáng tạo'),
       NavigationDestination(icon: Icon(CupertinoIcons.person), selectedIcon: Icon(CupertinoIcons.person_fill), label: 'Tài khoản')])));
 
   @override

@@ -58,7 +58,7 @@ void main() {
       });
     }
     if (Platform.environment['CHAT_AI_UI_PREVIEW'] == 'true') {
-      for (final destination in {'Tài khoản': 'account', 'Công việc': 'tasks', 'Sáng tạo': 'media'}.entries) {
+      for (final destination in {'Tài khoản': 'account', 'Công việc': 'tasks'}.entries) {
         await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(destination.key)));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
