@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import '../lib/main.dart';
-import '../lib/api.dart';
-import '../lib/media_page.dart';
-import '../lib/connected_apps.dart';
-import '../lib/visual_style.dart';
+import 'package:chatai_mobile/main.dart';
+import 'package:chatai_mobile/api.dart';
+import 'package:chatai_mobile/media_page.dart';
+import 'package:chatai_mobile/connected_apps.dart';
+import 'package:chatai_mobile/visual_style.dart';
 import 'voice_test.dart' show FakeVoice;
 
 void main() {

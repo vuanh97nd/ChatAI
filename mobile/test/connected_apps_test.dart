@@ -1,8 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/connected_apps.dart';
 
 void main(){
+ testWidgets('Drive hands the search URL to the explicit Android app only after a tap',(tester) async {
+  const channel=MethodChannel('vn.chatai/linked_apps');
+  final calls=<MethodCall>[];
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,(call) async { calls.add(call); return true; });
+  addTearDown(()=>TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel,null));
+  await tester.pumpWidget(const MaterialApp(home:ConnectedAppsPage(initialApp:LinkedApp.drive,initialRequest:'Tìm file báo cáo trên Google Drive')));
+  await tester.pumpAndSettle(); expect(calls,isEmpty);
+  await Scrollable.ensureVisible(tester.element(find.text('Mở Drive / tìm tệp')),alignment:.5); await tester.pumpAndSettle();
+  await tester.tap(find.text('Mở Drive / tìm tệp')); await tester.pumpAndSettle();
+  expect(calls.length,1); expect(calls.single.method,'open');
+  final args=calls.single.arguments as Map;
+  expect(args['package'],'com.google.android.apps.docs');
+  final uri=Uri.parse(args['uri'] as String);
+  expect(uri.host,'drive.google.com'); expect(uri.queryParameters['q'],'báo cáo');
+  expect(tester.takeException(),isNull);
+ });
  test('explicit app requests route correctly without mistaking ordinary words for apps',(){
   expect(requestedApp('Mở Grab'),LinkedApp.grab);
   expect(requestedApp('Đặt xe be đến sân bay'),LinkedApp.be);
