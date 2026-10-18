@@ -150,7 +150,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget field(TextEditingController c, String label, {bool number = false, int lines = 1}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6), child: TextField(controller: c, enabled: !busy,
       keyboardType: number ? TextInputType.number : null, minLines: lines, maxLines: lines,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
+      decoration: InputDecoration(labelText: label)));
   @override
   Widget build(BuildContext context) {
     if (widget.api.session?.admin != true) return const Scaffold(body: Center(child: Text('Chỉ dành cho Admin.')));

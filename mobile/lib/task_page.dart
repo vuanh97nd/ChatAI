@@ -105,20 +105,22 @@ class _TaskPageState extends State<TaskPage> {
     const SizedBox(height: 12),
     TextField(controller: goal, enabled: !busy, minLines: 2, maxLines: 5, maxLength: 2000,
       decoration: const InputDecoration(labelText: 'Bạn muốn hoàn thành việc gì?', hintText: 'Ví dụ: Chuẩn bị cuộc họp tuần sau')),
-    Wrap(spacing: 8, children: [
+    Wrap(spacing: 8, runSpacing: 8, children: [
       FilledButton.icon(onPressed: busy || !loaded ? null : generate, icon: const Icon(CupertinoIcons.sparkles), label: const Text('AI lập kế hoạch')),
       OutlinedButton(onPressed: busy || !loaded ? null : manual, child: const Text('Thêm thủ công')),
-      OutlinedButton.icon(onPressed: busy ? null : () => run(() async {
-        await enableTaskReminders(widget.api);
-        await showTaskReminders(widget.api);
-        if (mounted) setState(() { reminderEnabled = true; message = 'Đã bật nhắc việc. Android kiểm tra khoảng 15 phút/lần; có thể chậm khi tiết kiệm pin.'; });
-      }), icon: const Icon(CupertinoIcons.bell), label: const Text('Bật nhắc việc')),
-      TextButton(onPressed: busy ? null : () => run(() async {
-        await disableTaskReminders(widget.api);
-        if (mounted) setState(() { reminderEnabled = false; message = 'Đã tắt nhắc việc nền.'; });
-      }), child: const Text('Tắt nhắc việc')),
     ]),
-    Text(reminderEnabled ? 'Nhắc việc nền: đang bật · kiểm tra khoảng 15 phút/lần' : 'Nhắc việc nền: đang tắt'),
+    const SizedBox(height: 16),
+    IosSection(children: [SwitchListTile.adaptive(value: reminderEnabled,
+      title: const Text('Nhắc việc nền'),
+      subtitle: const Text('Kiểm tra khoảng 15 phút/lần; có thể chậm khi tiết kiệm pin.'),
+      onChanged: busy || !loaded ? null : (enabled) => run(() async {
+        if (enabled) {
+          await enableTaskReminders(widget.api);
+          await showTaskReminders(widget.api);
+        } else { await disableTaskReminders(widget.api); }
+        if (mounted) setState(() { reminderEnabled = enabled; message = enabled ? 'Đã bật nhắc việc nền.' : 'Đã tắt nhắc việc nền.'; });
+      }),
+    ]),
     if (busy) const Padding(padding: EdgeInsets.all(16), child: Center(child: CupertinoActivityIndicator())),
     if (message.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: SelectableText(message)),
     if (suggestion != null) Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
