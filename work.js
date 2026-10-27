@@ -3307,11 +3307,13 @@ function billingSpendDB(db){
 function billingPublicActor(actor,name=actor.username){
  return {username:name,role:administrator(actor)?'system':'user',is_system:administrator(actor),created_at:actor.created_at||actor.updated_at||null};
 }
-function billingMappedActor(env,actor){
+export function billingMappedActor(env,actor){
  if(administrator(actor))return billingPublicActor(actor,'admin');
  const map=JSON.parse(env.BILLING_ACCOUNT_MAP||'{}');
  if(!map||Array.isArray(map)||typeof map!=='object'||Object.keys(map).length>10000||Object.entries(map).some(([local,remote])=>!validUser(local)||local==='admin'||!validUser(remote)||remote==='admin')||new Set(Object.values(map)).size!==Object.values(map).length)throw new Error('Billing mappings must be explicit and one-to-one');
- const target=map[actor.username];
+ let target=map[actor.username];
+ // Tài khoản chưa ghi trong map (ví dụ mới đăng ký) dùng ví cùng tên, trừ khi tên đó đã là chủ ví của tài khoản khác trong map.
+ if(target===undefined&&env.BILLING_AUTO_MAP!=='false'&&validUser(actor.username)&&!Object.values(map).includes(actor.username))target=actor.username;
  if(!validUser(target))throw new Error('Billing account is not explicitly mapped');
  return billingPublicActor(actor,target);
 }
