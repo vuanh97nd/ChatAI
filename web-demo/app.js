@@ -582,6 +582,7 @@ function sendMessage(raw) {
   turnAttachment = attachment && LIVE ? attachment : null;
   const fileKind = fileRequest(text);
   if (fileKind) text = text + "\n\n" + FILE_INSTRUCTION(fileKind);
+  else if (chartRequest(text)) text = text + "\n\n" + CHART_INSTRUCTION;
   if (attachment && !LIVE) text = (text || "Tóm tắt nội dung tệp này.") + `\n\nTệp văn bản: ${attachment.name}\n---\n${String(attachment.text || "").slice(0, 4000)}`;
   else if (attachment) text = (text || (attachment.image ? "Phân tích ảnh này." : "Phân tích nội dung tệp này.")) + `\n\n[Đính kèm: ${attachment.name}]`;
   if (text.length > (model.id === "cloudflare" ? 6000 : 16000)) { toast("Nội dung quá dài. Hãy rút ngắn câu hỏi hoặc tệp đính kèm."); return; }
@@ -1434,7 +1435,9 @@ function mediaMode(text) {
   if (tool === "Video") return "video";
   const f = text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").toLowerCase();
   if (/^(hay |giup (toi|minh) )?(tao|lam|dung) (mot |1 )?(video|clip|doan phim)\b/.test(f)) return "video";
-  if (/^(hay |giup (toi|minh) )?(tao|ve|thiet ke) (mot |1 )?(anh|hinh|buc anh|buc tranh|poster|logo)\b/.test(f)) return "image";
+  if (chartRequest(text)) return null;
+  if (/\b(tao|ve|thiet ke|lam|cho (toi|minh)|ra) (cho (toi|minh) )?(mot |1 |vai |cac )?(anh|hinh anh|hinh minh hoa|buc anh|buc tranh|tranh|poster|logo|banner|avatar|hinh nen|anh bia)\b/.test(f)) return "image";
+  if (/^(hay |giup (toi|minh) )?ve (mot |1 )?(con|canh|chan dung|nguoi|ngoi nha|phong canh|cay|thanh pho|bien|nui)\b/.test(f)) return "image";
   return null;
 }
 function syncMediaOptions() {
@@ -1719,8 +1722,10 @@ function fileCard(spec) {
 }
 const renderRichTextBase = renderRichText;
 renderRichText = function (target, text) {
-  const { clean, spec } = extractFileSpec(text);
+  const chart = extractChartSpec(text);
+  const { clean, spec } = extractFileSpec(chart.clean);
   renderRichTextBase(target, clean);
+  if (chart.spec) { const draw = () => { target.parentElement?.querySelector(":scope > .chart-card")?.remove(); if (target.parentElement) target.after(chartCard(chart.spec)); }; if (target.parentElement) draw(); else queueMicrotask(draw); }
   const place = () => { target.parentElement?.querySelector(":scope > .file-card")?.remove(); if (spec && target.parentElement) target.after(fileCard(spec)); };
   if (target.parentElement) place(); else queueMicrotask(place);
 };
@@ -1742,3 +1747,76 @@ function forgetSession() { try { localStorage.removeItem(SESSION_KEY); } catch {
   }
   loginUser(saved.name || saved.username, saved.username, saved.key, { trialDays: saved.trialDays });
 })();
+
+// Biểu đồ: AI trả ```chatai-chart {JSON}```, web vẽ SVG (cột, đường, tròn) và cho tải PNG.
+function chartRequest(text) {
+  const f = String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").toLowerCase();
+  return /\b(bieu do|do thi|chart|graph)\b/.test(f);
+}
+const CHART_INSTRUCTION = '[Yêu cầu vẽ biểu đồ] Giải thích ngắn số liệu, sau đó đặt ĐÚNG MỘT khối ở cuối:\n```chatai-chart\n{"chart":"bar","title":"Tiêu đề","unit":"đơn vị","labels":["A","B","C"],"series":[{"name":"Dãy 1","values":[1,2,3]}]}\n```\nchart là "bar", "line" hoặc "pie" (pie chỉ một dãy). Số dạng số, cùng độ dài với labels, số liệu thật, tiếng Việt có dấu.';
+function extractChartSpec(text) {
+  const m = String(text || "").match(/```chatai-chart\s*([\s\S]*?)```/);
+  if (!m) return { clean: text, spec: null };
+  let spec = null;
+  try { spec = JSON.parse(m[1]); } catch { try { spec = JSON.parse(m[1].replace(/,\s*([}\]])/g, "$1")); } catch {} }
+  const ok = spec && Array.isArray(spec.labels) && Array.isArray(spec.series) && spec.series.length && spec.series.every((x) => Array.isArray(x.values));
+  return { clean: String(text).replace(m[0], "").trim(), spec: ok ? spec : { error: true } };
+}
+const CHART_COLORS = ["#2f5bea", "#c77700", "#14804a", "#b42318", "#7a3ff2", "#0f6b78"];
+function chartSvg(spec) {
+  const NS = "http://www.w3.org/2000/svg", W = 560, H = 320, L = 52, R = 16, T = 40, B = 56;
+  const el = (tag, at, txt) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(at)) e.setAttribute(k, v); if (txt != null) e.textContent = txt; return e; };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, xmlns: NS, class: "chart-svg", role: "img", "aria-label": spec.title || "Biểu đồ" });
+  svg.append(el("rect", { x: 0, y: 0, width: W, height: H, fill: "#ffffff" }));
+  svg.append(el("text", { x: 16, y: 24, "font-size": 15, "font-weight": 700, fill: "#0f1a2b" }, spec.title || ""));
+  const labels = spec.labels.map(String), series = spec.series.map((x) => ({ name: String(x.name || ""), values: x.values.map(Number) }));
+  if (spec.chart === "pie") {
+    const vals = series[0].values.map((v) => Math.max(0, v || 0)), sum = vals.reduce((a, b) => a + b, 0) || 1;
+    let ang = -Math.PI / 2; const cx = 170, cy = 180, r = 110;
+    vals.forEach((v, i) => {
+      const a2 = ang + (v / sum) * Math.PI * 2, large = a2 - ang > Math.PI ? 1 : 0;
+      const p = (a) => `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`;
+      svg.append(el("path", { d: `M${cx},${cy} L${p(ang)} A${r},${r} 0 ${large} 1 ${p(a2)} Z`, fill: CHART_COLORS[i % 6], stroke: "#fff", "stroke-width": 2 }));
+      svg.append(el("rect", { x: 320, y: 70 + i * 24, width: 12, height: 12, rx: 3, fill: CHART_COLORS[i % 6] }));
+      svg.append(el("text", { x: 340, y: 81 + i * 24, "font-size": 12, fill: "#0f1a2b" }, `${labels[i] || ""} · ${Math.round(v / sum * 1000) / 10}%`));
+      ang = a2;
+    });
+    return svg;
+  }
+  const all = series.flatMap((x) => x.values).filter(Number.isFinite), max = Math.max(0, ...all), min = Math.min(0, ...all);
+  const span = max - min || 1, y = (v) => T + (max - v) / span * (H - T - B), pw = W - L - R, n = labels.length || 1;
+  for (let k = 0; k <= 4; k++) {
+    const v = min + span * k / 4, yy = y(v);
+    svg.append(el("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "#e6e9ef" }));
+    svg.append(el("text", { x: L - 6, y: yy + 4, "font-size": 10, fill: "#66728a", "text-anchor": "end" }, (Math.round(v * 100) / 100).toLocaleString("vi-VN")));
+  }
+  labels.forEach((lb, i) => svg.append(el("text", { x: L + pw * (i + 0.5) / n, y: H - B + 16, "font-size": 10, fill: "#66728a", "text-anchor": "middle" }, lb.length > 12 ? lb.slice(0, 11) + "…" : lb)));
+  series.forEach((sr, si) => {
+    const color = CHART_COLORS[si % 6];
+    if (spec.chart === "line") {
+      const pts = sr.values.map((v, i) => `${L + pw * (i + 0.5) / n},${y(v || 0)}`).join(" ");
+      svg.append(el("polyline", { points: pts, fill: "none", stroke: color, "stroke-width": 2.5, "stroke-linejoin": "round" }));
+      sr.values.forEach((v, i) => svg.append(el("circle", { cx: L + pw * (i + 0.5) / n, cy: y(v || 0), r: 3.5, fill: color })));
+    } else {
+      const gw = pw / n * 0.7, bw = gw / series.length;
+      sr.values.forEach((v, i) => { const x0 = L + pw * i / n + (pw / n - gw) / 2 + bw * si, top = y(Math.max(v || 0, 0)), bot = y(Math.min(v || 0, 0)); svg.append(el("rect", { x: x0, y: top, width: Math.max(1, bw - 2), height: Math.max(1, bot - top), rx: 2, fill: color })); });
+    }
+    svg.append(el("rect", { x: L + si * 130, y: H - 22, width: 12, height: 12, rx: 3, fill: color }));
+    svg.append(el("text", { x: L + 18 + si * 130, y: H - 12, "font-size": 11, fill: "#0f1a2b" }, (sr.name || "Dãy " + (si + 1)) + (spec.unit && si === 0 ? ` (${spec.unit})` : "")));
+  });
+  return svg;
+}
+function chartCard(spec) {
+  const box = Object.assign(document.createElement("section"), { className: "chart-card" });
+  if (spec.error) { box.append(Object.assign(document.createElement("p"), { className: "media-state is-error", textContent: "AI trả số liệu biểu đồ chưa đúng định dạng. Bấm Tạo lại hoặc chọn AI khác." })); return box; }
+  const svg = chartSvg(spec); box.append(svg);
+  const btn = Object.assign(document.createElement("button"), { type: "button", className: "media-save", textContent: "Tải ảnh PNG" });
+  btn.addEventListener("click", () => {
+    const xml = new XMLSerializer().serializeToString(svg), img = new Image();
+    img.onload = () => { const c = Object.assign(document.createElement("canvas"), { width: 1120, height: 640 }); c.getContext("2d").drawImage(img, 0, 0, 1120, 640);
+      c.toBlob((b) => { const u = URL.createObjectURL(b), link = Object.assign(document.createElement("a"), { href: u, download: (spec.title || "bieu-do").replace(/[\\/:*?"<>|]+/g, "-") + ".png" }); document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); }); };
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
+  });
+  box.append(btn);
+  return box;
+}
