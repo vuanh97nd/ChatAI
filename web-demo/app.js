@@ -769,6 +769,7 @@ document.querySelector("#openLoginFromAccount").addEventListener("click", () => 
   requireAccount("");
 });
 document.querySelector("#logoutButton").addEventListener("click", () => {
+  forgetSession();
   if (LIVE && session) {
     api("/api/logout", credentials()).catch(() => {});
   }
@@ -823,7 +824,9 @@ document.querySelector("#authForm").addEventListener("submit", async (event) => 
       }
       const logged = await api("/api/login", { username, key: password, device_id: "web_" + crypto.randomUUID() });
       form.reset();
-      loginUser(logged.fullname || name, logged.user?.username || username, password, {
+      const user = logged.user?.username || username;
+      if (logged.session_token) saveSession({ name: logged.fullname || name, username: user, key: logged.session_token, trialDays: Math.max(0, Math.ceil((Date.parse(logged.expires_at) - Date.now()) / 86400000)) || 30 });
+      loginUser(logged.fullname || name, user, logged.session_token || password, {
         trialDays: Math.max(0, Math.ceil((Date.parse(logged.expires_at) - Date.now()) / 86400000)) || 30,
         isAdmin: logged.is_system === true,
       });
@@ -1719,3 +1722,21 @@ renderRichText = function (target, text) {
   const place = () => { target.parentElement?.querySelector(":scope > .file-card")?.remove(); if (spec && target.parentElement) target.after(fileCard(spec)); };
   if (target.parentElement) place(); else queueMicrotask(place);
 };
+
+// Giữ đăng nhập: chỉ lưu token phiên 30 ngày do máy chủ cấp (không lưu mật khẩu). Admin không có token nên chỉ giữ trong tab.
+const SESSION_KEY = "chatai-session";
+function saveSession(v) { try { localStorage.setItem(SESSION_KEY, JSON.stringify({ ...v, saved: Date.now() })); } catch {} }
+function forgetSession() { try { localStorage.removeItem(SESSION_KEY); } catch {} }
+(async function restoreSession() {
+  if (!LIVE || session) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch {}
+  if (!saved?.username || !String(saved.key || "").startsWith("session:")) return;
+  if (Date.now() - (saved.saved || 0) > 29 * 86400000) { forgetSession(); return; }
+  try {
+    await api("/api/billing/status", { username: saved.username, key: saved.key });
+  } catch (e) {
+    if (/đăng nhập|401|quyền/i.test(e.message)) { forgetSession(); return; }
+  }
+  loginUser(saved.name || saved.username, saved.username, saved.key, { trialDays: saved.trialDays });
+})();
