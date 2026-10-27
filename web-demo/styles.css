@@ -249,3 +249,12 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 #authForm .auth-brand-tag{margin:0}
 #authForm>h2{margin-bottom:4px}
 @media(max-width:720px){#authForm .auth-brand{justify-content:flex-start;align-items:center}}
+/* Đăng nhập mobile: tối giản */
+@media(max-width:720px){
+  #authForm .auth-brand{display:none}
+  #authForm>h2{margin-top:26px;font-size:20px;display:flex;align-items:center;gap:10px}
+  #authForm>h2::before{content:"";width:30px;height:30px;border-radius:9px;background:url(/logo.png) center/cover}
+  #authForm label{font-size:12px;font-weight:500;color:var(--muted)}
+  #authForm input{height:42px}
+  #authForm .sheet-ghost{border:0!important;min-height:34px!important;color:var(--muted)!important;margin-bottom:16px!important}
+}
