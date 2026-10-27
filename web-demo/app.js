@@ -888,6 +888,8 @@ async function loadWallet() {
     account.fee = Number(monthly?.fee_vnd || 0);
     renderAccount();
     renderPricing(data);
+    const srv = document.querySelector("#walletServer");
+    if (srv) srv.textContent = data.billing_server ? "Máy chủ thanh toán: " + new URL(data.billing_server).hostname : "Máy chủ thanh toán: máy chủ chính";
   } catch {
     if (session === account) { account.balance = null; renderAccount(); }
   }

@@ -285,3 +285,4 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .file-get{min-height:36px;padding:0 14px;border:0;border-radius:9px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer}
 .file-get:disabled{opacity:.6}
 .file-card .media-state{grid-column:1/-1}
+.wallet-server{font-size:11px;color:var(--muted)}

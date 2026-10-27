@@ -119,6 +119,13 @@
       </section>
 
       <section id="tab-pay">
+        <section class="card" id="centralCard">
+          <h2>Máy chủ thanh toán</h2>
+          <p>Ví, đơn QR và webhook ngân hàng được giữ ở máy chủ dự phòng. Máy chủ chính chỉ ký và chuyển yêu cầu sang.</p>
+          <div class="stats" id="centralStats"></div>
+          <div class="row"><button class="btn" id="centralCheck" type="button">Kiểm tra liên kết</button><p class="msg" id="centralMsg"></p></div>
+        </section>
+
         <form class="card" id="payForm">
           <h2>Cấu hình nạp tiền</h2>
           <p>Người dùng nạp qua VietQR. SePay gọi webhook để tự cộng tiền vào ví.</p>
@@ -254,7 +261,28 @@
         } catch (err) { say($("#addMsg"), err.message); }
       });
 
+      const CENTRAL_CAUSE = {
+        BILLING_PRIMARY_ROLE_MISSING: "Máy chủ chính chưa đặt BILLING_ROLE=primary, nên thanh toán đang chạy cục bộ, không qua dự phòng.",
+        BILLING_LINK_AUTH_OR_ORIGIN_MISMATCH: "Dự phòng từ chối chữ ký: BILLING_LINK_KEY hai bên khác nhau hoặc BILLING_PRIMARY_URL / BILLING_PUBLIC_ORIGIN không khớp.",
+        BACKUP_AUTHORITY_ROLE_OR_CODE_MISSING: "Máy chủ dự phòng chưa đặt BILLING_ROLE=authority hoặc chưa cập nhật mã.",
+        BILLING_LINK_CONFIGURATION_INVALID: "Cấu hình liên kết chưa hợp lệ: kiểm tra BILLING_AUTHORITY_URL (HTTPS, không có đường dẫn) và BILLING_LINK_KEY (≥ 32 ký tự).",
+      };
+      async function checkCentral() {
+        const msg = $("#centralMsg"); msg.textContent = "Đang kiểm tra…"; msg.className = "msg";
+        try {
+          const d = await api("/api/admin/billing/central-check");
+          const c = d.checks || {};
+          const cell = (k, v) => `<div class="stat"><span>${esc(k)}</span><b style="font-size:14px">${esc(v)}</b></div>`;
+          $("#centralStats").innerHTML = cell("Vai trò máy chủ chính", c.role) + cell("Kết nối dự phòng", d.connected ? "Đã kết nối" : "Chưa kết nối")
+            + cell("Khóa liên kết", c.link_key_present ? "Có" : "Thiếu") + cell("Tạm khóa chuyển sổ", c.freeze ? "Đang bật" : "Tắt");
+          if (d.connected) say(msg, "Thanh toán đang dùng máy chủ dự phòng (HTTP " + d.peer_http_status + ").", true);
+          else say(msg, CENTRAL_CAUSE[d.cause] || ("Chưa kết nối: " + (d.cause || "không rõ") + (d.connection_detail ? " · " + d.connection_detail : "")));
+        } catch (err) { say(msg, err.message); }
+      }
+      $("#centralCheck").onclick = checkCentral;
+
       async function loadPay() {
+        checkCentral();
         try {
           const { config: c } = await api("/api/admin/billing/config/get");
           $("#payEnabled").checked = c.enabled; $("#payBank").value = c.bank; $("#payAccount").value = c.account; $("#payName").value = c.name;
