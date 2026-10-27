@@ -123,7 +123,11 @@
           <h2>Máy chủ thanh toán</h2>
           <p>Ví, đơn QR và webhook ngân hàng được giữ ở máy chủ dự phòng. Máy chủ chính chỉ ký và chuyển yêu cầu sang.</p>
           <div class="stats" id="centralStats"></div>
-          <div class="row"><button class="btn" id="centralCheck" type="button">Kiểm tra liên kết</button><p class="msg" id="centralMsg"></p></div>
+          <div class="row"><button class="btn" id="centralCheck" type="button">Kiểm tra liên kết</button><button class="btn" id="mapBuild" type="button">Tạo BILLING_ACCOUNT_MAP</button><button class="btn bad" id="migrateBtn" type="button" disabled>Chuyển sổ sang dự phòng</button><p class="msg" id="centralMsg"></p></div>
+          <div id="mapBox" hidden style="margin-top:12px">
+            <label>BILLING_ACCOUNT_MAP (dán vào biến của Worker chính, kiểu Text)<textarea id="mapText" class="mono" rows="4" readonly style="width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)"></textarea></label>
+            <div class="row"><button class="btn" id="mapCopy" type="button">Sao chép</button><span class="mono" id="mapCount"></span></div>
+          </div>
         </section>
 
         <form class="card" id="payForm">
@@ -275,11 +279,33 @@
           const cell = (k, v) => `<div class="stat"><span>${esc(k)}</span><b style="font-size:14px">${esc(v)}</b></div>`;
           $("#centralStats").innerHTML = cell("Vai trò máy chủ chính", c.role) + cell("Kết nối dự phòng", d.connected ? "Đã kết nối" : "Chưa kết nối")
             + cell("Khóa liên kết", c.link_key_present ? "Có" : "Thiếu") + cell("Tạm khóa chuyển sổ", c.freeze ? "Đang bật" : "Tắt");
-          if (d.connected) say(msg, "Thanh toán đang dùng máy chủ dự phòng (HTTP " + d.peer_http_status + ").", true);
+          $("#migrateBtn").disabled = !(d.connected && c.freeze);
+          $("#migrateBtn").title = d.connected && c.freeze ? "" : "Cần liên kết đã thông và BILLING_MIGRATION_FREEZE=true";
+          if (d.connected) say(msg, "Thanh toán đang dùng máy chủ dự phòng (HTTP " + d.peer_http_status + ")." + (c.freeze ? " Đang tạm khóa để chuyển sổ." : ""), true);
           else say(msg, CENTRAL_CAUSE[d.cause] || ("Chưa kết nối: " + (d.cause || "không rõ") + (d.connection_detail ? " · " + d.connection_detail : "")));
         } catch (err) { say(msg, err.message); }
       }
       $("#centralCheck").onclick = checkCentral;
+      // Ánh xạ chủ ví: mỗi tài khoản đang hoạt động hoặc bị khóa ở máy chủ chính giữ nguyên tên ở dự phòng. Kiểm tra lại trước khi dán.
+      $("#mapBuild").onclick = async () => {
+        const msg = $("#centralMsg"); msg.textContent = "Đang lấy danh sách tài khoản…"; msg.className = "msg";
+        try {
+          const map = {}; let off = 0, total = 1;
+          while (off < total && off < 5000) {
+            const d = await api("/api/admin/accounts/list", { search: "", filter: "all", offset: off });
+            total = d.total || 0;
+            for (const u of d.users || []) if (u.account_status !== "deleted") map[u.username] = u.username;
+            off += 100;
+          }
+          $("#mapText").value = JSON.stringify(map); $("#mapCount").textContent = Object.keys(map).length + " tài khoản";
+          $("#mapBox").hidden = false; say(msg, "Đã tạo. Đối chiếu với danh sách chủ ví ở dự phòng trước khi dán.", true);
+        } catch (err) { say(msg, err.message); }
+      };
+      $("#mapCopy").onclick = () => { $("#mapText").select(); navigator.clipboard?.writeText($("#mapText").value).then(() => say($("#centralMsg"), "Đã sao chép.", true), () => {}); };
+      $("#migrateBtn").onclick = () => ask("Chuyển sổ thanh toán sang dự phòng",
+        "Sao chép toàn bộ ví, đơn, lịch sử và cấu hình ngân hàng của máy chủ chính sang dự phòng. Chỉ làm một lần, sau khi đã sao lưu D1 cả hai máy chủ. Gõ CHUYEN để xác nhận.",
+        `<label>Xác nhận<input id="fConfirm" required pattern="CHUYEN" placeholder="CHUYEN"></label>`,
+        async () => { const d = await api("/api/admin/billing/central-migration", { confirm: "MIGRATE_BILLING_TO_BACKUP", request_id: crypto.randomUUID() }); checkCentral(); return { message: d.message || "Đã chuyển sổ. Kiểm tra số dư rồi đặt BILLING_MIGRATION_FREEZE=false." }; });
 
       async function loadPay() {
         checkCentral();
