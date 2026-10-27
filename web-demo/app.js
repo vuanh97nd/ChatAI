@@ -576,6 +576,8 @@ async function runLiveTurn(convo, text, history) {
 function sendMessage(raw) {
   let text = String(raw || "").trim();
   if ((!text && !attachment) || streaming) return;
+  const media = mediaMode(text);
+  if (media && !attachment) { els.input.value = ""; els.input.style.height = "auto"; runMedia(media, text); return; }
   if (attachment) text = (text || "Tóm tắt nội dung tệp này.") + `\n\nTệp văn bản: ${attachment.name}\n---\n${attachment.text}`;
   if (text.length > (model.id === "cloudflare" ? 6000 : 16000)) { toast("Nội dung quá dài. Hãy rút ngắn câu hỏi hoặc tệp đính kèm."); return; }
   if (LIVE && !session && model.id !== "cloudflare") {
@@ -1415,4 +1417,77 @@ function liveCardNode(card) {
   const src = (card.sources || [])[0];
   if (src) { const f = document.createElement("a"); f.className = "live-src"; f.href = src.url; f.target = "_blank"; f.rel = "noopener"; f.textContent = "Nguồn: " + src.title; box.append(f); }
   return box;
+}
+
+// Tạo ảnh / video từ mô tả tiếng Việt qua /api/media/* của Worker.
+function selectedTool() { return document.querySelector('.composer-tools [data-tool][aria-pressed="true"]')?.dataset.tool || ""; }
+function mediaMode(text) {
+  const tool = selectedTool();
+  if (tool === "Hình ảnh") return "image";
+  if (tool === "Video") return "video";
+  const f = text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").toLowerCase();
+  if (/^(hay |giup (toi|minh) )?(tao|lam|dung) (mot |1 )?(video|clip|doan phim)\b/.test(f)) return "video";
+  if (/^(hay |giup (toi|minh) )?(tao|ve|thiet ke) (mot |1 )?(anh|hinh|buc anh|buc tranh|poster|logo)\b/.test(f)) return "image";
+  return null;
+}
+function syncMediaOptions() {
+  const tool = selectedTool(), box = document.querySelector("#mediaOptions");
+  box.hidden = tool !== "Hình ảnh" && tool !== "Video";
+  const video = tool === "Video";
+  document.querySelector("#videoSecondsWrap").hidden = !video;
+  document.querySelector("#videoFrameWrap").hidden = !video;
+  document.querySelector("#imageStyleWrap").hidden = video;
+  document.querySelector("#mediaHint").textContent = video ? "Tạo video từ mô tả tiếng Việt" : "Tạo ảnh từ mô tả tiếng Việt";
+  if (!box.hidden) els.input.placeholder = video ? "Mô tả cảnh quay, ví dụ: flycam cánh đồng lúa Tam Cốc lúc bình minh" : "Mô tả ảnh, ví dụ: kỹ sư khảo sát đê sông Hồng lúc hoàng hôn";
+  else els.input.placeholder = "Hỏi bất cứ điều gì…";
+}
+document.querySelectorAll(".composer-tools [data-tool]").forEach((b) => b.addEventListener("click", () => setTimeout(syncMediaOptions)));
+function mediaCard(kind) {
+  const row = addMessage("assistant", "");
+  row.p.remove();
+  const box = Object.assign(document.createElement("section"), { className: "media-card" });
+  const state = Object.assign(document.createElement("p"), { className: "media-state", textContent: kind === "video" ? "Đang gửi yêu cầu tạo video…" : "Đang tạo ảnh…" });
+  const bar = Object.assign(document.createElement("div"), { className: "media-progress" }); bar.append(document.createElement("i"));
+  box.append(state, bar); row.body.prepend(box); scrollThread();
+  return { box, state, bar };
+}
+async function runMedia(kind, text) {
+  if (!LIVE) { toast("Bản demo chưa nối máy chủ tạo ảnh/video."); return; }
+  if (!session) { requireAccount("Đăng nhập để tạo ảnh hoặc video."); return; }
+  addMessage("user", text);
+  const ui = mediaCard(kind);
+  setGenerating(true);
+  try {
+    if (kind === "image") {
+      const data = await api("/api/media/image", { ...credentials(), prompt: text, style: document.querySelector("#imageStyle").value });
+      const src = "data:" + (data.mime || "image/jpeg") + ";base64," + data.image;
+      const img = Object.assign(document.createElement("img"), { src, alt: text.slice(0, 120), className: "media-image" });
+      const save = Object.assign(document.createElement("a"), { href: src, download: "ChatAI-anh.jpg", className: "media-save", textContent: "Tải ảnh" });
+      ui.box.replaceChildren(img, save);
+    } else {
+      const created = await api("/api/media/video/create", { ...credentials(), prompt: text, request_id: crypto.randomUUID(),
+        seconds: Number(document.querySelector("#videoSeconds").value), frame: document.querySelector("#videoFrame").value });
+      ui.state.textContent = `Đang dựng video ${created.seconds || ""} giây… Thường mất 1–5 phút, bạn có thể tiếp tục chat.`;
+      setGenerating(false);
+      const started = Date.now();
+      while (Date.now() - started < 20 * 60000) {
+        await new Promise((r) => setTimeout(r, 6000));
+        const st = await api("/api/media/video/status", { ...credentials(), id: created.id });
+        ui.bar.firstChild.style.width = Math.max(5, st.progress || 0) + "%";
+        if (st.status === "failed") throw new Error("Dịch vụ video báo tạo thất bại. Thử mô tả khác.");
+        if (st.status === "completed") {
+          const res = await fetch("/api/media/video/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...credentials(), id: created.id }) });
+          if (!res.ok) throw new Error("Không tải được video đã tạo.");
+          const url = URL.createObjectURL(await res.blob());
+          const video = Object.assign(document.createElement("video"), { src: url, controls: true, playsInline: true, className: "media-video" });
+          const save = Object.assign(document.createElement("a"), { href: url, download: "ChatAI-video.mp4", className: "media-save", textContent: "Tải video" });
+          ui.box.replaceChildren(video, save); scrollThread();
+          return;
+        }
+      }
+      throw new Error("Video chưa xong sau 20 phút. Kiểm tra lại sau.");
+    }
+  } catch (e) {
+    ui.box.replaceChildren(Object.assign(document.createElement("p"), { className: "media-state is-error", textContent: e.message }));
+  } finally { setGenerating(false); scrollThread(); }
 }

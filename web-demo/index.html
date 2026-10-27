@@ -284,6 +284,12 @@
             <div class="attachment-chip" id="attachmentChip" hidden><span></span><button type="button" id="removeAttachment" aria-label="Bỏ tệp đính kèm">×</button></div>
             <input type="file" id="fileInput" accept=".txt,.md,.csv,.json" hidden>
             <div class="followups" id="followups" hidden></div>
+            <div class="media-options" id="mediaOptions" hidden>
+              <span id="mediaHint">Tạo ảnh từ mô tả tiếng Việt</span>
+              <label id="videoSecondsWrap" hidden>Thời lượng <select id="videoSeconds"><option value="4">4 giây</option><option value="8">8 giây</option><option value="12">12 giây</option></select></label>
+              <label id="videoFrameWrap" hidden>Khung <select id="videoFrame"><option value="portrait">Dọc 9:16</option><option value="landscape">Ngang 16:9</option></select></label>
+              <label id="imageStyleWrap">Phong cách <select id="imageStyle"><option value="photo">Ảnh chụp chuyên nghiệp</option><option value="free">Theo mô tả</option></select></label>
+            </div>
             <div class="composer-topline"><span><i></i>Sẵn sàng</span><span class="key-hint">Shift + Enter xuống dòng</span></div><form class="composer" id="chatForm">
               <button class="icon-btn attach-btn" type="button" title="Đính kèm TXT, MD, CSV hoặc JSON" aria-label="Đính kèm tệp"><svg aria-hidden="true"
   xmlns="http://www.w3.org/2000/svg"
@@ -334,7 +340,7 @@
   <circle cx="13" cy="7" r="1" fill="currentColor" />
   <rect x="8" y="2" width="14" height="14" rx="2" />
 </svg>
-<span class="tool-label">Hình ảnh</span></button><button type="button" data-tool="Tài liệu" aria-label="Tài liệu" aria-pressed="false"><svg aria-hidden="true"
+<span class="tool-label">Hình ảnh</span></button><button type="button" data-tool="Video" aria-label="Video" aria-pressed="false"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg><span class="tool-label">Video</span></button><button type="button" data-tool="Tài liệu" aria-label="Tài liệu" aria-pressed="false"><svg aria-hidden="true"
   xmlns="http://www.w3.org/2000/svg"
   width="24"
   height="24"
