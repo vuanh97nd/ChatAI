@@ -683,7 +683,7 @@ function setAuthMode(mode) {
   document.querySelectorAll(".auth-tabs button").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.auth === mode);
   });
-  document.querySelector("#authTitle").textContent = mode === "register" ? "Đăng ký ChatAI" : "Đăng nhập ChatAI";
+  document.querySelector("#authTitle").textContent = mode === "register" ? "Tạo tài khoản" : "Chào mừng trở lại";
   document.querySelector("#nameField").hidden = mode !== "register";
   document.querySelector("#emailField").hidden = mode !== "register";
   document.querySelector("#authForm [name=password]").autocomplete = mode === "register" ? "new-password" : "current-password";
