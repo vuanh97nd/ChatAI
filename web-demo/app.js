@@ -276,6 +276,7 @@ function addMessage(role, text, { streamingText = false } = {}) {
   p.className = "message-content";
   p.textContent = text;
   if (role === "assistant" && !streamingText) renderRichText(p, text);
+  if (role === "assistant" && pendingLiveCard) { body.append(liveCardNode(pendingLiveCard)); pendingLiveCard = null; }
   body.append(p);
   if (role === "assistant" && !streamingText) {
     body.append(actionRow(text));
@@ -468,6 +469,7 @@ async function liveReply(text, history, operation) {
   if (!cloud) {
     const data = await response.json();
     if (data.success === false || !data.answer?.trim()) throw new Error(data.message || "AI chưa trả nội dung.");
+    pendingLiveCard = data.live || null;
     return data.answer;
   }
   if (!response.body) throw new Error("Không nhận được luồng trả lời.");
@@ -482,6 +484,7 @@ async function liveReply(text, history, operation) {
     if (!raw) return;
     const value = JSON.parse(raw);
     if (event === "error") throw new Error(value.message || "Lỗi mô hình.");
+    if (event === "live") { target.body.insertBefore(liveCardNode(value), target.p); scrollThread(); }
     if (event === "delta" && value.text) {
       full += value.text;
       target.p.textContent = full;
@@ -1347,3 +1350,64 @@ document.querySelector("#resetForm").addEventListener("submit", async (event) =>
     done.textContent = data.message || "Đã gửi liên kết. Kiểm tra hộp thư, cả thư rác."; done.hidden = false;
   } catch (e) { err.textContent = e.message; err.hidden = false; btn.disabled = false; }
 });
+
+// Thẻ số liệu trực tiếp (thời tiết, giá vàng, tin tức) kèm biểu đồ nhỏ, vẽ bằng SVG từ dữ liệu Worker đã tra.
+let pendingLiveCard = null;
+const WEATHER_TEXT = { 0: "Trời quang", 1: "Ít mây", 2: "Có mây", 3: "Nhiều mây", 45: "Sương mù", 48: "Sương mù", 51: "Mưa phùn", 53: "Mưa phùn", 55: "Mưa phùn", 61: "Mưa nhẹ", 63: "Mưa vừa", 65: "Mưa to", 80: "Mưa rào", 81: "Mưa rào", 82: "Mưa rào mạnh", 95: "Dông", 96: "Dông, mưa đá", 99: "Dông, mưa đá" };
+function svgEl(tag, attrs) { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; }
+function liveTime(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + " " + d.toLocaleDateString("vi-VN"); }
+function liveCardNode(card) {
+  const box = document.createElement("section");
+  box.className = "live-card live-" + card.kind;
+  const head = document.createElement("header");
+  const title = { weather: "Thời tiết" + (card.place ? " · " + card.place.split(",")[0] : ""), gold: "Giá vàng PNJ", news: "Tin mới VnExpress" }[card.kind] || "Dữ liệu trực tiếp";
+  head.append(Object.assign(document.createElement("strong"), { textContent: title }), Object.assign(document.createElement("span"), { textContent: "Tra lúc " + liveTime(card.searched_at) }));
+  box.append(head);
+  if (card.kind === "weather" && card.current) {
+    const now = document.createElement("div"); now.className = "live-now";
+    now.append(Object.assign(document.createElement("b"), { textContent: Math.round(card.current.temperature) + "°C" }),
+      Object.assign(document.createElement("span"), { textContent: [WEATHER_TEXT[card.current.code] || "", card.current.humidity != null ? "Ẩm " + card.current.humidity + "%" : "", card.current.wind != null ? "Gió " + Math.round(card.current.wind) + " km/h" : ""].filter(Boolean).join(" · ") }));
+    box.append(now);
+    const days = (card.daily || []).filter(d => Number.isFinite(d.max) && Number.isFinite(d.min));
+    if (days.length) {
+      const W = 320, H = 132, top = 18, bottom = 34, colW = W / days.length;
+      const lo = Math.min(...days.map(d => d.min)) - 1, hi = Math.max(...days.map(d => d.max)) + 1;
+      const y = v => top + (hi - v) / (hi - lo) * (H - top - bottom);
+      const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, class: "live-chart", role: "img", "aria-label": "Nhiệt độ cao nhất, thấp nhất và khả năng mưa 7 ngày" });
+      days.forEach((d, i) => {
+        const cx = colW * i + colW / 2;
+        if (Number.isFinite(d.rain)) svg.append(svgEl("rect", { x: cx - colW * 0.32, y: H - bottom - (d.rain / 100) * (H - top - bottom), width: colW * 0.64, height: (d.rain / 100) * (H - top - bottom), class: "rain" }));
+        svg.append(svgEl("line", { x1: cx, x2: cx, y1: y(d.max), y2: y(d.min), class: "range" }));
+        svg.append(svgEl("circle", { cx, cy: y(d.max), r: 3, class: "hi" }), svgEl("circle", { cx, cy: y(d.min), r: 3, class: "lo" }));
+        const t1 = svgEl("text", { x: cx, y: y(d.max) - 6, class: "val" }); t1.textContent = Math.round(d.max) + "°";
+        const t2 = svgEl("text", { x: cx, y: H - 18, class: "day" }); t2.textContent = i === 0 ? "Nay" : new Date(d.date).toLocaleDateString("vi-VN", { weekday: "short" });
+        const t3 = svgEl("text", { x: cx, y: H - 5, class: "pop" }); t3.textContent = Number.isFinite(d.rain) ? d.rain + "%" : "";
+        svg.append(t1, t2, t3);
+      });
+      box.append(svg);
+      box.append(Object.assign(document.createElement("p"), { className: "live-legend", textContent: "Chấm: cao nhất / thấp nhất · Cột: khả năng mưa" }));
+    }
+  } else if (card.kind === "gold" && card.items?.length) {
+    const num = v => Number(String(v).replace(/,/g, ""));
+    const max = Math.max(...card.items.map(r => num(r.sell)));
+    const list = document.createElement("div"); list.className = "live-bars";
+    for (const r of card.items) {
+      const row = document.createElement("div"); row.className = "live-bar";
+      const bar = document.createElement("i"); bar.style.width = Math.max(8, num(r.sell) / max * 100) + "%";
+      row.append(Object.assign(document.createElement("span"), { textContent: r.name }), bar,
+        Object.assign(document.createElement("b"), { textContent: r.buy + " / " + r.sell }));
+      list.append(row);
+    }
+    box.append(list, Object.assign(document.createElement("p"), { className: "live-legend", textContent: "Mua vào / bán ra, đơn vị " + (card.unit || "1.000 đồng/chỉ") + (card.updated_at ? " · Nguồn cập nhật " + card.updated_at : "") }));
+  } else if (card.kind === "news" && card.items?.length) {
+    const ul = document.createElement("ul"); ul.className = "live-news";
+    for (const n of card.items) {
+      const a = Object.assign(document.createElement("a"), { href: n.url, target: "_blank", rel: "noopener", textContent: n.title });
+      const li = document.createElement("li"); li.append(a); ul.append(li);
+    }
+    box.append(ul);
+  }
+  const src = (card.sources || [])[0];
+  if (src) { const f = document.createElement("a"); f.className = "live-src"; f.href = src.url; f.target = "_blank"; f.rel = "noopener"; f.textContent = "Nguồn: " + src.title; box.append(f); }
+  return box;
+}

@@ -29,3 +29,15 @@ test('weather question calls Open-Meteo and returns sourced data',async()=>{
  assert.match(result.answer,/Open-Meteo/);
  assert.equal(await autoLiveSearch('Viết code Python',send),null);
 });
+
+import {liveCard} from '../work.js';
+test('liveCard turns lookups into drawable data',async()=>{
+ const send=async url=>new Response(JSON.stringify(String(url).includes('geocoding')
+  ?{results:[{name:'Đà Lạt',admin1:'Lâm Đồng',country:'Việt Nam',latitude:11.9,longitude:108.4}]}
+  :{timezone:'Asia/Bangkok',current:{time:'2026-10-28T08:00',temperature_2m:18.4,relative_humidity_2m:88,weather_code:61,wind_speed_10m:7},current_units:{},
+    daily:{time:['2026-10-28','2026-10-29'],temperature_2m_max:[22,23],temperature_2m_min:[15,16],precipitation_probability_max:[70,40],weather_code:[61,3]},daily_units:{}}),{status:200});
+ const card=liveCard(await autoLiveSearch('Thời tiết ở Đà Lạt ngày mai',send));
+ assert.equal(card.kind,'weather');assert.match(card.place,/Đà Lạt/);
+ assert.equal(card.current.temperature,18.4);assert.equal(card.daily.length,2);assert.deepEqual(card.daily[0],{date:'2026-10-28',max:22,min:15,rain:70,code:61});
+ assert.equal(liveCard(null),null);
+});

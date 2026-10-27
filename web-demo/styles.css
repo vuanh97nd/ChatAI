@@ -215,3 +215,30 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
   .messages .message-content pre,.messages .message-content code{font-size:12.5px!important}
   .msg-meta{font-size:11px}
 }
+
+/* Thẻ dữ liệu trực tiếp trong câu trả lời */
+.live-card{margin:2px 0 12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);max-width:460px}
+.live-card header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.live-card header strong{font-size:14px}
+.live-card header span{font:11px "JetBrains Mono",monospace;color:var(--muted)}
+.live-now{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.live-now b{font:600 30px/1 "JetBrains Mono",monospace;letter-spacing:-.03em}
+.live-now span{font-size:13px;color:var(--muted)}
+.live-chart{display:block;width:100%;height:auto;margin-top:10px}
+.live-chart .rain{fill:var(--accent-soft)}
+.live-chart .range{stroke:var(--line);stroke-width:4;stroke-linecap:round}
+.live-chart .hi{fill:var(--meter)}
+.live-chart .lo{fill:var(--accent)}
+.live-chart text{text-anchor:middle;font:10px "JetBrains Mono",monospace;fill:var(--muted)}
+.live-chart .val{fill:var(--text);font-weight:600}
+.live-legend{margin:6px 0 0;font-size:11px;color:var(--muted)}
+.live-bars{display:grid;gap:8px}
+.live-bar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px;font-size:13px}
+.live-bar span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live-bar b{font:600 12px "JetBrains Mono",monospace;text-align:right}
+.live-bar i{grid-column:1/-1;display:block;height:6px;border-radius:99px;background:linear-gradient(90deg,var(--meter),color-mix(in srgb,var(--meter) 55%,transparent))}
+.live-news{margin:0;padding:0 0 0 18px;display:grid;gap:6px;font-size:13.5px;line-height:1.45}
+.live-news a{color:var(--text);text-decoration:none}
+.live-news a:hover{color:var(--accent);text-decoration:underline}
+.live-src{display:inline-block;margin-top:10px;font-size:12px;color:var(--accent);text-decoration:none}
+.live-bar span{grid-row:1;grid-column:1}.live-bar b{grid-row:1;grid-column:2}.live-bar i{grid-row:2}
