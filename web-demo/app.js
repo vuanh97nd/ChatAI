@@ -1753,7 +1753,7 @@ function chartRequest(text) {
   const f = String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").toLowerCase();
   return /\b(bieu do|do thi|chart|graph)\b/.test(f);
 }
-const CHART_INSTRUCTION = '[Yêu cầu vẽ biểu đồ] Giải thích ngắn số liệu, sau đó đặt ĐÚNG MỘT khối ở cuối:\n```chatai-chart\n{"chart":"bar","title":"Tiêu đề","unit":"đơn vị","labels":["A","B","C"],"series":[{"name":"Dãy 1","values":[1,2,3]}]}\n```\nchart là "bar", "line" hoặc "pie" (pie chỉ một dãy). Số dạng số, cùng độ dài với labels, số liệu thật, tiếng Việt có dấu.';
+const CHART_INSTRUCTION = '[Yêu cầu vẽ biểu đồ] Giải thích ngắn số liệu, sau đó đặt ĐÚNG MỘT khối ở cuối:\n```chatai-chart\n{"chart":"line","title":"Tiêu đề","unit":"","labels":["A","B","C"],"series":[{"name":"Tên dãy","values":[1,2,3]}]}\n```\nChọn chart: "line" cho hàm số, đồ thị toán, chuỗi theo thời gian; "bar" để so sánh các nhóm; "pie" cho tỷ lệ phần trăm (một dãy). Hàm số: lấy 11–21 điểm cách đều, labels là giá trị x. unit là đơn vị thật (kPa, tấn, %…) hoặc "" nếu không có. Số dạng số, cùng độ dài với labels, tiếng Việt có dấu.';
 function extractChartSpec(text) {
   const m = String(text || "").match(/```chatai-chart\s*([\s\S]*?)```/);
   if (!m) return { clean: text, spec: null };
@@ -1785,8 +1785,9 @@ function chartSvg(spec) {
   }
   const all = series.flatMap((x) => x.values).filter(Number.isFinite), max = Math.max(0, ...all), min = Math.min(0, ...all);
   const span = max - min || 1, y = (v) => T + (max - v) / span * (H - T - B), pw = W - L - R, n = labels.length || 1;
-  for (let k = 0; k <= 4; k++) {
-    const v = min + span * k / 4, yy = y(v);
+  const raw = span / 4, mag = Math.pow(10, Math.floor(Math.log10(raw))), step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= raw);
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) {
+    const yy = y(v);
     svg.append(el("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "#e6e9ef" }));
     svg.append(el("text", { x: L - 6, y: yy + 4, "font-size": 10, fill: "#66728a", "text-anchor": "end" }, (Math.round(v * 100) / 100).toLocaleString("vi-VN")));
   }
@@ -1802,7 +1803,7 @@ function chartSvg(spec) {
       sr.values.forEach((v, i) => { const x0 = L + pw * i / n + (pw / n - gw) / 2 + bw * si, top = y(Math.max(v || 0, 0)), bot = y(Math.min(v || 0, 0)); svg.append(el("rect", { x: x0, y: top, width: Math.max(1, bw - 2), height: Math.max(1, bot - top), rx: 2, fill: color })); });
     }
     svg.append(el("rect", { x: L + si * 130, y: H - 22, width: 12, height: 12, rx: 3, fill: color }));
-    svg.append(el("text", { x: L + 18 + si * 130, y: H - 12, "font-size": 11, fill: "#0f1a2b" }, (sr.name || "Dãy " + (si + 1)) + (spec.unit && si === 0 ? ` (${spec.unit})` : "")));
+    svg.append(el("text", { x: L + 18 + si * 130, y: H - 12, "font-size": 11, fill: "#0f1a2b" }, (sr.name || "Dãy " + (si + 1)) + (spec.unit && !/^đơn vị$/i.test(spec.unit) && si === 0 ? ` (${spec.unit})` : "")));
   });
   return svg;
 }
