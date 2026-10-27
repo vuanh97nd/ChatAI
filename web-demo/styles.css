@@ -321,3 +321,12 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 /* Biểu đồ */
 .chart-card{display:grid;gap:10px;max-width:580px;margin:8px 0 4px;padding:10px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
 .chart-svg{display:block;width:100%;height:auto;border-radius:8px}
+
+/* Trợ giúp: giới thiệu PC & Android */
+.help-apps{display:grid;gap:10px;margin:0 16px 12px}
+.help-app{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.help-app h3{margin:0 0 4px;font-size:14.5px}
+.help-app p{margin:0 0 10px;font-size:13px;line-height:1.55;color:var(--muted)}
+.help-app-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;color:#fff;font:700 11px "JetBrains Mono",monospace}
+.help-app-icon.pc{background:#2f5bea}.help-app-icon.android{background:#14804a}
+.help-app-get{display:inline-flex;align-items:center;min-height:34px;padding:0 14px;border-radius:9px;background:var(--text);color:var(--bg);font-size:13px;font-weight:700;text-decoration:none}

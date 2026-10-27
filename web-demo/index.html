@@ -474,7 +474,24 @@
       <div class="sheet help-sheet">
         <h2 id="helpTitle">Trợ giúp</h2>
         <p class="sheet-note">Câu hỏi thường gặp khi dùng ChatAI trên web.</p>
-        <details open><summary>AI nào miễn phí, AI nào tính tiền?</summary><p>NVIDIA, Gemini, Groq và Cloudflare miễn phí. DeepSeek tính theo token, trừ vào ví. Giá hiện tại xem trong Số dư và thanh toán.</p></details>
+        <section class="help-apps" aria-label="Ứng dụng ChatAI">
+          <article class="help-app">
+            <span class="help-app-icon pc" aria-hidden="true">PC</span>
+            <div><h3>ChatAI cho Windows 3.0</h3>
+              <p>AI chạy ngay trên máy qua Ollama, kèm AI trực tuyến. Điều khiển ứng dụng Windows, Chrome, Excel, Word, PowerPoint; làm việc với PLAXIS 2D/3D, GeoStudio SLOPE/W và AutoCAD 2023 (lệnh CHATAI). Mọi thao tác trên máy đều hỏi bạn xác nhận.</p>
+              <a class="help-app-get" href="https://github.com/vuanh97nd/ChatAI/releases/download/v3.0/Chat-AI-Setup-3.0.0.exe">Tải bộ cài .exe</a></div>
+          </article>
+          <article class="help-app">
+            <span class="help-app-icon android" aria-hidden="true">AND</span>
+            <div><h3>ChatAI cho Android 1.4.6</h3>
+              <p>Chung tài khoản, bộ nhớ và ví với web và PC. Chat bằng chữ hoặc giọng nói, và gửi việc cho máy tính qua Kết nối điện thoại: quét QR trên ChatAI Windows, theo dõi tiến trình, tạm dừng hoặc hủy.</p>
+              <a class="help-app-get" href="https://github.com/vuanh97nd/ChatAI/releases/download/android-1.4.6-build74/ChatAI-1.4.6-build74-8533fc7.apk">Tải APK</a></div>
+          </article>
+        </section>
+        <details><summary>Bật điều khiển phần mềm trên máy tính thế nào?</summary><p>Trên ChatAI Windows: Cài đặt → Điều khiển ứng dụng → bật quyền → Thêm ứng dụng EXE… → Lưu cài đặt. Sau đó yêu cầu, ví dụ: “Mở Demo.exe, bấm Run test và báo kết quả”. Web không điều khiển được máy tính. Hỏi AI “cách dùng PLAXIS trong ChatAI” để có hướng dẫn chi tiết.</p></details>
+        <details><summary>Các mục trong Cài đặt bản PC dùng để làm gì?</summary><p>Model / GPU và Ngữ cảnh Ollama: chọn model, độ dài trí nhớ. Token trả lời: độ dài câu trả lời. Dùng công cụ AI tự động: cho AI chạy Python, tra web. Office và thư mục được phép: AI chỉ làm việc trong các thư mục bạn thêm. Cho AI mở và điều khiển các ứng dụng được phép: bật điều khiển phần mềm. Tự thực hiện công việc: AI làm liền các bước của một yêu cầu, vẫn có nút dừng và backup. Hỏi AI “giải thích các mục cài đặt bản PC” để xem đầy đủ.</p></details>
+        <details><summary>Ra lệnh thế nào để AI điều khiển phần mềm chính xác?</summary><p>Một yêu cầu gồm: phần mềm, đường dẫn file, số liệu kèm đơn vị, thứ tự bước và kết quả cần trả. Ví dụ: “Mở D:\DuAn\SLTT.xlsx, sheet BTH (2), cộng cột F dòng 5–40 vào F41, lưu thành SLTT_kiemtra.xlsx”. Với PLAXIS nêu hình học có tọa độ, bảng đất (γ, c', φ', E'), mực nước, tải và các phase. Hỏi AI “mẫu câu lệnh PLAXIS” để có mẫu chi tiết.</p></details>
+        <details><summary>AI nào miễn phí, AI nào tính tiền?</summary><p>NVIDIA, Gemini, Groq và Cloudflare miễn phí. DeepSeek tính theo token, trừ vào ví. Giá hiện tại xem trong Số dư và thanh toán.</p></details>
         <details><summary>Nạp tiền vào ví thế nào?</summary><p>Mở Tài khoản & cài đặt → Số dư và thanh toán, chọn số tiền rồi quét mã VietQR bằng app ngân hàng. Giữ nguyên nội dung chuyển khoản. Tiền vào ví tự động, thường dưới 1 phút.</p></details>
         <details><summary>AI có biết thời tiết, giá vàng, tin tức hôm nay không?</summary><p>Có. Khi bạn hỏi về thời tiết, giá vàng hoặc tin tức, ChatAI tự tra Open-Meteo, PNJ hoặc VnExpress trước khi trả lời và ghi nguồn kèm giờ cập nhật.</p></details>
         <details><summary>Bộ nhớ cá nhân là gì?</summary><p>Khi bật, ChatAI nhớ những thông tin bạn đã lưu để trả lời sát hơn. Tắt trong Tài khoản & cài đặt nếu không muốn dùng cho lượt chat.</p></details>
