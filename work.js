@@ -1662,6 +1662,14 @@ export default {
   if(path==='/api/health'&&request.method==='GET')return respond(reply({success:true,app:'Chat AI',version:VERSION,database_configured:Boolean(env.DB),cloud_optional:true}));
   if(request.method==='GET'){const page=serveWebApp(path);if(page)return respond(page);}
   if(!env.DB||!adminSecret(env))return respond(fail('Cần binding DB và secret ADMIN_KEY.',503));
+  if(path==='/api/billing/link'&&request.method==='GET'){
+   // Công khai, chỉ báo liên kết thanh toán với máy chủ dự phòng có thông hay không; không trả khóa, số dư hay cấu hình.
+   if(!await throttle(env.DB,request.headers.get('CF-Connecting-IP')||'unknown','billing-link',6))return respond(fail('Vui lòng đợi một chút.',429));
+   let role='local';try{role=billingTopology(env)?.role||'local';}catch{role='invalid';}
+   if(role!=='primary')return respond(reply({success:true,role,connected:false}));
+   try{const {status,result}=await billingCentralCall(env,'config',null);return respond(reply({success:true,role,connected:status===200&&result?.success===true,peer_http_status:status}));}
+   catch(error){return respond(reply({success:true,role,connected:false,cause:error.billingCause||'BILLING_LINK_CONFIGURATION_INVALID'}));}
+  }
   try{
    let body={},raw='';
    if(['POST','DELETE','PUT','PATCH'].includes(request.method)){
