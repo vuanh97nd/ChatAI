@@ -22,6 +22,7 @@ function context(fetch) {
     editingTurn:null, pendingFileKind:null, turnAttachment:null, pendingLiveCard:null, WEB_SYSTEM_PROMPT:'test',
     mediaMode(){return null;}, fileRequest(){return null;}, chartRequest(){return false;}, FILE_INSTRUCTION(){return '';}, CHART_INSTRUCTION:'',
     deepOn(){return false;}, turnPayload(){return {};}, liveCardNode(){return node();},
+    pendingCalc:false, RUN_RESULT_PREFIX:'▶ Kết quả chạy code', CALC_INSTRUCTION:'', PLAN_INSTRUCTION:'', calcRequest(){return false;}, complexRequest(){return false;},
   };
   vm.createContext(state);vm.runInContext(live+send+regen+stop,state);return state;
 }

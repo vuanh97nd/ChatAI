@@ -580,6 +580,10 @@ function sendMessage(raw) {
   const media = mediaMode(text);
   if (media && !attachment) { els.input.value = ""; els.input.style.height = "auto"; runMedia(media, text); return; }
   turnAttachment = attachment && LIVE ? attachment : null;
+  const calcAuto = !text.startsWith(RUN_RESULT_PREFIX) && calcRequest(text);
+  pendingCalc = calcAuto;
+  if (calcAuto) text = text + "\n\n" + CALC_INSTRUCTION;
+  else if (!text.startsWith(RUN_RESULT_PREFIX) && complexRequest(text)) text = text + "\n\n" + PLAN_INSTRUCTION;
   const fileKind = fileRequest(text);
   pendingFileKind = fileKind || null;
   if (fileKind) text = text + "\n\n" + FILE_INSTRUCTION(fileKind);
@@ -1021,6 +1025,7 @@ function renderRichText(target, text) {
     button('file-code','Tải tệp code',()=>downloadText(value,'ChatAI-code.'+({python:'py',javascript:'js',js:'js',html:'html',css:'css',json:'json',sql:'sql'}[language]||'txt')));
     button('maximize-2','Xem code lớn',()=>openCodePanel(value,language));
     const copy=button('copy','Sao chép code',()=>copyValue(value,copy));
+    if(language==='python'||language==='py'){const run=document.createElement('button');run.type='button';run.className='code-run';run.textContent='▶ Chạy';run.title='Chạy code Python trên trình duyệt';run.addEventListener('click',()=>runCodeShell(value,shell,false));actions.prepend(run);if(/^#\s*chatai:run\b/.test(value)&&pendingCalc){pendingCalc=false;queueMicrotask(()=>runCodeShell(value,shell,true));}}
     bar.append(label,actions);shell.append(bar,pre);target.append(shell);
     if(window.hljs)hljs.highlightElement(code);
   }
@@ -1884,7 +1889,7 @@ function chartCard(spec) {
 }
 
 // Lời dặn chung cho AI (đồng bộ với CHAT_AI_PROMPT trên Worker) và phương án dự phòng khi AI quên khối file.
-const WEB_SYSTEM_PROMPT = "Bạn là Chat AI, trợ lý tiếng Việt cho công việc và đời sống, mạnh về kỹ thuật (địa kỹ thuật, xây dựng, thủy lợi), lập trình, số liệu và soạn thảo văn bản. Làm đúng ý người hỏi: (1) Xác định họ thật sự cần gì: kết quả cuối, định dạng, độ dài, người đọc. Làm đúng mọi yêu cầu rõ ràng về số lượng, định dạng, giọng văn, ngôn ngữ, giới hạn độ dài. (2) Đưa kết quả trước, giải thích sau; không rào đón, không nhắc lại câu hỏi, không kết bằng lời chào hay câu hỏi thừa. (3) Câu đơn giản trả lời ngắn; việc phức tạp chia đề mục, bước, bảng. Có tính toán thì nêu công thức, đơn vị và kết quả. (4) Thiếu thông tin nhưng vẫn làm được thì chọn giả định hợp lý, nói rõ giả định rồi làm luôn; chỉ hỏi lại khi không thể làm hoặc yêu cầu mâu thuẫn. (5) Không bịa số liệu, nguồn, điều luật, tiêu chuẩn; không chắc thì nói rõ mức độ chắc chắn. (6) Viết code đầy đủ, chạy được, không dùng dấu ba chấm thay phần còn thiếu. Dùng lịch sử hội thoại để ghi nhớ thông tin, lựa chọn và yêu cầu người dùng đã chốt; không hỏi lại thông tin đã có. Khi người dùng chuyển chủ đề, theo chủ đề mới, không áp đặt yêu cầu của chủ đề cũ.";
+const WEB_SYSTEM_PROMPT = "Bạn là Chat AI, trợ lý tiếng Việt cho công việc và đời sống, mạnh về kỹ thuật (địa kỹ thuật, xây dựng, thủy lợi), lập trình, số liệu và soạn thảo văn bản. Làm đúng ý người hỏi: (1) Xác định họ thật sự cần gì: kết quả cuối, định dạng, độ dài, người đọc. Làm đúng mọi yêu cầu rõ ràng về số lượng, định dạng, giọng văn, ngôn ngữ, giới hạn độ dài. (2) Đưa kết quả trước, giải thích sau; không rào đón, không nhắc lại câu hỏi, không kết bằng lời chào hay câu hỏi thừa. (3) Câu đơn giản trả lời ngắn; việc phức tạp chia đề mục, bước, bảng. Có tính toán thì nêu công thức, đơn vị và kết quả. (4) Thiếu thông tin nhưng vẫn làm được thì chọn giả định hợp lý, nói rõ giả định rồi làm luôn; chỉ hỏi lại khi không thể làm hoặc yêu cầu mâu thuẫn. (5) Không bịa số liệu, nguồn, điều luật, tiêu chuẩn; không chắc thì nói rõ mức độ chắc chắn. (6) Viết code đầy đủ, chạy được, không dùng dấu ba chấm thay phần còn thiếu. (7) Việc nhiều phần: lập kế hoạch ngắn, làm lần lượt, cuối cùng tự đối chiếu với yêu cầu; phép tính quan trọng thì kiểm tra lại bằng cách khác (thay số ngược, ước lượng bậc độ lớn). Dùng lịch sử hội thoại để ghi nhớ thông tin, lựa chọn và yêu cầu người dùng đã chốt; không hỏi lại thông tin đã có. Khi người dùng chuyển chủ đề, theo chủ đề mới, không áp đặt yêu cầu của chủ đề cũ.";
 var pendingFileKind = null;
 function mdTables(text) {
   const out = [], lines = String(text).split("\n");
@@ -1969,4 +1974,55 @@ function tableCopyButton(table) {
     } catch { toast('Trình duyệt chặn sao chép. Chọn bảng rồi Ctrl+C.'); }
   });
   return btn;
+}
+
+// Chạy Python thật trên trình duyệt (Pyodide trong Web Worker) để số liệu đến từ phép tính, không phải AI nhẩm.
+var pendingCalc = false;
+const RUN_RESULT_PREFIX = "▶ Kết quả chạy code";
+const CALC_INSTRUCTION = "[Có tính toán] Viết code Python tính chính xác trong MỘT khối ```python có dòng đầu là `# chatai:run`, in mọi kết quả bằng print kèm tên và đơn vị (có thể dùng math, numpy, sympy, pandas). Chưa nêu con số cuối cùng; hệ thống sẽ chạy code và gửi lại kết quả để bạn kết luận.";
+const PLAN_INSTRUCTION = "[Yêu cầu nhiều phần] Mở đầu bằng 'Kế hoạch:' gồm 2–5 bước ngắn, làm lần lượt từng bước với tiêu đề rõ, cuối cùng có mục 'Kiểm tra:' đối chiếu từng ý trong yêu cầu là đã làm hay chưa.";
+function calcRequest(text) {
+  const f = String(text).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").toLowerCase();
+  if (!/\d/.test(f)) return false;
+  return /\b(tinh|giai|bao nhieu|ket qua|tong|trung binh|phuong sai|do lech|thong ke|nghiem|dao ham|tich phan|lai suat|ty le|phan tram|quy doi|doi don vi|hoi quy|ma tran|xac suat|he so an toan|luc|ung suat|mo men|calculate|solve)\b/.test(f);
+}
+function complexRequest(text) {
+  const t = String(text), items = (t.match(/^\s*(?:\d+[.)]|[-*•])\s+/gm) || []).length;
+  return items >= 2 || t.length > 350 || (t.match(/\?/g) || []).length >= 2;
+}
+let pyWorker = null;
+function pythonWorker() {
+  if (pyWorker) return pyWorker;
+  const src = `importScripts('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
+let py=null;
+self.onmessage=async(e)=>{const out=[];try{if(!py)py=await loadPyodide();py.setStdout({batched:s=>out.push(s)});py.setStderr({batched:s=>out.push(s)});
+await py.loadPackagesFromImports(e.data.code);const r=await py.runPythonAsync(e.data.code);
+self.postMessage({ok:true,out:out.join('\\n'),result:r===undefined||r===null?'':String(r)});}catch(err){self.postMessage({ok:false,out:out.join('\\n'),error:String(err&&err.message||err).split('\\n').slice(-6).join('\\n')});}};`;
+  pyWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
+  return pyWorker;
+}
+function runPython(code, ms = 20000) {
+  return new Promise((resolve) => {
+    const w = pythonWorker();
+    const timer = setTimeout(() => { w.terminate(); pyWorker = null; resolve({ ok: false, out: "", error: "Quá " + ms / 1000 + " giây, đã dừng code." }); }, ms);
+    w.onmessage = (e) => { clearTimeout(timer); resolve(e.data); };
+    w.onerror = (e) => { clearTimeout(timer); w.terminate(); pyWorker = null; resolve({ ok: false, out: "", error: e.message || "Không tải được Python trên trình duyệt." }); };
+    w.postMessage({ code });
+  });
+}
+async function runCodeShell(code, shell, autoFollow) {
+  shell.querySelector(":scope > .code-output")?.remove();
+  const box = Object.assign(document.createElement("div"), { className: "code-output" });
+  box.append(Object.assign(document.createElement("div"), { className: "code-output-bar", textContent: "Đang chạy Python… (lần đầu tải thư viện khoảng 5–10 giây)" }));
+  const pre = document.createElement("pre"); box.append(pre); shell.append(box); scrollThread();
+  const r = await runPython(code);
+  const text = [r.out, r.result && !String(r.out).includes(r.result) ? r.result : ""].filter(Boolean).join("\n").trim();
+  box.firstChild.textContent = r.ok ? "Kết quả chạy" : "Lỗi khi chạy";
+  box.classList.toggle("is-error", !r.ok);
+  pre.textContent = r.ok ? (text || "(code chạy xong, không in gì)") : [text, r.error].filter(Boolean).join("\n");
+  scrollThread();
+  if (!autoFollow) return;
+  const msg = RUN_RESULT_PREFIX + (r.ok ? "" : " (lỗi)") + ":\n```text\n" + pre.textContent.slice(0, 4000) + "\n```\n" + (r.ok ? "Dựa vào kết quả này, trả lời ngắn gọn và chính xác câu hỏi ban đầu, nêu số cuối cùng kèm đơn vị. Không viết lại code." : "Sửa lỗi và trả lời câu hỏi ban đầu; nếu cần tính lại thì đưa con số kèm cách tính.");
+  for (let i = 0; i < 100 && streaming; i++) await new Promise((res) => setTimeout(res, 100));
+  sendMessage(msg);
 }
