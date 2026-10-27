@@ -684,6 +684,7 @@ function setAuthMode(mode) {
     btn.classList.toggle("is-active", btn.dataset.auth === mode);
   });
   document.querySelector("#authTitle").textContent = mode === "register" ? "Tạo tài khoản" : "Chào mừng trở lại";
+  document.querySelector("#forgotLink").hidden = mode === "register";
   document.querySelector("#nameField").hidden = mode !== "register";
   document.querySelector("#emailField").hidden = mode !== "register";
   document.querySelector("#authForm [name=password]").autocomplete = mode === "register" ? "new-password" : "current-password";
