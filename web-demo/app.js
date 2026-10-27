@@ -828,7 +828,7 @@ TOPUPS.forEach((amount) => {
   btn.type = "button";
   btn.textContent = money(amount);
   btn.addEventListener("click", () => {
-    if (LIVE) return;
+    if (LIVE) return startTopup(amount);
     if (!session) return requireAccount("Đăng nhập để nạp ví mô phỏng.");
     session.balance += amount;
     renderAccount();
@@ -877,10 +877,8 @@ if (LIVE) {
   document.querySelector("#welcome > p").textContent = "Từ một câu hỏi nhỏ đến kế hoạch lớn. Viết, khám phá và biến ý tưởng của bạn thành hiện thực cùng ChatAI.";
   document.querySelector(".fineprint").textContent = "ChatAI có thể mắc lỗi. Hãy kiểm tra thông tin quan trọng. Hội thoại đã đăng nhập được đồng bộ trên máy chủ.";
   document.querySelector("#authOverlay .sheet-note").textContent = "Đăng nhập bằng tài khoản ChatAI. Hội thoại và bộ nhớ nằm trên máy chủ; mật khẩu chỉ giữ trong phiên đang mở.";
-  document.querySelector("#walletOverlay .sheet-note").textContent = "Số dư và chi phí được lấy từ máy chủ ChatAI. Web chưa hỗ trợ nạp tiền; dùng ứng dụng để quản lý thanh toán.";
-  document.querySelector("#topupGrid").hidden = true;
-  document.querySelector("#topupGrid").previousElementSibling.hidden = true;
-  document.querySelector("#walletOverlay .price-list").hidden = true;
+  document.querySelector("#walletOverlay .sheet-note").textContent = "Chọn số tiền, quét mã VietQR bằng app ngân hàng. Tiền vào ví tự động sau khi chuyển khoản, thường dưới 1 phút.";
+  document.querySelector("#topupGrid").previousElementSibling.textContent = "Nạp tiền";
   document.querySelector(".attach-btn").disabled = false;
   document.querySelector(".attach-btn").title = "Đính kèm văn bản (TXT, MD, CSV, JSON)";
   document.querySelector(".attach-btn").setAttribute("aria-label", "Đính kèm văn bản (TXT, MD, CSV, JSON)");
@@ -1232,3 +1230,51 @@ els.list.addEventListener('click',event=>{if(event.target.closest('.conversation
   $("#deskTopup").addEventListener("click", () => $("#walletChip").click());
   sync();
 })();
+
+// Nạp tiền thật: tạo đơn VietQR, chờ SePay xác nhận rồi làm mới số dư.
+let topupWatch = null;
+function stopTopupWatch() { clearInterval(topupWatch); topupWatch = null; }
+function topupBox() {
+  let box = document.querySelector("#topupBox");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "topupBox"; box.className = "topup-box"; box.hidden = true;
+    document.querySelector("#topupGrid").after(box);
+  }
+  return box;
+}
+async function startTopup(amount) {
+  if (!session) return requireAccount("Đăng nhập để nạp tiền vào ví.");
+  const box = topupBox();
+  stopTopupWatch();
+  box.hidden = false; box.replaceChildren(Object.assign(document.createElement("p"), { className: "topup-state", textContent: "Đang tạo mã thanh toán…" }));
+  try {
+    const data = await api("/api/billing/order", { ...credentials(), kind: "topup", amount, request_id: crypto.randomUUID() });
+    const o = data.order;
+    const img = Object.assign(document.createElement("img"), { src: data.qr_url, alt: "Mã VietQR nạp " + money(o.amount), width: 220, height: 220 });
+    const rows = document.createElement("dl");
+    for (const [k, v] of [["Số tiền", money(o.amount)], ["Ngân hàng", data.bank], ["Số tài khoản", data.account], ["Người nhận", data.name], ["Nội dung", o.memo]]) {
+      rows.append(Object.assign(document.createElement("dt"), { textContent: k }), Object.assign(document.createElement("dd"), { textContent: v }));
+    }
+    const copy = Object.assign(document.createElement("button"), { type: "button", className: "topup-copy", textContent: "Sao chép nội dung chuyển khoản" });
+    copy.addEventListener("click", () => navigator.clipboard?.writeText(o.memo).then(() => toast("Đã sao chép nội dung."), () => toast("Hãy chép tay nội dung: " + o.memo)));
+    const state = Object.assign(document.createElement("p"), { className: "topup-state", textContent: "Đang chờ tiền về… Giữ đúng nội dung chuyển khoản để ví tự cộng." });
+    box.replaceChildren(img, rows, copy, state);
+    const until = Number(o.expires) || Date.now() + 30 * 60000;
+    topupWatch = setInterval(async () => {
+      if (document.querySelector("#walletOverlay").hidden || Date.now() > until) {
+        stopTopupWatch();
+        if (Date.now() > until) state.textContent = "Mã đã hết hạn. Chọn số tiền để tạo mã mới.";
+        return;
+      }
+      try {
+        const st = await api("/api/billing/order/status", { ...credentials(), order_id: o.id });
+        const status = st.order_status?.status;
+        if (status === "paid") { stopTopupWatch(); state.textContent = "Đã nhận " + money(o.amount) + ". Số dư đã được cập nhật."; state.classList.add("is-paid"); await loadWallet(); toast("Nạp tiền thành công."); }
+        else if (status === "expired") { stopTopupWatch(); state.textContent = "Mã đã hết hạn. Chọn số tiền để tạo mã mới."; }
+      } catch {}
+    }, 4000);
+  } catch (error) {
+    box.replaceChildren(Object.assign(document.createElement("p"), { className: "topup-state is-error", textContent: error.message }));
+  }
+}

@@ -128,3 +128,17 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .download-link:after{content:"  →"!important;float:none!important}
 .download-link:hover{text-decoration:underline}
 .account-row{border-radius:12px}
+
+/* Nạp tiền VietQR */
+.topup-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
+.topup-grid button{min-height:42px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-family:"JetBrains Mono",monospace;font-weight:600;font-size:13px}
+.topup-grid button:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.topup-box{display:grid;justify-items:center;gap:10px;margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+.topup-box img{width:220px;max-width:100%;height:auto;border-radius:10px;background:#fff;padding:6px}
+.topup-box dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;width:100%;margin:0;font-size:13px}
+.topup-box dt{color:var(--muted)}
+.topup-box dd{margin:0;text-align:right;font-family:"JetBrains Mono",monospace;word-break:break-all}
+.topup-copy{width:100%;min-height:38px;border:1px solid var(--line);border-radius:9px;background:var(--panel);font-weight:600;font-size:13px}
+.topup-state{margin:0;font-size:13px;color:var(--muted);text-align:center}
+.topup-state.is-paid{color:#14804a;font-weight:600}
+.topup-state.is-error{color:#c2410c}
