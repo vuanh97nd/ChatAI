@@ -730,6 +730,7 @@ function loginUser(name, username, key, extra) {
     tokens: 0,
     fee: 0,
     memories: [],
+    isAdmin: extra?.isAdmin === true,
   };
   guestTurns = 0;
   closeOverlay("#authOverlay");
@@ -809,6 +810,7 @@ document.querySelector("#authForm").addEventListener("submit", async (event) => 
       form.reset();
       loginUser(logged.fullname || name, logged.user?.username || username, password, {
         trialDays: Math.max(0, Math.ceil((Date.parse(logged.expires_at) - Date.now()) / 86400000)) || 30,
+        isAdmin: logged.is_system === true,
       });
       return;
     }
@@ -1278,3 +1280,19 @@ async function startTopup(amount) {
     box.replaceChildren(Object.assign(document.createElement("p"), { className: "topup-state is-error", textContent: error.message }));
   }
 }
+
+// Lối vào trang quản trị cho tài khoản hệ thống: chuyển phiên sang /admin trong cùng tab.
+function openAdminConsole() {
+  if (!session?.isAdmin) return;
+  try { sessionStorage.setItem("chatai-admin-handoff", JSON.stringify({ username: session.username, key: session.key, at: Date.now() })); } catch {}
+  location.href = "/admin";
+}
+function renderAdminEntry() {
+  const on = Boolean(session?.isAdmin);
+  document.querySelector("#openAdmin").hidden = !on;
+  document.querySelector("#adminNav").hidden = !on;
+}
+document.querySelector("#openAdmin").addEventListener("click", openAdminConsole);
+document.querySelector("#adminNav").addEventListener("click", openAdminConsole);
+new MutationObserver(renderAdminEntry).observe(document.querySelector("#accountName"), { childList: true, characterData: true, subtree: true });
+renderAdminEntry();

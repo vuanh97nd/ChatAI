@@ -142,3 +142,10 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .topup-state{margin:0;font-size:13px;color:var(--muted);text-align:center}
 .topup-state.is-paid{color:#14804a;font-weight:600}
 .topup-state.is-error{color:#c2410c}
+
+/* Lối vào quản trị */
+.admin-nav{display:grid;gap:1px;text-align:left;width:100%;padding:10px 12px;border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-radius:12px;background:var(--accent-soft);color:var(--accent);cursor:pointer}
+.admin-nav span{font-weight:700;font-size:13px}
+.admin-nav small{font-size:11px;color:var(--muted)}
+.admin-nav:hover{border-color:var(--accent)}
+.account-actions #openAdmin{color:var(--accent);font-weight:700}

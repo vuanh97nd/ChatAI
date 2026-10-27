@@ -204,6 +204,11 @@
         } catch (err) { auth = null; say($("#loginMsg"), err.message); }
       });
       $("#logout").onclick = () => location.reload();
+      try {
+        const hand = JSON.parse(sessionStorage.getItem("chatai-admin-handoff") || "null");
+        sessionStorage.removeItem("chatai-admin-handoff");
+        if (hand && Date.now() - hand.at < 60000) { $("#loginUser").value = hand.username; $("#loginKey").value = hand.key; $("#loginForm").requestSubmit(); }
+      } catch {}
 
       document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
         document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
