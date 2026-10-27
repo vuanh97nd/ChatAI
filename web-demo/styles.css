@@ -176,3 +176,35 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .switch-row #darkToggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
 .switch-row #darkToggle[aria-pressed=true]{background:var(--accent)!important}
 .switch-row #darkToggle[aria-pressed=true]::after{transform:translateX(18px)}
+
+/* Quên mật khẩu */
+.forgot-link{justify-self:end;align-self:flex-end;margin:-4px 0 4px auto;display:block;padding:2px 0;border:0;background:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer}
+.forgot-link:hover{text-decoration:underline}
+.reset-done{margin:0;padding:10px 12px;border-radius:10px;background:color-mix(in srgb,#14804a 10%,transparent);color:#14804a;font-size:13px;line-height:1.5}
+/* Đăng nhập / đăng ký: hai cột */
+#authForm{width:min(800px,100%)!important;padding:0!important;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-content:start;overflow:hidden auto}
+#authForm>:not(.auth-brand){grid-column:2;margin-inline:32px}
+#authForm>h2{margin-top:32px;font-size:22px;font-weight:800;letter-spacing:-.02em}
+#authForm .auth-brand{grid-column:1;grid-row:1/span 20;display:flex;flex-direction:column;gap:10px;padding:32px 28px;color:#fff;background-color:#16244a;background-image:linear-gradient(#ffffff0d 1px,transparent 1px),linear-gradient(90deg,#ffffff0d 1px,transparent 1px),radial-gradient(120% 80% at 0% 0%,#2f5bea,transparent 70%);background-size:22px 22px,22px 22px,auto}
+.auth-brand img{display:block;width:44px;height:44px;border-radius:12px;background:#fff;padding:4px}
+.auth-brand-name{margin:6px 0 0;font-size:24px;font-weight:800;letter-spacing:-.03em}
+.auth-brand-tag{margin:0 0 10px;font-size:14px;line-height:1.5;color:#ffffffc0}
+.auth-brand ul{list-style:none;margin:auto 0 0;padding:0;display:grid;gap:10px;font-size:13px;line-height:1.45}
+.auth-brand li{position:relative;padding-left:24px;color:#ffffffe0}
+.auth-brand li::before{content:"";position:absolute;left:0;top:3px;width:14px;height:14px;border-radius:50%;background:#ffffff26 center/9px no-repeat;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E")}
+#authForm .auth-tabs{margin-top:6px}
+#authForm label{display:grid;gap:6px;font-size:13px;font-weight:600;color:var(--text)}
+#authForm input{height:44px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font-size:14px;outline:0;transition:border-color .15s,box-shadow .15s}
+#authForm input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:var(--panel)}
+#authForm .sheet-submit{min-height:46px;border-radius:10px;font-size:14px;font-weight:700;background:var(--accent)!important;color:#fff!important}
+#authForm .sheet-ghost{margin-bottom:28px!important}
+@media(max-width:720px){
+  #authForm{grid-template-columns:minmax(0,1fr)}
+  #authForm>:not(.auth-brand){grid-column:1;margin-inline:22px}
+  #authForm .auth-brand{grid-row:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:18px 22px}
+  .auth-brand-name{margin:0;font-size:20px}
+  .auth-brand-tag{flex-basis:100%;margin:0;font-size:13px}
+  .auth-brand ul{display:none}
+  #authForm>h2{margin-top:20px}
+}
+#authForm>.sheet-submit,#authForm>.sheet-ghost{width:auto!important;justify-self:stretch}

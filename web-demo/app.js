@@ -1327,3 +1327,23 @@ function renderPricing(data) {
     if (LIVE && session) document.querySelector("#walletTrial").textContent = fee === 0 ? "Miễn phí duy trì" : (data.wallet?.service_active === false ? "Hết hạn duy trì, cần gia hạn" : "Đang trong hạn duy trì");
   }
 }
+
+// Quên mật khẩu: gửi liên kết đặt lại qua email đã xác minh.
+document.querySelector("#forgotLink").addEventListener("click", () => {
+  closeOverlay("#authOverlay");
+  document.querySelector("#resetError").hidden = true; document.querySelector("#resetDone").hidden = true;
+  document.querySelector("#resetSubmit").disabled = false;
+  openOverlay("#resetOverlay"); document.querySelector("#resetEmail").focus();
+});
+document.querySelector("#resetBack").addEventListener("click", () => { closeOverlay("#resetOverlay"); openOverlay("#authOverlay"); });
+document.querySelector("#resetForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const err = document.querySelector("#resetError"), done = document.querySelector("#resetDone"), btn = document.querySelector("#resetSubmit");
+  err.hidden = true; done.hidden = true;
+  if (!LIVE) { done.textContent = "Bản demo không gửi email."; done.hidden = false; return; }
+  btn.disabled = true;
+  try {
+    const data = await api("/api/email/password/request", { email: document.querySelector("#resetEmail").value.trim() });
+    done.textContent = data.message || "Đã gửi liên kết. Kiểm tra hộp thư, cả thư rác."; done.hidden = false;
+  } catch (e) { err.textContent = e.message; err.hidden = false; btn.disabled = false; }
+});
