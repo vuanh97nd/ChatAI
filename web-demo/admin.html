@@ -81,8 +81,42 @@
     <main id="console" hidden>
       <nav class="tabs" role="tablist">
         <button type="button" class="on" data-tab="pay">Thanh toán</button>
+        <button type="button" data-tab="ai">AI trực tuyến</button>
         <button type="button" data-tab="users">Tài khoản</button>
       </nav>
+
+      <section id="tab-ai" hidden>
+        <form class="card" id="aiForm">
+          <h2>Dịch vụ AI</h2>
+          <p>Key được mã hóa và lưu trên server. Để trống ô key nếu muốn giữ key cũ. Mã AI để trống sẽ dùng mặc định của Worker.</p>
+          <div class="tablewrap" style="margin-top:0">
+            <table>
+              <thead><tr><th>Dịch vụ</th><th>Trạng thái</th><th>Mã AI (model)</th><th>Key API mới</th></tr></thead>
+              <tbody id="aiRows"></tbody>
+            </table>
+          </div>
+          <div class="row"><button class="btn pri" type="submit">Lưu cấu hình AI</button><button class="btn" id="aiPresets" type="button">Tạo 3 cấu hình DeepSeek</button><p class="msg" id="aiMsg"></p></div>
+        </form>
+
+        <form class="card" id="aiAddForm" style="margin-top:16px">
+          <h2>AI bổ sung</h2>
+          <p>Thêm một AI hiện trong danh sách chọn của người dùng, ví dụ một model khác của OpenRouter. Tối đa 50 AI.</p>
+          <div class="grid">
+            <label>Tên hiển thị<input id="addLabel" maxlength="80" required placeholder="Qwen3 Coder (OpenRouter)"></label>
+            <label>Dịch vụ<select id="addProvider"></select></label>
+            <label>Mã AI<input id="addModel" class="num" required pattern="[A-Za-z0-9._/:\-]{1,160}" placeholder="qwen/qwen3-coder"></label>
+            <label>Key riêng (không bắt buộc)<input id="addKey" type="password" autocomplete="new-password" placeholder="Dùng key chung nếu để trống"></label>
+          </div>
+          <label class="switch" style="margin-top:12px"><input type="checkbox" id="addThinking">Bật chế độ suy luận</label>
+          <div class="row"><button class="btn pri" type="submit">Thêm AI</button><p class="msg" id="addMsg"></p></div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Tên</th><th>Dịch vụ</th><th>Mã AI</th><th>Suy luận</th></tr></thead>
+              <tbody id="catalogRows"></tbody>
+            </table>
+          </div>
+        </form>
+      </section>
 
       <section id="tab-pay">
         <form class="card" id="payForm">
@@ -166,14 +200,53 @@
           await api("/api/admin/billing/config/get");
           $("#loginForm").hidden = true; $("#console").hidden = false; $("#logout").hidden = false;
           $("#who").hidden = false; $("#who").textContent = username; $("#loginKey").value = "";
-          loadPay(); loadUsers();
+          loadPay(); loadAI(); loadUsers();
         } catch (err) { auth = null; say($("#loginMsg"), err.message); }
       });
       $("#logout").onclick = () => location.reload();
 
       document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
         document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
-        $("#tab-pay").hidden = b.dataset.tab !== "pay"; $("#tab-users").hidden = b.dataset.tab !== "users";
+        ["pay", "ai", "users"].forEach((t) => { $("#tab-" + t).hidden = b.dataset.tab !== t; });
+      });
+
+      const PROVIDERS = { nvidia: "NVIDIA NIM", deepseek: "DeepSeek (key chung)", deepseek_flash: "DeepSeek Flash", deepseek_pro: "DeepSeek V4 Pro", deepseek_r1: "DeepSeek Suy luận", gemini: "Google Gemini", groq: "Groq", openai: "OpenAI", openrouter: "OpenRouter" };
+      $("#addProvider").innerHTML = Object.entries(PROVIDERS).filter(([id]) => !id.startsWith("deepseek_")).map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join("");
+      async function loadAI() {
+        try {
+          const { providers } = await api("/api/admin/providers/status");
+          $("#aiRows").innerHTML = Object.entries(PROVIDERS).map(([id, name]) => {
+            const p = providers[id] || {};
+            return `<tr data-p="${id}"><td><b>${esc(name)}</b><div class="mono">${id}</div></td><td><span class="pill ${p.configured ? "" : "locked"}">${p.configured ? "Đã có key" : "Chưa có key"}</span></td>`
+              + `<td><input class="num ai-model" value="${esc(p.model)}" pattern="[A-Za-z0-9._/:\\-]{0,160}" aria-label="Mã AI ${esc(name)}"></td>`
+              + `<td><input class="ai-key" type="password" autocomplete="new-password" placeholder="Giữ key cũ" aria-label="Key ${esc(name)}"></td></tr>`;
+          }).join("");
+          const { entries } = await api("/api/provider/catalog");
+          $("#catalogRows").innerHTML = entries.map((e) => `<tr><td>${esc(e.label)}</td><td>${esc(PROVIDERS[e.provider] || e.provider)}</td><td class="mono">${esc(e.model)}</td><td>${e.thinking_enabled ? "Có" : "Không"}</td></tr>`).join("")
+            || `<tr><td colspan="4" style="color:var(--muted)">Chưa có AI bổ sung.</td></tr>`;
+        } catch (err) { say($("#aiMsg"), err.message); }
+      }
+      $("#aiForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const providers = {}, models = {};
+        document.querySelectorAll("#aiRows tr").forEach((tr) => {
+          const id = tr.dataset.p, key = tr.querySelector(".ai-key").value.trim(), model = tr.querySelector(".ai-model").value.trim();
+          if (key) providers[id] = key;
+          models[id] = model;
+        });
+        try { const d = await api("/api/admin/providers/save", { providers, models }); say($("#aiMsg"), d.message, true); loadAI(); }
+        catch (err) { say($("#aiMsg"), err.message); }
+      });
+      $("#aiPresets").onclick = async () => {
+        try { const d = await api("/api/admin/providers/deepseek-presets"); say($("#aiMsg"), d.message, true); loadAI(); }
+        catch (err) { say($("#aiMsg"), err.message); }
+      };
+      $("#aiAddForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await api("/api/admin/providers/add", { label: $("#addLabel").value.trim(), provider: $("#addProvider").value, model: $("#addModel").value.trim(), api_key: $("#addKey").value.trim(), thinking_enabled: $("#addThinking").checked });
+          say($("#addMsg"), "Đã thêm AI.", true); e.target.reset(); loadAI();
+        } catch (err) { say($("#addMsg"), err.message); }
       });
 
       async function loadPay() {

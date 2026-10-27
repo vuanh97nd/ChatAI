@@ -101,7 +101,8 @@ function renderAccount() {
     ? (model.billed ? `Ví AI · ${(session.balance == null ? "Chưa tải số dư" : money(session.balance))}` : "Ví AI · Miễn phí")
     : "Ví AI · Khách";
   document.querySelector("#accountDetail").textContent = logged
-    ? `${session.name} (@${session.username}). Ví token ${(session.balance == null ? "Chưa tải số dư" : money(session.balance))}.`
+    ? `${session.name} · @${session.username}
+Số dư ví: ${(session.balance == null ? "đang tải…" : money(session.balance))}`
     : "Bạn đang dùng chế độ khách. 3 lượt chat miễn phí với mô hình không tính phí; DeepSeek cần đăng nhập.";
   document.querySelector("#logoutButton").hidden = !logged;
   document.querySelector("#openLoginFromAccount").hidden = logged;
