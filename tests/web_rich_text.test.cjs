@@ -3,9 +3,9 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const source=fs.readFileSync(process.argv[2],'utf8');
-function element(tag){return{tag,children:[],textContent:'',replaceChildren(){this.children=[];},append(...children){this.children.push(...children);}};}
+function element(tag){return{tag,children:[],textContent:'',classList:{add(){}},setAttribute(){},addEventListener(){},replaceChildren(){this.children=[];},append(...children){this.children.push(...children);}};}
 const document={createElement:element,createTextNode:text=>({tag:'#text',textContent:text})};
-const c=vm.createContext({document});
+const c=vm.createContext({document,window:{},UI_ICONS:{}});
 vm.runInContext(source.slice(source.indexOf('function renderRichText('),source.indexOf('\nfunction manageConversation(')),c);
 function tags(node){return[node.tag,...node.children?.flatMap(tags)||[]];}
 function text(node){return node.textContent+(node.children||[]).map(text).join('');}

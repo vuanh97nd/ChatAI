@@ -19,6 +19,9 @@ function context(fetch) {
     currentConversation(){return state.conversations[state.activeId];}, showWelcome(){}, renderConversations(){},
     renderFollowups(){}, renderAccount(){}, loadWallet:async()=>{}, requireAccount(){throw Error('login required');},
     api:async(path)=>path.endsWith('/create')?{conversation:{id:'server-conversation'}}:{success:true},
+    editingTurn:null, pendingFileKind:null, turnAttachment:null, pendingLiveCard:null, WEB_SYSTEM_PROMPT:'test',
+    mediaMode(){return null;}, fileRequest(){return null;}, chartRequest(){return false;}, FILE_INSTRUCTION(){return '';}, CHART_INSTRUCTION:'',
+    deepOn(){return false;}, turnPayload(){return {};}, liveCardNode(){return node();},
   };
   vm.createContext(state);vm.runInContext(live+send+regen+stop,state);return state;
 }

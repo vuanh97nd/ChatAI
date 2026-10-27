@@ -941,19 +941,69 @@ function clearAttachment() {
 }
 function renderRichText(target, text) {
   target.replaceChildren();
+  // Markdown an toàn: chỉ tạo phần tử bằng textContent; liên kết chỉ http(s). Công thức toán được giữ nguyên để KaTeX xử lý.
+  const MATH = /(\$\$[\s\S]+?\$\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\))/g;
+  // $…$ trong dòng: chỉ coi là công thức khi nội dung giống toán (giá tiền như "$5 và $10" giữ nguyên).
+  const inlineDollar=v=>String(v).replace(/(?<![\\$])\$(?!\$)([^$\n]+?)(?<!\\)\$(?!\$)/g,(m,inner)=>/[\\^_=<>{}|]|[+\-*/]\s*[\w(]|^\s*[A-Za-zα-ωΑ-Ω]\s*$|\d[a-zA-Z]\b/.test(inner)&&!/^\s*\d+([.,]\d+)?\s*$/.test(inner)?'\\('+inner.trim()+'\\)':m);
   const inline=(el,value)=>{
-    for(const part of value.split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g)){
-      if(part.startsWith('**')&&part.endsWith('**')){const b=document.createElement('strong');b.textContent=part.slice(2,-2);el.append(b);}
-      else if(part.startsWith('`')&&part.endsWith('`')){const c=document.createElement('code');c.textContent=part.slice(1,-1);el.append(c);}
-      else el.append(document.createTextNode(part));
+    for(const seg of inlineDollar(value).split(MATH)){
+      if(!seg)continue;
+      if(/^(\$\$|\\\[|\\\()/.test(seg)){el.append(document.createTextNode(seg));continue;}
+      for(const part of seg.split(/(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|~~[^~\n]+~~|\[[^\]\n]+\]\([^)\s]+\)|(?<![\w*])\*[^*\s][^*\n]*\*(?!\w)|(?<![\w_])_[^_\s][^_\n]*_(?!\w))/g)){
+        if(!part)continue;
+        let m;
+        if((part.startsWith('**')&&part.endsWith('**'))||(part.startsWith('__')&&part.endsWith('__'))){const b=document.createElement('strong');inline(b,part.slice(2,-2));el.append(b);}
+        else if(part.startsWith('`')&&part.endsWith('`')){const c=document.createElement('code');c.textContent=part.slice(1,-1);el.append(c);}
+        else if(part.startsWith('~~')&&part.endsWith('~~')){const d=document.createElement('del');d.textContent=part.slice(2,-2);el.append(d);}
+        else if((m=part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/))){
+          if(/^https?:\/\//i.test(m[2])){const a=document.createElement('a');a.href=m[2];a.target='_blank';a.rel='noopener noreferrer';a.textContent=m[1];el.append(a);}
+          else el.append(document.createTextNode(part));
+        }
+        else if(/^\*[^*].*\*$/.test(part)||/^_[^_].*_$/.test(part)){const i=document.createElement('em');i.textContent=part.slice(1,-1);el.append(i);}
+        else el.append(document.createTextNode(part));
+      }
     }
   };
+  const lines=(el,value)=>{const rows=String(value).split('\n');rows.forEach((row,i)=>{inline(el,row);if(i<rows.length-1)el.append(document.createElement('br'));});};
+  const cells=row=>row.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
   const prose=value=>{
-    for(const paragraph of value.split(/\n\s*\n/)){
-      if(!paragraph.trim())continue;
-      const heading=paragraph.match(/^#{1,4}\s+([^\n]+)$/);
-      const el=document.createElement(heading?'h3':'p');inline(el,heading?heading[1]:paragraph);target.append(el);
+    const rows=String(value).replace(/\r/g,'').split('\n');
+    let i=0,para=[];
+    const flush=()=>{if(para.join('').trim()){const p=document.createElement('p');lines(p,para.join('\n').trim());target.append(p);}para=[];};
+    while(i<rows.length){
+      const row=rows[i];
+      if(/^\s*\$\$\s*$/.test(row)){flush();const start=i;i++;while(i<rows.length&&!/^\s*\$\$\s*$/.test(rows[i]))i++;const p=document.createElement('p');p.textContent=rows.slice(start,i+1).join('\n');target.append(p);i++;continue;}
+      if(!row.trim()){flush();i++;continue;}
+      const h=row.match(/^(#{1,6})\s+(.*)$/);
+      if(h){flush();const el=document.createElement(h[1].length<=2?'h3':'h4');inline(el,h[2].replace(/\s*#+\s*$/,''));target.append(el);i++;continue;}
+      if(/^\s*([-*_])(\s*\1){2,}\s*$/.test(row)){flush();target.append(document.createElement('hr'));i++;continue;}
+      if(/^\s*\|.*\|\s*$/.test(row)&&/^\s*\|?\s*:?-{2,}/.test(rows[i+1]||'')){
+        flush();const wrap=document.createElement('div');wrap.className='md-table';const table=document.createElement('table');
+        const head=document.createElement('tr');for(const c of cells(row)){const th=document.createElement('th');th.dataset.raw=c;inline(th,c);head.append(th);}
+        const thead=document.createElement('thead');thead.append(head);table.append(thead);const tbody=document.createElement('tbody');i+=2;
+        while(i<rows.length&&/^\s*\|.*\|\s*$/.test(rows[i])){const tr=document.createElement('tr');for(const c of cells(rows[i])){const td=document.createElement('td');td.dataset.raw=c;inline(td,c);tr.append(td);}tbody.append(tr);i++;}
+        table.append(tbody);wrap.append(table);wrap.append(tableCopyButton(table));target.append(wrap);continue;
+      }
+      if(/^\s*>\s?/.test(row)){flush();const q=document.createElement('blockquote');const buf=[];while(i<rows.length&&/^\s*>\s?/.test(rows[i])){buf.push(rows[i].replace(/^\s*>\s?/,''));i++;}lines(q,buf.join('\n'));target.append(q);continue;}
+      const li=row.match(/^(\s*)([-*+•]|\d+[.)])\s+(.*)$/);
+      if(li){
+        flush();const ordered=/\d/.test(li[2]);const list=document.createElement(ordered?'ol':'ul');
+        if(ordered&&parseInt(li[2],10)>1)list.start=parseInt(li[2],10);
+        while(i<rows.length){
+          const m=rows[i].match(/^(\s*)([-*+•]|\d+[.)])\s+(.*)$/);
+          if(m&&(/\d/.test(m[2])===ordered||m[1].length>=2)){
+            const item=document.createElement('li');const task=m[3].match(/^\[( |x|X)\]\s+(.*)$/);
+            if(task){const box=document.createElement('input');box.type='checkbox';box.disabled=true;box.checked=task[1]!==' ';item.append(box,' ');inline(item,task[2]);}else inline(item,m[3]);
+            if(m[1].length>=2&&list.lastElementChild){let sub=list.lastElementChild.querySelector(':scope > ul, :scope > ol');if(!sub){sub=document.createElement(/\d/.test(m[2])?'ol':'ul');list.lastElementChild.append(sub);}sub.append(item);}else list.append(item);
+            i++;
+          }else if(rows[i].trim()&&/^\s{2,}\S/.test(rows[i])&&list.lastElementChild){list.lastElementChild.append(document.createElement('br'));inline(list.lastElementChild,rows[i].trim());i++;}
+          else break;
+        }
+        target.append(list);continue;
+      }
+      para.push(row);i++;
     }
+    flush();
   };
   const pattern=/```([\w+-]*)\n([\s\S]*?)(?:```|$)/g;
   let last=0;
@@ -976,7 +1026,8 @@ function renderRichText(target, text) {
   }
   prose(text.slice(last));
   if(window.renderMathInElement){
-    renderMathInElement(target,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false,trust:false,strict:'ignore',maxExpand:1000});
+    if(/\\(ce|pu)\{/.test(text)&&!window.__mhchem){window.__mhchem=loadScript('https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/mhchem.min.js').then(()=>{if(target.isConnected)renderRichText(target,text);}).catch(()=>{});}
+    renderMathInElement(target,{delimiters:[{left:'$$',right:'$$',display:true},{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],macros:{'\\R':'\\mathbb{R}','\\N':'\\mathbb{N}','\\Z':'\\mathbb{Z}','\\Q':'\\mathbb{Q}','\\C':'\\mathbb{C}'},ignoredTags:['script','noscript','style','textarea','pre','code'],throwOnError:false,trust:false,strict:'ignore',maxExpand:1000});
     target.querySelectorAll('.katex-display').forEach(math=>{
       const raw=math.querySelector('annotation[encoding="application/x-tex"]')?.textContent||'';
       const shell=document.createElement('div');shell.className='math-shell';
@@ -1873,4 +1924,49 @@ function markdownToSpec(kind, text) {
   }
   if (kind === "docx" || kind === "pdf") return { type: kind, filename: name, title, sections };
   return null;
+}
+
+// Sao chép bảng sang Excel: ký hiệu LaTeX đổi thành Unicode để Excel hiện đúng (α, x², √, ≤, …).
+const LATEX_SYMBOLS = {alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ε',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',vartheta:'ϑ',iota:'ι',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',upsilon:'υ',phi:'φ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Phi:'Φ',Psi:'Ψ',Omega:'Ω',
+  times:'×',cdot:'·',div:'÷',pm:'±',mp:'∓',le:'≤',leq:'≤',ge:'≥',geq:'≥',neq:'≠',ne:'≠',approx:'≈',sim:'∼',equiv:'≡',propto:'∝',infty:'∞',partial:'∂',nabla:'∇',sum:'Σ',prod:'Π',int:'∫',iint:'∬',oint:'∮',to:'→',rightarrow:'→',leftarrow:'←',Rightarrow:'⇒',Leftarrow:'⇐',leftrightarrow:'↔',Leftrightarrow:'⇔',
+  in:'∈',notin:'∉',subset:'⊂',subseteq:'⊆',supset:'⊃',cup:'∪',cap:'∩',emptyset:'∅',forall:'∀',exists:'∃',angle:'∠',perp:'⊥',parallel:'∥',degree:'°',circ:'°',ldots:'…',cdots:'⋯',dots:'…',prime:'′',sqrt:'√',therefore:'∴',because:'∵',R:'ℝ',N:'ℕ',Z:'ℤ',Q:'ℚ',C:'ℂ'};
+const SUP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','=':'⁼','(':'⁽',')':'⁾',n:'ⁿ',i:'ⁱ'};
+const SUB = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','=':'₌','(':'₍',')':'₎',a:'ₐ',e:'ₑ',o:'ₒ',x:'ₓ',i:'ᵢ',j:'ⱼ',n:'ₙ',m:'ₘ',k:'ₖ',p:'ₚ',s:'ₛ',t:'ₜ',u:'ᵤ',v:'ᵥ',r:'ᵣ'};
+function scriptText(v, map, mark) { const t = String(v); return [...t].every((ch) => map[ch]) ? [...t].map((ch) => map[ch]).join('') : mark + (t.length > 1 ? '(' + t + ')' : t); }
+function latexToText(raw) {
+  let t = String(raw ?? '');
+  t = t.replace(/\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|(?<![\\$])\$([^$\n]+?)\$/g, (m, a, b, c, d) => latexMath(a ?? b ?? c ?? d));
+  return t.replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+}
+function latexMath(src) {
+  let t = String(src).trim();
+  t = t.replace(/\^\s*\{?\\circ\}?|\\degree/g, '°').replace(/\\%/g, '%');
+  t = t.replace(/\\sqrt\[(\w+)\]\{([^{}]*)\}/g, (m, n, x) => (n === '3' ? '∛' : n === '4' ? '∜' : n + '√') + '(' + x + ')')
+       .replace(/\\sqrt\{([^{}]*)\}/g, (m, x) => '√' + (/^\w+$/.test(x) ? x : '(' + x + ')'))
+       .replace(/\\(?:text|mathrm|mathbf|mathit|operatorname|textbf)\{([^{}]*)\}/g, '$1')
+       .replace(/\\mathbb\{([RNZQC])\}/g, (m, x) => LATEX_SYMBOLS[x])
+       .replace(/\\(?:left|right|big|Big|bigg|Bigg)\s*/g, '');
+  // Phân số xử lý sau căn bậc hai để tử/mẫu chứa \sqrt{…} vẫn đổi được.
+  for (let k = 0; k < 4; k++) t = t.replace(/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, (m, a, b) => { const bare = (v) => /^(\d+([.,]\d+)?|[A-Za-zα-ωΑ-Ω]+)$/.test(v.trim()); return (bare(a) ? a : '(' + a + ')') + '/' + (bare(b) ? b : '(' + b + ')'); });
+  t = t
+       .replace(/\\([A-Za-z]+)/g, (m, name) => LATEX_SYMBOLS[name] ?? (/^(sin|cos|tan|cot|log|ln|exp|lim|max|min|sec|csc|arcsin|arccos|arctan)$/.test(name) ? name : name))
+       .replace(/\^\{([^{}]*)\}|\^(\S)/g, (m, a, b) => scriptText(a ?? b, SUP, '^'))
+       .replace(/_\{([^{}]*)\}|_(\S)/g, (m, a, b) => scriptText(a ?? b, SUB, '_'))
+       .replace(/\\,|\\;|\\!|\\ |~/g, ' ').replace(/[{}]/g, '').replace(/\s{2,}/g, ' ');
+  return t.trim();
+}
+function tableCopyButton(table) {
+  const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'table-copy', textContent: 'Sao chép sang Excel' });
+  btn.addEventListener('click', async () => {
+    const rows = [...table.querySelectorAll('tr')].map((tr) => [...tr.children].map((cell) => latexToText(cell.dataset.raw ?? cell.textContent)));
+    const tsv = rows.map((r) => r.map((c) => (/[\t\n"]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c)).join('\t')).join('\r\n');
+    const esc = (v) => v.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+    const html = '<meta charset="utf-8"><table>' + rows.map((r, i) => '<tr>' + r.map((c) => (i ? '<td>' : '<th>') + esc(c) + (i ? '</td>' : '</th>')).join('') + '</tr>').join('') + '</table>';
+    try {
+      if (window.ClipboardItem && navigator.clipboard?.write) await navigator.clipboard.write([new ClipboardItem({ 'text/plain': new Blob([tsv], { type: 'text/plain' }), 'text/html': new Blob([html], { type: 'text/html' }) })]);
+      else await navigator.clipboard.writeText(tsv);
+      btn.textContent = 'Đã sao chép'; setTimeout(() => { btn.textContent = 'Sao chép sang Excel'; }, 1800);
+    } catch { toast('Trình duyệt chặn sao chép. Chọn bảng rồi Ctrl+C.'); }
+  });
+  return btn;
 }
