@@ -19,3 +19,20 @@ test('chart block is parsed and hidden',()=>{
  assert.equal(r.clean,'Doanh thu tăng.');assert.equal(r.spec.series[0].values[1],12);
  assert.equal(c.extractChartSpec('```chatai-chart\n{"labels":1}\n```').spec.error,true);
 });
+
+vm.runInContext('function selectedTool(){return "";}\n'+cut('function fileRequest(','function FILE_INSTRUCTION('),c);
+{const start=src.indexOf('function mdTables('),md=src.indexOf('function markdownToSpec(',start),end=src.indexOf('\n}\n',md)+3;vm.runInContext(src.slice(start,end),c);}
+const J=v=>JSON.stringify(v);
+test('file requests are recognised in natural wording',()=>{
+ assert.equal(c.fileRequest('Soạn hợp đồng thuê nhà dạng Word'),'docx');
+ assert.equal(c.fileRequest('cho tôi bảng lương bằng excel'),'xlsx');
+ assert.equal(c.fileRequest('Làm slide thuyết trình về đê điều'),'pptx');
+ assert.equal(c.fileRequest('xuất ra pdf giúp mình'),'pdf');
+ assert.equal(c.fileRequest('Giải thích phương pháp Bishop'),null);
+});
+test('markdown answer becomes a file when the AI forgets the block',()=>{
+ const md='# Báo cáo địa chất\n## Lớp đất\nMô tả chung.\n- Sét pha\n- Cát\n\n| Lớp | c |\n|---|---|\n| Sét | 18 |\n| Cát | 0 |\n## Kết luận\nĐạt yêu cầu.';
+ const x=c.markdownToSpec('xlsx',md);assert.equal(J(x.sheets[0].rows),J([['Lớp','c'],['Sét',18],['Cát',0]]));
+ const d=c.markdownToSpec('docx',md);assert.equal(d.title,'Báo cáo địa chất');assert.equal(d.sections[0].heading,'Lớp đất');assert.equal(J(d.sections[0].bullets),J(['Sét pha','Cát']));
+ const p=c.markdownToSpec('pptx',md);assert.equal(p.slides.length,2);assert.equal(p.slides[1].title,'Kết luận');
+});
