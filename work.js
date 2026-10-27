@@ -3695,7 +3695,10 @@ async function billingClientSession(env,actor,body){
   // Deleted identities remain inspectable by admin, but missing/unmapped names cannot receive funds.
   if(user&&user.account_status!=='deleted'){try{identities[name]=billingMappedActor(env,user);}catch{/* No mapped billing identity. */}}
  }
- const now=Date.now(),claims={v:1,source:new URL(env.BILLING_PUBLIC_ORIGIN).origin,aud:cfg.peer,issued:now,expires:now+300000,actor:billingMappedActor(env,actor),identities};
+ let mappedActor;
+ try{mappedActor=billingMappedActor(env,actor);}
+ catch(error){const missing=/not explicitly mapped/.test(String(error?.message));return reply({success:false,code:missing?'BILLING_ACCOUNT_NOT_MAPPED':'BILLING_ACCOUNT_MAP_INVALID',message:missing?'Tài khoản '+actor.username+' chưa được gán ví ở máy chủ thanh toán. Quản trị viên cần thêm tài khoản vào BILLING_ACCOUNT_MAP.':'BILLING_ACCOUNT_MAP không hợp lệ (JSON sai, trùng chủ ví hoặc có admin). Quản trị viên cần sửa biến này.'},missing?403:409);}
+ const now=Date.now(),claims={v:1,source:new URL(env.BILLING_PUBLIC_ORIGIN).origin,aud:cfg.peer,issued:now,expires:now+300000,actor:mappedActor,identities};
  const encoded=b64(new TextEncoder().encode(JSON.stringify(claims)));
  const token=encoded+'.'+await billingLinkMac(cfg.key,'billing-client-v1:'+encoded);
  return reply({success:true,billing_endpoint:cfg.peer,billing_session:token,expires_at:claims.expires});
