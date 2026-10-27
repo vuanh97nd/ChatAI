@@ -869,6 +869,7 @@ async function loadWallet() {
     account.tokens = Number(monthly?.tokens || 0);
     account.fee = Number(monthly?.fee_vnd || 0);
     renderAccount();
+    renderPricing(data);
   } catch {
     if (session === account) { account.balance = null; renderAccount(); }
   }
@@ -881,6 +882,9 @@ if (LIVE) {
   document.querySelector("#authOverlay .sheet-note").textContent = "Đăng nhập bằng tài khoản ChatAI. Hội thoại và bộ nhớ nằm trên máy chủ; mật khẩu chỉ giữ trong phiên đang mở.";
   document.querySelector("#walletOverlay .sheet-note").textContent = "Chọn số tiền, quét mã VietQR bằng app ngân hàng. Tiền vào ví tự động sau khi chuyển khoản, thường dưới 1 phút.";
   document.querySelector("#topupGrid").previousElementSibling.textContent = "Nạp tiền";
+  document.querySelector("#priceToken").textContent = "DeepSeek · đang tải giá…";
+  document.querySelector("#priceService").textContent = "Phí duy trì · đang tải…";
+  document.querySelector("#deskPrice").textContent = "Đăng nhập để xem giá DeepSeek. NVIDIA, Gemini, Groq, Cloudflare miễn phí.";
   document.querySelector(".attach-btn").disabled = false;
   document.querySelector(".attach-btn").title = "Đính kèm văn bản (TXT, MD, CSV, JSON)";
   document.querySelector(".attach-btn").setAttribute("aria-label", "Đính kèm văn bản (TXT, MD, CSV, JSON)");
@@ -1310,3 +1314,16 @@ function syncDarkToggle() {
 document.querySelector("#darkToggle").addEventListener("click", () => document.querySelector("#themeButton").click());
 new MutationObserver(syncDarkToggle).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 syncDarkToggle();
+
+// Bảng giá theo cấu hình máy chủ (admin đổi trong /admin), không ghi cứng.
+function renderPricing(data) {
+  const price = Number(data?.price_per_million), fee = Number(data?.service_fee);
+  if (Number.isFinite(price) && price > 0) {
+    document.querySelector("#priceToken").textContent = `DeepSeek · ${money(price)} / 1.000.000 token`;
+    document.querySelector("#deskPrice").textContent = `DeepSeek tính ${money(price)} cho 1 triệu token. NVIDIA, Gemini, Groq, Cloudflare miễn phí.`;
+  }
+  if (Number.isFinite(fee)) {
+    document.querySelector("#priceService").textContent = fee === 0 ? "Phí duy trì · Miễn phí" : `Phí duy trì · ${money(fee)} / 30 ngày sau ${data.trial_days || 30} ngày dùng thử`;
+    if (LIVE && session) document.querySelector("#walletTrial").textContent = fee === 0 ? "Miễn phí duy trì" : (data.wallet?.service_active === false ? "Hết hạn duy trì, cần gia hạn" : "Đang trong hạn duy trì");
+  }
+}
