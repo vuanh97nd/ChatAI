@@ -3491,7 +3491,11 @@ async function billingSourceAPI(env,actor,path,body,request){
    result.billing_server=billingTopology(env).peer;result.topups_available=true;
   }
   return reply(result,status);
- }catch{
+ }catch(error){
+  const cause=/not explicitly mapped/.test(String(error?.message))?'BILLING_ACCOUNT_NOT_MAPPED':/mappings mus/.test(String(error?.message))?'BILLING_ACCOUNT_MAP_INVALID':error?.billingCause||'BILLING_SOURCE_ERROR';
+  console.error('billing_source_failed',path,cause,String(error?.message||error).slice(0,160));
+  if(cause==='BILLING_ACCOUNT_NOT_MAPPED')return reply({success:false,code:cause,message:'Tài khoản này chưa được gán ví ở máy chủ thanh toán. Quản trị viên cần thêm tài khoản vào BILLING_ACCOUNT_MAP.'},403);
+  if(cause==='BILLING_ACCOUNT_MAP_INVALID')return reply({success:false,code:cause,message:'BILLING_ACCOUNT_MAP không hợp lệ (JSON sai, trùng chủ ví hoặc có admin). Quản trị viên cần sửa biến này.'},503);
   if(path==='/api/billing/status'&&actor){
    const db=billingSpendDB(env.DB);await billingSchema(db);
    const verified=await db.prepare('SELECT owner FROM billing_wallets WHERE owner=?').bind(actor.username).first();
@@ -3502,7 +3506,7 @@ async function billingSourceAPI(env,actor,path,body,request){
     return reply(data);
    }
   }
-  return reply({success:false,code:'BILLING_AUTHORITY_UNAVAILABLE',message:'Server thanh toán dự phòng không khả dụng. Tạm khóa nạp tiền, tạo QR và thay đổi số dư; không tự chuyển sang ví khác.'},503);
+  return reply({success:false,code:'BILLING_AUTHORITY_UNAVAILABLE',cause,message:'Server thanh toán dự phòng không khả dụng ('+cause+'). Tạm khóa nạp tiền, tạo QR và thay đổi số dư; không tự chuyển sang ví khác.'},503);
  }
 }
 async function billingDelegatedProvider(env,actor,path,body){
