@@ -393,3 +393,11 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
 @media(max-width:820px){.zalo-fab{bottom:calc(196px + env(safe-area-inset-bottom))}}
 @media(max-width:1200px){.zalo-fab{bottom:calc(192px + env(safe-area-inset-bottom))}}
 @media(max-width:820px){.zalo-fab{display:none!important}}
+/* PC: nút Zalo ở góc trên bên phải */
+@media(min-width:821px){
+  .zalo-fab{top:calc(84px + env(safe-area-inset-top));bottom:auto!important}
+}
+@media(min-width:1201px){
+  .zalo-fab{top:calc(12px + env(safe-area-inset-top))}
+  .desk{padding-top:76px}
+}
