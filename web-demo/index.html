@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="vi" data-theme="light">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#FAFBFF">
+    <meta name="description" content="ChatAI — Không gian làm việc cùng AI. Trò chuyện, viết nội dung và khám phá ý tưởng trên mọi thiết bị.">
+    <title>ChatAI — Không gian AI của bạn</title>
+    <link rel="icon" href="logo.png">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="vendor/katex.min.css">
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <div class="device-switch preview-controls" role="group" aria-label="Giao diện xem trước">
+        <button type="button" data-device="pc" class="is-active">Máy tính</button>
+        <button type="button" data-device="mobile">Điện thoại</button>
+      </div>
+      <div class="app" id="app">
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+        <aside class="sidebar" id="sidebar" aria-label="Lịch sử trò chuyện">
+          <div class="sidebar-top">
+            <a class="brand" href="./" aria-label="ChatAI">
+              <img src="logo.png" alt="" width="32" height="32">
+              <span>Chat AI<span class="brand-dot"></span></span>
+            </a>
+            <button class="icon-btn collapse-sidebar" id="collapseSidebar" type="button" aria-label="Thu gọn menu"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="18" height="18" x="3" y="3" rx="2" />
+  <path d="M9 3v18" />
+  <path d="m16 15-3-3 3-3" />
+</svg>
+</button><button class="icon-btn sidebar-close" id="closeSidebar" type="button" aria-label="Đóng menu"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M18 6 6 18" />
+  <path d="m6 6 12 12" />
+</svg>
+</button>
+          </div>
+          <button class="new-chat" id="newChat" type="button"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+  <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+</svg>
+<span>Hội thoại mới</span></button>
+          <label class="search"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg>
+
+            <input id="chatSearch" type="search" placeholder="Tìm đoạn chat" aria-label="Tìm đoạn chat">
+          </label>
+          <nav class="workspace-nav" aria-label="Không gian làm việc"><button type="button" class="active" data-space="Trò chuyện"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" />
+</svg>
+<span>Trò chuyện</span></button><button type="button" data-space="Thư viện"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" />
+  <path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" />
+  <path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />
+</svg>
+<span>Thư viện</span></button><button type="button" data-space="Chuyên gia"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 13h4" />
+  <path d="M12 18h6a2 2 0 012 2v1" />
+  <path d="M12 8h8" />
+  <path d="M12 9a4.17 4.17 0 01-3 4" />
+  <path d="M16 8V5a2 2 0 012-2" />
+  <path d="M6 18a4 4 0 01-2-7.465" />
+  <path d="M6.004 5.125a4 4 0 00-2.526 5.77" />
+  <path d="M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518" />
+  <circle cx="16" cy="13" r="0.5" fill="currentColor" />
+  <circle cx="18" cy="3" r="0.5" fill="currentColor" />
+  <circle cx="20" cy="21" r="0.5" fill="currentColor" />
+  <circle cx="20" cy="8" r="0.5" fill="currentColor" />
+</svg>
+<span>Chuyên gia</span></button><button type="button" data-space="Công việc"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 12h.01" />
+  <path d="M16 6V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  <path d="M22 13a18.15 18.15 0 0 1-20 0" />
+  <rect width="20" height="14" x="2" y="6" rx="2" />
+</svg>
+<span>Công việc</span></button></nav><p class="list-label">GẦN ĐÂY</p>
+          <nav class="conversation-list" id="conversationList" aria-label="Các cuộc trò chuyện"></nav>
+          <div class="sidebar-foot"><button class="help-button" data-space="Hỗ trợ" type="button"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+  <path d="M12 17h.01" />
+</svg>
+<span>Trợ giúp & cài đặt</span></button>
+            <div class="download-card">
+              <p id="downloadLabel">Tải ứng dụng Windows</p>
+              <a class="download-link for-android" id="androidDownload" href="https://github.com/vuanh97nd/ChatAI/releases/download/android-1.4.6-build74/ChatAI-1.4.6-build74-8533fc7.apk">Tải APK Android 1.4.6</a>
+              <a class="download-link for-pc" id="pcDownload" href="https://github.com/vuanh97nd/ChatAI/releases/download/v3.0/Chat-AI-Setup-3.0.0.exe">Tải ChatAI.exe 3.0</a>
+            </div>
+            <button class="account-row" id="accountButton" type="button">
+              <span class="user-avatar" id="userAvatar">K</span>
+              <span>
+                <strong id="accountName">Khách</strong>
+                <small id="accountMeta">Đăng nhập để đồng bộ ví</small>
+              </span>
+            </button>
+          </div>
+        </aside>
+
+        <section class="chat" aria-label="ChatAI trực tuyến">
+          <header class="chat-bar">
+            <button class="icon-btn menu-btn" id="openSidebar" type="button" aria-label="Mở menu"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <rect width="18" height="18" x="3" y="3" rx="2" />
+  <path d="M9 3v18" />
+  <path d="m14 9 3 3-3 3" />
+</svg>
+</button>
+            <div class="workspace-title"><img src="logo.png" alt="" width="25" height="25"><span>Hội thoại mới</span></div><span class="mode-pill"><i></i>AI trực tuyến</span><div class="model-menu">
+              <button class="model-trigger" id="modelTrigger" type="button" aria-expanded="false" aria-haspopup="listbox">
+                
+                <span>
+                  <strong id="modelName">NVIDIA NIM</strong>
+                  <small id="modelMeta" hidden></small>
+                </span>
+                <svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m6 9 6 6 6-6" />
+</svg>
+
+              </button>
+              <div class="model-dropdown" id="modelDropdown" hidden role="listbox" aria-label="Chọn hãng AI"></div>
+            </div>
+            <div class="bar-actions">
+              <button class="header-account" id="headerAccount" type="button">Tài khoản</button><button class="icon-btn" id="themeButton" type="button" aria-label="Đổi giao diện sáng tối" title="Đổi giao diện sáng tối"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+</svg>
+</button>
+              <button class="icon-btn" id="exportChat" type="button" aria-label="Xuất hội thoại" title="Tải hội thoại (.md)"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M12 15V3" />
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+  <path d="m7 10 5 5 5-5" />
+</svg>
+</button>
+              <button class="wallet-chip" id="walletChip" type="button">Ví AI · Khách</button>
+              <span class="live-pill"><i></i> Demo</span>
+            </div>
+          </header>
+
+          <div class="thread" id="thread">
+            <div class="welcome" id="welcome">
+
+              <div class="welcome-eyebrow"><span class="hello-line"></span>Xin chào bạn!</div><h1>Bắt đầu một <span>ý tưởng mới.</span></h1><div class="welcome-subtitle">Viết, khám phá và làm việc cùng Chat AI.</div><div class="prompt-grid" id="promptGrid"></div>
+              <p>Chat trực tuyến mô phỏng trên trình duyệt. Chọn mô hình, gửi tin nhắn — không kết nối API thật.</p>
+              <a class="get-app" id="getApp" href="https://github.com/vuanh97nd/ChatAI/releases/download/v3.0/Chat-AI-Setup-3.0.0.exe">Tải ChatAI cho Windows (.exe)</a>
+
+            </div>
+            <div class="messages" id="messages" aria-live="polite"></div>
+          </div>
+
+          <button class="scroll-bottom icon-btn" id="scrollBottom" type="button" aria-label="Về tin nhắn mới nhất" hidden>↓</button>
+          <div class="composer-shell">
+            <div class="attachment-chip" id="attachmentChip" hidden><span></span><button type="button" id="removeAttachment" aria-label="Bỏ tệp đính kèm">×</button></div>
+            <input type="file" id="fileInput" accept=".txt,.md,.csv,.json" hidden>
+            <div class="followups" id="followups" hidden></div>
+            <div class="composer-topline"><span><i></i>Sẵn sàng</span><span class="key-hint">Shift + Enter xuống dòng</span></div><form class="composer" id="chatForm">
+              <button class="icon-btn attach-btn" type="button" title="Đính kèm TXT, MD, CSV hoặc JSON" aria-label="Đính kèm tệp"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" />
+</svg>
+</button>
+              <textarea id="messageInput" rows="1" placeholder="Hỏi bất cứ điều gì…" aria-label="Nhắn ChatAI"></textarea>
+<button class="paste-button icon-btn" id="pasteButton" type="button" title="Dán từ clipboard" aria-label="Dán từ clipboard"></button><div class="composer-tools"><button type="button" data-tool="Phân tích sâu" aria-label="Phân tích sâu" aria-pressed="false"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+  <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+  <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+  <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+  <circle cx="12" cy="12" r="3" />
+  <path d="m16 16-1.9-1.9" />
+</svg>
+<span class="tool-label">Phân tích sâu</span></button><button type="button" data-tool="Hình ảnh" aria-label="Hình ảnh" aria-pressed="false"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16" />
+  <path d="M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2" />
+  <circle cx="13" cy="7" r="1" fill="currentColor" />
+  <rect x="8" y="2" width="14" height="14" rx="2" />
+</svg>
+<span class="tool-label">Hình ảnh</span></button><button type="button" data-tool="Tài liệu" aria-label="Tài liệu" aria-pressed="false"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+  <path d="M10 9H8" />
+  <path d="M16 13H8" />
+  <path d="M16 17H8" />
+</svg>
+<span class="tool-label">Tài liệu</span></button></div><button class="send-btn" id="sendBtn" type="submit" aria-label="Gửi"><svg aria-hidden="true"
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m5 12 7-7 7 7" />
+  <path d="M12 19V5" />
+</svg>
+</button>
+            </form>
+            <div class="composer-hint"><span id="chatStatus" role="status">Sẵn sàng cùng bạn</span><span class="keyboard-hint">Enter để gửi · Shift + Enter xuống dòng</span></div><p class="fineprint">ChatAI có thể nhầm. Bản này chỉ mô phỏng hội thoại trực tuyến, không gọi mô hình hay máy chủ thật.</p>
+          </div>
+        </section>
+      </div>
+    </div>
+    <div class="overlay" id="authOverlay" role="dialog" aria-modal="true" aria-labelledby="authTitle" hidden>
+      <form class="sheet" id="authForm">
+        
+        <h2 id="authTitle">Đăng nhập ChatAI</h2>
+        <p class="sheet-note">Bản demo không gửi mật khẩu hay gọi server. Dữ liệu chỉ nằm trên trình duyệt này.</p>
+        <div class="auth-tabs">
+          <button type="button" data-auth="login" class="is-active">Đăng nhập</button>
+          <button type="button" data-auth="register">Đăng ký</button>
+        </div>
+        <label id="nameField" hidden>Họ và tên<input name="name" autocomplete="name" placeholder="Nguyễn Minh Anh"></label>
+        <label id="emailField" hidden>Email<input name="email" type="email" autocomplete="email" placeholder="ban@email.com"></label>
+        <label>Tên đăng nhập<input name="username" autocomplete="username" required minlength="3" placeholder="minhanh"></label>
+        <label>Mật khẩu<input name="password" type="password" autocomplete="current-password" required minlength="8" placeholder="••••••••"></label>
+        <p class="form-error" id="authError" hidden></p>
+        <button class="sheet-submit" type="submit">Tiếp tục</button>
+        <button class="sheet-ghost" id="authCancel" type="button">Để sau</button>
+      </form>
+    </div>
+
+    <div class="overlay" id="walletOverlay" role="dialog" aria-modal="true" aria-label="Số dư và thanh toán" hidden>
+      <div class="sheet wallet-sheet">
+        <h2>Số dư và thanh toán</h2>
+        <p class="sheet-note">Đồng bộ theo bảng giá ChatAI: NVIDIA / Gemini / Cloudflare miễn phí. DeepSeek tính phí token. Không tạo QR hay trừ tiền thật.</p>
+        <div class="wallet-hero">
+          <span>Số dư ví</span>
+          <strong id="walletBalance">0 đ</strong>
+          <small id="walletTrial">Dùng thử 30 ngày duy trì</small>
+        </div>
+        <ul class="price-list">
+          <li>DeepSeek · 4.000 đ / 1.000.000 token</li>
+          <li>Phí duy trì · 100.000 đ / 30 ngày sau dùng thử</li>
+          <li>NVIDIA, Gemini, Groq, Cloudflare · miễn phí</li>
+        </ul>
+        <p class="list-label">Nạp tiền mô phỏng</p>
+        <div class="topup-grid" id="topupGrid"></div>
+        <p class="usage-line" id="usageLine">Tháng này: 0 token DeepSeek · 0 đ</p>
+        <button class="sheet-ghost" id="walletClose" type="button">Đóng</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="accountOverlay" role="dialog" aria-modal="true" aria-label="Tài khoản" hidden>
+      <div class="sheet">
+        <h2>Tài khoản</h2>
+        <p id="accountDetail">Bạn đang dùng chế độ khách. 3 lượt chat miễn phí trước khi đăng nhập.</p>
+        <label class="switch-row">
+          <span>Bộ nhớ cá nhân</span>
+          <button id="memoryToggle" type="button" aria-pressed="true">Bật</button>
+        </label>
+        <div class="account-actions"><button type="button" id="openWalletFromAccount">Số dư & thanh toán</button>
+          <button type="button" id="openLoginFromAccount">Đăng nhập / Đăng ký</button>
+          <button type="button" id="logoutButton" hidden>Đăng xuất</button>
+        </div>
+        <button class="sheet-ghost" id="accountClose" type="button">Đóng</button>
+      </div>
+    </div>
+    <div class="overlay" id="conversationOverlay" role="dialog" aria-modal="true" aria-labelledby="conversationTitle" hidden>
+      <form class="sheet" id="conversationForm"><span class="eyebrow">QUẢN LÝ HỘI THOẠI</span><h2 id="conversationTitle">Một cái tên dễ nhớ</h2><label>Tên hội thoại<input id="conversationName" maxlength="150" required></label><p class="sheet-note">Hội thoại đã đăng nhập được đồng bộ trên máy chủ.</p><p class="form-error" id="conversationError" hidden></p><button class="sheet-submit" type="submit">Lưu tên hội thoại</button><button class="danger-button" id="archiveChat" type="button">Ẩn hội thoại khỏi danh sách</button><button class="sheet-ghost" id="conversationCancel" type="button">Đóng</button></form>
+    </div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script src="vendor/katex.min.js"></script><script src="vendor/auto-render.min.js"></script><script src="vendor/highlight.min.js"></script><script src="app.js?v=studio-preview"></script>
+  </body>
+</html>

@@ -2,6 +2,16 @@
 
 Ứng dụng Windows native bằng PySide6, chạy mô hình trên Ollama local. RAM16GB/RTX3070 8GB: Qwen2.5 7B mặc định, Qwen Coder7B cho code; có Qwen1.5B/3B, DeepSeek R1 1.5B/8B, Gemma3 4B đọc ảnh.
 
+## Bản demo website
+
+Trang demo giao diện tĩnh nằm trong [`web-demo/`](web-demo/). Giao diện chat kiểu ChatGPT, dùng logo ChatAI, có xem trước máy tính/điện thoại, đăng nhập/đăng ký mô phỏng, ví thanh toán DeepSeek (4.000 đ/triệu token). Máy tính gợi ý tải [Chat-AI-Setup-3.0.0.exe](https://github.com/vuanh97nd/ChatAI/releases/download/v3.0/Chat-AI-Setup-3.0.0.exe); điện thoại gợi ý APK Android 1.4.6. iOS không hiện nút tải. Mọi hội thoại chỉ mô phỏng trong trình duyệt, không kết nối AI, Worker/API, Ollama hay dịch vụ bên ngoài. Chạy từ thư mục gốc repo:
+
+```powershell
+python -m http.server 4173 --directory web-demo
+```
+
+Sau đó mở `http://localhost:4173`. Các tính năng desktop như Ollama local, file trên máy và tự động hóa Windows không thuộc khả năng của bản demo web.
+
 **Bản này bắt buộc đăng nhập server trước khi chat theo yêu cầu mới.** Suy luận vẫn chạy local; xác thực và bộ nhớ riêng dùng server Cloudflare. Cần server đã triển khai và Internet để xác thực. Chưa tự triển khai server hoặc tạo GitHub Release trong phiên này.
 
 ## Cài và chạy Windows
