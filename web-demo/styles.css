@@ -208,3 +208,10 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
   #authForm>h2{margin-top:20px}
 }
 #authForm>.sheet-submit,#authForm>.sheet-ghost{width:auto!important;justify-self:stretch}
+/* Mobile: chữ chat vừa mắt hơn */
+@media(max-width:820px){
+  .messages .message-content,.messages .message-content p,.messages .message-content li{font-size:14.5px!important;line-height:1.6!important}
+  .messages .message-content h3{font-size:15.5px!important}
+  .messages .message-content pre,.messages .message-content code{font-size:12.5px!important}
+  .msg-meta{font-size:11px}
+}
