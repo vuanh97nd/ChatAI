@@ -336,12 +336,18 @@ function selectConversation(index) {
     renderConversations(els.search.value);
     renderFollowups(convo.messages.at(-1)?.text || "");
   };
-  if (LIVE && convo.id && !convo.messages.length) {
+  if (LIVE && convo.id && !convo.fresh) {
+    if (convo.messages.length) paint();
+    const shown = convo.messages.length;
     api("/api/conversations/get", { ...credentials(), conversation_id: convo.id }).then((data) => {
       convo.messages = (data.messages || []).map((msg) => ({ role: msg.role, text: msg.content }));
+      convo.fresh = true;
+      if (session) historyCache.saveMessages(session.username, convo.id, convo.messages);
+      if (conversations[activeId] !== convo) return;
+      if (shown && shown === convo.messages.length) return;
       els.messages.replaceChildren();
       paint();
-    }).catch(() => paint());
+    }).catch(() => { if (!shown) paint(); });
   } else {
     paint();
   }
@@ -711,7 +717,7 @@ async function api(path, payload) {
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.success === false) {
-    throw new Error(data.message || "Không kết nối được máy chủ Cloudflare.");
+    throw Object.assign(new Error(data.message || "Không kết nối được máy chủ Cloudflare."), { status: response.status, code: data.code });
   }
   return data;
 }
@@ -722,16 +728,28 @@ function credentials() {
 
 async function loadServerState() {
   if (!LIVE || !session) return;
+  const account = session.username;
+  const cached = historyCache.list(account);
+  if (cached.length && !conversations.length) {
+    conversations.splice(0, 0, ...cached.map((item) => ({ id: item.id, title: item.title, messages: historyCache.messages(account, item.id) })));
+    renderConversations();
+  }
   try {
     const listed = await api("/api/conversations/list", { ...credentials(), offset: 0 });
-    conversations.splice(0, conversations.length, ...(listed.conversations || []).map((item) => ({
-      id: item.id,
-      title: item.title,
-      messages: [],
-    })));
+    if (!session || session.username !== account) return;
+    const fresh = (listed.conversations || []).map((item) => {
+      const old = conversations.find((c) => c.id === item.id);
+      return { id: item.id, title: item.title, messages: old?.messages?.length ? old.messages : historyCache.messages(account, item.id) };
+    });
+    const local = conversations.filter((c) => !c.id);
+    const activeIdValue = conversations[activeId]?.id;
+    conversations.splice(0, conversations.length, ...local, ...fresh);
+    if (activeIdValue) activeId = conversations.findIndex((c) => c.id === activeIdValue);
+    historyCache.saveList(account, fresh);
     renderConversations();
-  } catch {
-    conversations.splice(0, conversations.length);
+  } catch (error) {
+    if (error.status === 401) { sessionExpired(); return; }
+    if (!cached.length) conversations.splice(0, conversations.length);
   }
   try {
     const mem = await api("/api/memory/personal/list", credentials());
@@ -775,6 +793,7 @@ document.querySelector("#openLoginFromAccount").addEventListener("click", () => 
   requireAccount("");
 });
 document.querySelector("#logoutButton").addEventListener("click", () => {
+  if (session?.username) historyCache.clear(session.username);
   forgetSession();
   if (LIVE && session) {
     api("/api/logout", credentials()).catch(() => {});
@@ -1800,18 +1819,14 @@ renderRichText = function (target, text) {
 const SESSION_KEY = "chatai-session";
 function saveSession(v) { try { localStorage.setItem(SESSION_KEY, JSON.stringify({ ...v, saved: Date.now() })); } catch {} }
 function forgetSession() { try { localStorage.removeItem(SESSION_KEY); } catch {} }
-(async function restoreSession() {
+(function restoreSession() {
   if (!LIVE || session) return;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch {}
   if (!saved?.username || !String(saved.key || "").startsWith("session:")) return;
   if (Date.now() - (saved.saved || 0) > 29 * 86400000) { forgetSession(); return; }
-  try {
-    await api("/api/billing/status", { username: saved.username, key: saved.key });
-  } catch (e) {
-    if (/đăng nhập|401|quyền/i.test(e.message)) { forgetSession(); return; }
-  }
-  loginUser(saved.name || saved.username, saved.username, saved.key, { trialDays: saved.trialDays });
+  // Hiện đăng nhập ngay; loadServerState kiểm tra token với máy chủ và tự đăng xuất nếu hết hạn.
+  queueMicrotask(() => { if (!session) loginUser(saved.name || saved.username, saved.username, saved.key, { trialDays: saved.trialDays }); });
 })();
 
 // Biểu đồ: AI trả ```chatai-chart {JSON}```, web vẽ SVG (cột, đường, tròn) và cho tải PNG.
@@ -2038,3 +2053,28 @@ const SUPPORT_ZALO = "0869233097";
   const copy = document.querySelector("#zaloCopy"); copy.hidden = false;
   copy.addEventListener("click", () => navigator.clipboard?.writeText(digits).then(() => toast("Đã sao chép số Zalo."), () => toast("Số Zalo: " + pretty)));
 })();
+
+// Bộ nhớ đệm lịch sử theo tài khoản: hiện ngay khi mở trang, máy chủ cập nhật sau. Giới hạn dung lượng.
+const historyCache = {
+  key: (u, id) => "chatai-h:" + u + (id ? ":" + id : ""),
+  list(u) { try { return JSON.parse(localStorage.getItem(this.key(u)) || "[]"); } catch { return []; } },
+  saveList(u, items) { try { localStorage.setItem(this.key(u), JSON.stringify(items.slice(0, 100).map((c) => ({ id: c.id, title: c.title })))); } catch {} },
+  messages(u, id) { try { return JSON.parse(localStorage.getItem(this.key(u, id)) || "[]"); } catch { return []; } },
+  saveMessages(u, id, msgs) {
+    try {
+      const data = JSON.stringify(msgs.slice(-60).map((m) => ({ role: m.role, text: String(m.text).slice(0, 20000) })));
+      localStorage.setItem(this.key(u, id), data);
+      const order = JSON.parse(localStorage.getItem(this.key(u) + ":order") || "[]").filter((x) => x !== id);
+      order.unshift(id);
+      for (const old of order.splice(30)) localStorage.removeItem(this.key(u, old));
+      localStorage.setItem(this.key(u) + ":order", JSON.stringify(order));
+    } catch { /* đầy bộ nhớ: bỏ qua, vẫn tải từ máy chủ */ }
+  },
+  clear(u) { try { for (const k of Object.keys(localStorage)) if (k.startsWith("chatai-h:" + u)) localStorage.removeItem(k); } catch {} },
+};
+function sessionExpired() {
+  const u = session?.username;
+  forgetSession(); if (u) historyCache.clear(u);
+  document.querySelector("#logoutButton").click();
+  toast("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+}
