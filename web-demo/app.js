@@ -1403,6 +1403,11 @@ function liveCardNode(card) {
       list.append(row);
     }
     box.append(list, Object.assign(document.createElement("p"), { className: "live-legend", textContent: "Mua vào / bán ra, đơn vị " + (card.unit || "1.000 đồng/chỉ") + (card.updated_at ? " · Nguồn cập nhật " + card.updated_at : "") }));
+  } else if (card.kind === "gold" && (card.sources || []).length) {
+    const ul = document.createElement("ul"); ul.className = "live-news";
+    for (const n of card.sources) { const li = document.createElement("li"); li.append(Object.assign(document.createElement("a"), { href: n.url, target: "_blank", rel: "noopener", textContent: n.title })); ul.append(li); }
+    box.append(Object.assign(document.createElement("p"), { className: "live-legend", textContent: "Bảng giá PNJ tạm không đọc được. Số liệu lấy từ kết quả tìm kiếm:" }), ul);
+    card = { ...card, sources: [] };
   } else if (card.kind === "news" && card.items?.length) {
     const ul = document.createElement("ul"); ul.className = "live-news";
     for (const n of card.items) {
