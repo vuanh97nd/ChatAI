@@ -401,3 +401,13 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
   .zalo-fab{top:calc(12px + env(safe-area-inset-top))}
   .desk{padding-top:76px}
 }
+
+/* Zalo dưới thẻ Ví (màn hình rộng) */
+.desk-zalo{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:#0068ff;color:#fff;text-decoration:none;box-shadow:0 8px 22px -12px #0068ffcc}
+.desk-zalo:hover{background:#0057d6}
+.desk-zalo-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:#ffffff26}
+.desk-zalo-text{display:grid;gap:1px;min-width:0}
+.desk-zalo-text b{font-size:14px}
+.desk-zalo-text small{font:500 12px "JetBrains Mono",monospace;opacity:.9}
+.desk-zalo-go{font-size:12.5px;font-weight:700;opacity:.95}
+@media(min-width:1201px){.zalo-fab{display:none!important}.desk{padding-top:16px!important}}
