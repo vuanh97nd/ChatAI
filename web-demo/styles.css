@@ -274,3 +274,14 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .media-save{justify-self:start;padding:7px 14px;border:1px solid var(--line);border-radius:9px;font-size:13px;font-weight:600;color:var(--text);text-decoration:none}
 .media-save:hover{border-color:var(--accent);color:var(--accent)}
 @media(prefers-reduced-motion:reduce){.media-progress i{animation:none}}
+
+/* Thẻ file tải về */
+.file-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;max-width:460px;margin:8px 0 4px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.file-card>div{display:grid;gap:2px;min-width:0}
+.file-card b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-card span{font-size:12px;color:var(--muted)}
+.file-icon{display:grid;place-items:center;width:42px;height:48px;border-radius:8px;color:#fff!important;font:700 11px "JetBrains Mono",monospace!important}
+.file-docx{background:#2b579a}.file-xlsx{background:#217346}.file-pptx{background:#c43e1c}.file-pdf{background:#b30b00}.file-dxf{background:#0f6b78}
+.file-get{min-height:36px;padding:0 14px;border:0;border-radius:9px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer}
+.file-get:disabled{opacity:.6}
+.file-card .media-state{grid-column:1/-1}

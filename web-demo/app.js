@@ -580,6 +580,8 @@ function sendMessage(raw) {
   const media = mediaMode(text);
   if (media && !attachment) { els.input.value = ""; els.input.style.height = "auto"; runMedia(media, text); return; }
   turnAttachment = attachment && LIVE ? attachment : null;
+  const fileKind = fileRequest(text);
+  if (fileKind) text = text + "\n\n" + FILE_INSTRUCTION(fileKind);
   if (attachment && !LIVE) text = (text || "Tóm tắt nội dung tệp này.") + `\n\nTệp văn bản: ${attachment.name}\n---\n${String(attachment.text || "").slice(0, 4000)}`;
   else if (attachment) text = (text || (attachment.image ? "Phân tích ảnh này." : "Phân tích nội dung tệp này.")) + `\n\n[Đính kèm: ${attachment.name}]`;
   if (text.length > (model.id === "cloudflare" ? 6000 : 16000)) { toast("Nội dung quá dài. Hãy rút ngắn câu hỏi hoặc tệp đính kèm."); return; }
@@ -1427,12 +1429,15 @@ function mediaMode(text) {
 }
 function syncMediaOptions() {
   const tool = selectedTool(), box = document.querySelector("#mediaOptions");
-  box.hidden = tool !== "Hình ảnh" && tool !== "Video";
+  const doc = tool === "Tài liệu";
+  box.hidden = tool !== "Hình ảnh" && tool !== "Video" && !doc;
+  document.querySelector("#fileTypeWrap").hidden = !doc;
   const video = tool === "Video";
   document.querySelector("#videoSecondsWrap").hidden = !video;
   document.querySelector("#videoFrameWrap").hidden = !video;
-  document.querySelector("#imageStyleWrap").hidden = video;
-  document.querySelector("#mediaHint").textContent = video ? "Tạo video từ mô tả tiếng Việt" : "Tạo ảnh từ mô tả tiếng Việt";
+  document.querySelector("#imageStyleWrap").hidden = video || doc;
+  document.querySelector("#mediaHint").textContent = doc ? "Tạo file để tải về" : video ? "Tạo video từ mô tả tiếng Việt" : "Tạo ảnh từ mô tả tiếng Việt";
+  if (doc) { els.input.placeholder = "Mô tả nội dung file, ví dụ: bảng chỉ tiêu cơ lý 3 lớp đất"; return; }
   if (!box.hidden) els.input.placeholder = video ? "Mô tả cảnh quay, ví dụ: flycam cánh đồng lúa Tam Cốc lúc bình minh" : "Mô tả ảnh, ví dụ: kỹ sư khảo sát đê sông Hồng lúc hoàng hôn";
   else els.input.placeholder = "Hỏi bất cứ điều gì…";
 }
@@ -1578,3 +1583,134 @@ async function readAttachment(file) {
   } catch (e) { toast(e.message || "Không đọc được tệp."); clearAttachment(); }
   document.querySelector("#fileInput").value = "";
 }
+
+// Tạo file tải về: AI trả khối ```chatai-file {JSON}```, trình duyệt dựng Word / Excel / PowerPoint / PDF / DXF.
+const FILE_LIBS = {
+  xlsx: "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+  docx: "https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js",
+  pptx: "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+  pdf: ["https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js", "https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"],
+};
+const FILE_NAMES = { docx: "Word", xlsx: "Excel", pptx: "PowerPoint", pdf: "PDF", dxf: "DXF" };
+function fileRequest(text) {
+  if (selectedTool() === "Tài liệu") return document.querySelector("#fileType").value;
+  const f = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").toLowerCase();
+  if (!/\b(tao|lam|xuat|soan|viet|ve|lap|chuyen)\b/.test(f) || !/\b(file|tep|ban|tai lieu|ra|sang|thanh|slide|bang tinh|ban ve)\b/.test(f)) return null;
+  if (/\b(dxf|autocad|cad|ban ve)\b/.test(f)) return "dxf";
+  if (/\b(powerpoint|pptx|ppt|slide|trinh chieu|thuyet trinh)\b/.test(f)) return "pptx";
+  if (/\b(excel|xlsx|bang tinh)\b/.test(f)) return "xlsx";
+  if (/\b(word|docx)\b/.test(f)) return "docx";
+  if (/\bpdf\b/.test(f)) return "pdf";
+  return null;
+}
+function FILE_INSTRUCTION(kind) {
+  const shape = {
+    xlsx: '{"type":"xlsx","filename":"ten-file","sheets":[{"name":"Sheet1","rows":[["Cột A","Cột B"],["giá trị",123]]}]}',
+    docx: '{"type":"docx","filename":"ten-file","title":"Tiêu đề","sections":[{"heading":"Mục 1","paragraphs":["..."],"bullets":["..."],"table":[["Cột","Cột"],["...","..."]]}]}',
+    pdf: '{"type":"pdf","filename":"ten-file","title":"Tiêu đề","sections":[{"heading":"Mục 1","paragraphs":["..."],"bullets":["..."],"table":[["Cột","Cột"],["...","..."]]}]}',
+    pptx: '{"type":"pptx","filename":"ten-file","title":"Tiêu đề bài","slides":[{"title":"Slide 1","bullets":["ý 1","ý 2"],"notes":"ghi chú người nói"}]}',
+    dxf: '{"type":"dxf","filename":"ten-file","units":"m","entities":[{"type":"line","layer":"MAT_CAT","x1":0,"y1":0,"x2":10,"y2":5},{"type":"polyline","layer":"DAT","points":[[0,0],[5,2],[10,2]],"closed":false},{"type":"circle","layer":"COC","x":3,"y":1,"r":0.4},{"type":"text","layer":"GHI_CHU","x":1,"y":6,"height":0.5,"text":"Ghi chú"}]}',
+  }[kind];
+  return `[Yêu cầu tạo file ${FILE_NAMES[kind]}] Trả lời ngắn gọn nội dung chính, sau đó đặt ĐÚNG MỘT khối ở cuối câu trả lời theo mẫu:\n\`\`\`chatai-file\n${shape}\n\`\`\`\nJSON hợp lệ, đầy đủ nội dung thật (không dùng "..."), số để dạng số, tiếng Việt có dấu.`;
+}
+function extractFileSpec(text) {
+  const m = String(text || "").match(/```chatai-file\s*([\s\S]*?)```/);
+  if (!m) return { clean: text, spec: null };
+  let spec = null;
+  try { spec = JSON.parse(m[1]); } catch { try { spec = JSON.parse(m[1].replace(/,\s*([}\]])/g, "$1")); } catch {} }
+  const clean = String(text).replace(m[0], "").trim();
+  return { clean, spec: spec && FILE_NAMES[spec.type] ? spec : { error: true } };
+}
+// DXF R12 ASCII: LINE, CIRCLE, TEXT; polyline ghi thành các LINE để mọi phần mềm CAD đọc được. Chữ có dấu ghi dạng \U+XXXX.
+function dxfText(v) { return String(v ?? "").replace(/[^\x20-\x7e]/g, (c) => "\\U+" + c.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")); }
+function buildDxf(spec) {
+  const out = ["0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", "AC1009", "9", "$INSUNITS", "70", spec.units === "mm" ? "4" : spec.units === "cm" ? "5" : "6", "0", "ENDSEC", "0", "SECTION", "2", "ENTITIES"];
+  const n = (v) => String(Number(v) || 0);
+  const line = (L, x1, y1, x2, y2) => out.push("0", "LINE", "8", dxfText(L || "0"), "10", n(x1), "20", n(y1), "30", "0", "11", n(x2), "21", n(y2), "31", "0");
+  for (const e of spec.entities || []) {
+    if (e.type === "line") line(e.layer, e.x1, e.y1, e.x2, e.y2);
+    else if (e.type === "polyline" && Array.isArray(e.points)) {
+      for (let i = 1; i < e.points.length; i++) line(e.layer, e.points[i - 1][0], e.points[i - 1][1], e.points[i][0], e.points[i][1]);
+      if (e.closed && e.points.length > 2) line(e.layer, e.points.at(-1)[0], e.points.at(-1)[1], e.points[0][0], e.points[0][1]);
+    } else if (e.type === "circle") out.push("0", "CIRCLE", "8", dxfText(e.layer || "0"), "10", n(e.x), "20", n(e.y), "30", "0", "40", n(e.r));
+    else if (e.type === "text") out.push("0", "TEXT", "8", dxfText(e.layer || "0"), "10", n(e.x), "20", n(e.y), "30", "0", "40", n(e.height || 1), "1", dxfText(e.text));
+  }
+  out.push("0", "ENDSEC", "0", "EOF");
+  return out.join("\r\n") + "\r\n";
+}
+async function buildFile(spec) {
+  const libs = FILE_LIBS[spec.type];
+  for (const src of [].concat(libs || [])) await loadScript(src);
+  const sections = Array.isArray(spec.sections) ? spec.sections : [];
+  if (spec.type === "xlsx") {
+    const wb = XLSX.utils.book_new();
+    (spec.sheets || []).forEach((sh, i) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sh.rows || []), String(sh.name || "Sheet" + (i + 1)).slice(0, 31)));
+    return new Blob([XLSX.write(wb, { type: "array", bookType: "xlsx" })], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+  if (spec.type === "docx") {
+    const D = window.docx, kids = [];
+    if (spec.title) kids.push(new D.Paragraph({ text: spec.title, heading: D.HeadingLevel.TITLE }));
+    for (const sec of sections) {
+      if (sec.heading) kids.push(new D.Paragraph({ text: sec.heading, heading: D.HeadingLevel.HEADING_1 }));
+      for (const p of sec.paragraphs || []) kids.push(new D.Paragraph({ children: [new D.TextRun(String(p))], spacing: { after: 120 } }));
+      for (const b of sec.bullets || []) kids.push(new D.Paragraph({ text: String(b), bullet: { level: 0 } }));
+      if (Array.isArray(sec.table) && sec.table.length) kids.push(new D.Table({ width: { size: 100, type: D.WidthType.PERCENTAGE },
+        rows: sec.table.map((r, i) => new D.TableRow({ children: r.map((c) => new D.TableCell({ children: [new D.Paragraph({ children: [new D.TextRun({ text: String(c ?? ""), bold: i === 0 })] })] })) })) }));
+    }
+    return D.Packer.toBlob(new D.Document({ styles: { default: { document: { run: { font: "Times New Roman", size: 26 } } } }, sections: [{ children: kids }] }));
+  }
+  if (spec.type === "pptx") {
+    const ppt = new PptxGenJS(); ppt.layout = "LAYOUT_WIDE";
+    const cover = ppt.addSlide(); cover.background = { color: "16244A" };
+    cover.addText(spec.title || "ChatAI", { x: 0.7, y: 2.6, w: 12, h: 1.2, fontSize: 40, bold: true, color: "FFFFFF", fontFace: "Arial" });
+    for (const sl of spec.slides || []) {
+      const s = ppt.addSlide();
+      s.addShape(ppt.ShapeType.rect, { x: 0, y: 0, w: 13.33, h: 0.12, fill: { color: "2F5BEA" } });
+      s.addText(sl.title || "", { x: 0.6, y: 0.4, w: 12, h: 0.9, fontSize: 28, bold: true, color: "0F1A2B", fontFace: "Arial" });
+      if ((sl.bullets || []).length) s.addText(sl.bullets.map((b) => ({ text: String(b), options: { bullet: true } })), { x: 0.8, y: 1.5, w: 11.7, h: 5.2, fontSize: 20, color: "333F55", fontFace: "Arial", valign: "top", paraSpaceAfter: 8 });
+      if (sl.notes) s.addNotes(String(sl.notes));
+    }
+    return ppt.write({ outputType: "blob" });
+  }
+  if (spec.type === "pdf") {
+    const content = [];
+    if (spec.title) content.push({ text: spec.title, style: "title" });
+    for (const sec of sections) {
+      if (sec.heading) content.push({ text: sec.heading, style: "h1" });
+      for (const p of sec.paragraphs || []) content.push({ text: String(p), margin: [0, 0, 0, 6] });
+      if ((sec.bullets || []).length) content.push({ ul: sec.bullets.map(String), margin: [0, 0, 0, 6] });
+      if (Array.isArray(sec.table) && sec.table.length) content.push({ table: { headerRows: 1, widths: sec.table[0].map(() => "*"), body: sec.table.map((r, i) => r.map((c) => ({ text: String(c ?? ""), bold: i === 0 }))) }, layout: "lightHorizontalLines", margin: [0, 4, 0, 10] });
+    }
+    return new Promise((ok) => pdfMake.createPdf({ content, defaultStyle: { font: "Roboto", fontSize: 11, lineHeight: 1.3 }, styles: { title: { fontSize: 20, bold: true, margin: [0, 0, 0, 12] }, h1: { fontSize: 14, bold: true, margin: [0, 10, 0, 6] } } }).getBlob(ok));
+  }
+  if (spec.type === "dxf") return new Blob([buildDxf(spec)], { type: "application/dxf" });
+  throw new Error("Loại file chưa hỗ trợ.");
+}
+function fileCard(spec) {
+  const box = Object.assign(document.createElement("section"), { className: "file-card" });
+  if (spec.error) { box.append(Object.assign(document.createElement("p"), { className: "media-state is-error", textContent: "AI trả dữ liệu file chưa đúng định dạng. Bấm Tạo lại hoặc chọn AI khác (DeepSeek ổn định hơn)." })); return box; }
+  const ext = spec.type, name = String(spec.filename || "ChatAI").replace(/[\\/:*?"<>|]+/g, "-").replace(/\.\w+$/, "") + "." + ext;
+  const info = document.createElement("div");
+  info.append(Object.assign(document.createElement("b"), { textContent: name }), Object.assign(document.createElement("span"), { textContent: FILE_NAMES[ext] + (ext === "xlsx" ? " · " + (spec.sheets || []).length + " sheet" : ext === "pptx" ? " · " + ((spec.slides || []).length + 1) + " slide" : ext === "dxf" ? " · " + (spec.entities || []).length + " đối tượng" : "") }));
+  const btn = Object.assign(document.createElement("button"), { type: "button", className: "file-get", textContent: "Tải " + "." + ext });
+  btn.addEventListener("click", async () => {
+    btn.disabled = true; btn.textContent = "Đang tạo…";
+    try {
+      const blob = await buildFile(spec), url = URL.createObjectURL(blob);
+      const link = Object.assign(document.createElement("a"), { href: url, download: name }); document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      btn.textContent = "Tải lại ." + ext;
+    } catch (e) { toast(e.message || "Không tạo được file."); btn.textContent = "Tải ." + ext; }
+    btn.disabled = false;
+  });
+  const icon = Object.assign(document.createElement("span"), { className: "file-icon file-" + ext, textContent: ext.toUpperCase() });
+  box.append(icon, info, btn);
+  return box;
+}
+const renderRichTextBase = renderRichText;
+renderRichText = function (target, text) {
+  const { clean, spec } = extractFileSpec(text);
+  renderRichTextBase(target, clean);
+  const place = () => { target.parentElement?.querySelector(":scope > .file-card")?.remove(); if (spec && target.parentElement) target.after(fileCard(spec)); };
+  if (target.parentElement) place(); else queueMicrotask(place);
+};

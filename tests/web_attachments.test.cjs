@@ -23,3 +23,19 @@ test('DXF reader lists entities, layers, bounds and all text',()=>{
 test('DXF reader rejects files without entities',()=>{
  assert.throws(()=>c.readDxfText('hello'),/DXF ASCII/);
 });
+
+vm.runInContext(source.slice(source.indexOf('const FILE_NAMES ='),source.indexOf('function fileRequest(')),c);
+vm.runInContext(source.slice(source.indexOf('function extractFileSpec('),source.indexOf('async function buildFile(')),c);
+test('file block is extracted and hidden from the answer',()=>{
+ const r=c.extractFileSpec('Đây là bảng.\n```chatai-file\n{"type":"xlsx","filename":"dat","sheets":[{"name":"A","rows":[["c",1],]}]}\n```');
+ assert.equal(r.clean,'Đây là bảng.');assert.equal(r.spec.type,'xlsx');assert.equal(r.spec.sheets[0].rows[0][1],1);
+ assert.equal(c.extractFileSpec('không có file').spec,null);
+ assert.equal(c.extractFileSpec('```chatai-file\nhỏng\n```').spec.error,true);
+});
+test('DXF writer emits R12 entities with escaped Vietnamese text',()=>{
+ const out=c.buildDxf({units:'m',entities:[{type:'polyline',layer:'DAT',points:[[0,0],[5,2],[10,2]],closed:true},{type:'circle',layer:'COC',x:3,y:1,r:0.4},{type:'text',layer:'GHI_CHU',x:1,y:6,height:0.5,text:'Đê'}]});
+ assert.equal((out.match(/\r\nLINE\r\n/g)||[]).length,3);
+ assert.match(out,/\r\nCIRCLE\r\n8\r\nCOC\r\n/);
+ assert.ok(out.includes('\\U+0110\\U+00EA'));
+ assert.match(out,/AC1009/);assert.ok(out.trim().endsWith('EOF'));
+});
