@@ -1296,3 +1296,17 @@ document.querySelector("#openAdmin").addEventListener("click", openAdminConsole)
 document.querySelector("#adminNav").addEventListener("click", openAdminConsole);
 new MutationObserver(renderAdminEntry).observe(document.querySelector("#accountName"), { childList: true, characterData: true, subtree: true });
 renderAdminEntry();
+
+// Trợ giúp tách khỏi Tài khoản & cài đặt; công tắc giao diện tối trong cài đặt.
+document.querySelector("#helpButton").addEventListener("click", () => openOverlay("#helpOverlay"));
+document.querySelector("#helpClose").addEventListener("click", () => closeOverlay("#helpOverlay"));
+document.querySelector("#helpAccount").addEventListener("click", () => { closeOverlay("#helpOverlay"); openOverlay("#accountOverlay"); });
+document.querySelector("#helpOverlay").addEventListener("click", (e) => { if (e.target.id === "helpOverlay") closeOverlay("#helpOverlay"); });
+function syncDarkToggle() {
+  const dark = document.documentElement.dataset.theme === "dark";
+  const t = document.querySelector("#darkToggle");
+  t.setAttribute("aria-pressed", String(dark)); t.textContent = dark ? "Bật" : "Tắt";
+}
+document.querySelector("#darkToggle").addEventListener("click", () => document.querySelector("#themeButton").click());
+new MutationObserver(syncDarkToggle).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+syncDarkToggle();

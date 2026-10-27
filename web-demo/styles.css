@@ -149,3 +149,30 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .admin-nav small{font-size:11px;color:var(--muted)}
 .admin-nav:hover{border-color:var(--accent)}
 .account-actions #openAdmin{color:var(--accent);font-weight:700}
+
+/* Trợ giúp */
+.help-sheet{width:min(520px,100%)}
+.help-sheet details{border-bottom:1px solid var(--line)}
+.help-sheet summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;gap:12px;padding:13px 2px;font-size:14px;font-weight:600}
+.help-sheet summary::-webkit-details-marker{display:none}
+.help-sheet summary::after{content:"+";color:var(--muted);font-weight:400;font-size:18px;line-height:1}
+.help-sheet details[open] summary::after{content:"–"}
+.help-sheet details p{margin:0 2px 14px;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.help-links{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 4px}
+.help-links a,.help-links button{display:flex;align-items:center;justify-content:center;min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text);font-size:13px;font-weight:600;text-decoration:none;text-align:center}
+.help-links a:hover,.help-links button:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:480px){.help-links{grid-template-columns:1fr}}
+/* Trợ giúp: khác hẳn hộp thoại tài khoản */
+.help-sheet{padding:0!important;overflow:hidden auto}
+.help-sheet h2{margin:0;padding:22px 24px 4px 76px;position:relative;background:linear-gradient(180deg,var(--accent-soft),transparent)}
+.help-sheet h2::before{content:"?";position:absolute;left:24px;top:18px;width:38px;height:38px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:20px;font-weight:800}
+.help-sheet>.sheet-note{margin:0;padding:0 24px 18px 76px;background:linear-gradient(180deg,transparent,transparent)}
+.help-sheet details{margin:0 16px 8px;border:1px solid var(--line)!important;border-radius:12px;background:var(--bg);padding:0 14px}
+.help-sheet details[open]{background:var(--panel);border-color:color-mix(in srgb,var(--accent) 40%,transparent)!important}
+.help-sheet summary{padding:12px 0!important}
+.help-sheet .help-links{margin:14px 16px 4px}
+.help-sheet .sheet-ghost{margin:6px 16px 16px!important;width:calc(100% - 32px)}
+.switch-row #darkToggle{position:relative;width:44px;height:26px;padding:0;border:0!important;border-radius:999px;background:var(--line)!important;text-indent:-999px;overflow:hidden;transition:background .2s}
+.switch-row #darkToggle::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
+.switch-row #darkToggle[aria-pressed=true]{background:var(--accent)!important}
+.switch-row #darkToggle[aria-pressed=true]::after{transform:translateX(18px)}
