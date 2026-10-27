@@ -12,6 +12,7 @@ def main():
     html = (ROOT / "web-demo" / "index.html").read_text(encoding="utf-8")
     css = (ROOT / "web-demo" / "styles.css").read_text(encoding="utf-8")
     js = (ROOT / "web-demo" / "app.js").read_text(encoding="utf-8")
+    admin = (ROOT / "web-demo" / "admin.html").read_text(encoding="utf-8")
     vendor = ROOT / "web-demo" / "vendor"
     for name in ("katex.min.js", "auto-render.min.js", "highlight.min.js"):
         code = (vendor / name).read_text(encoding="utf-8")
@@ -29,6 +30,8 @@ def main():
         " const files={\n"
         f"  '/':['text/html; charset=utf-8',{json.dumps(html)}],\n"
         f"  '/index.html':['text/html; charset=utf-8',{json.dumps(html)}],\n"
+        f"  '/admin':['text/html; charset=utf-8',{json.dumps(admin)}],\n"
+        f"  '/admin.html':['text/html; charset=utf-8',{json.dumps(admin)}],\n"
         f"  '/styles.css':['text/css; charset=utf-8',{json.dumps(css)}],\n"
         f"  '/app.js':['application/javascript; charset=utf-8',{json.dumps(js)}],\n"
         f"  '/logo.png':['image/png',{json.dumps(png)},true],\n"
@@ -39,7 +42,7 @@ def main():
         " const file=files[path];\n"
         " if(!file)return null;\n"
         " const body=file[2]?Uint8Array.from(atob(file[1]),c=>c.charCodeAt(0)):file[1];\n"
-        " return new Response(body,{headers:{'Content-Type':file[0],'Cache-Control':path==='/'||path==='/index.html'?'no-store':'public, max-age=600','X-Content-Type-Options':'nosniff'}});\n"
+        " return new Response(body,{headers:{'Content-Type':file[0],'Cache-Control':['/','/index.html','/admin','/admin.html'].includes(path)?'no-store':'public, max-age=600','X-Content-Type-Options':'nosniff'}});\n"
         "}\n"
     )
     work_path = ROOT / "work.js"

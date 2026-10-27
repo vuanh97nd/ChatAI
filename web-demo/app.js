@@ -1203,3 +1203,31 @@ spacePanel.addEventListener('click',event=>{
 });
 document.querySelector('#newChat').addEventListener('click',()=>spaceSet('Trò chuyện'));
 els.list.addEventListener('click',event=>{if(event.target.closest('.conversation-item'))spaceSet('Trò chuyện');});
+
+// Bàn làm việc: phản chiếu trạng thái thật của ví, mô hình, lượt trả lời và tệp đính kèm.
+(function desk() {
+  const $ = (s) => document.querySelector(s);
+  if (!$("#desk")) return;
+  const sync = () => {
+    $("#deskWallet").textContent = $("#walletChip").textContent.replace(/^Ví AI\s*·\s*/, "");
+    $("#deskModel").textContent = $("#modelName").textContent;
+    const chip = $("#attachmentChip");
+    const name = chip.hidden ? "" : chip.querySelector("span").textContent;
+    $("#deskFile").hidden = !name; $("#deskFile").textContent = name; $("#deskFileEmpty").hidden = !!name;
+  };
+  let started = 0, timer = null;
+  const tick = () => {
+    const last = $("#messages").lastElementChild;
+    const chars = last && last.classList.contains("assistant") ? last.textContent.length : 0;
+    $("#deskTime").textContent = ((Date.now() - started) / 1000).toLocaleString("vi-VN", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " s";
+    $("#deskTokens").textContent = Math.round(chars / 3.5).toLocaleString("vi-VN");
+  };
+  new MutationObserver(() => {
+    const busy = document.body.classList.contains("is-generating");
+    if (busy && !timer) { started = Date.now(); timer = setInterval(tick, 200); $("#deskState").textContent = "Đang trả lời"; }
+    if (!busy && timer) { clearInterval(timer); timer = null; tick(); $("#deskState").textContent = "Xong"; }
+  }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  ["#walletChip", "#modelName", "#attachmentChip"].forEach((s) => new MutationObserver(sync).observe($(s), { childList: true, subtree: true, characterData: true, attributes: true }));
+  $("#deskTopup").addEventListener("click", () => $("#walletChip").click());
+  sync();
+})();

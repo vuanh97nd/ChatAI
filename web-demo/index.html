@@ -7,6 +7,8 @@
     <meta name="description" content="ChatAI — Không gian làm việc cùng AI. Trò chuyện, viết nội dung và khám phá ý tưởng trên mọi thiết bị.">
     <title>ChatAI — Không gian AI của bạn</title>
     <link rel="icon" href="logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="vendor/katex.min.css">
   </head>
@@ -368,6 +370,28 @@
             <div class="composer-hint"><span id="chatStatus" role="status">Sẵn sàng cùng bạn</span><span class="keyboard-hint">Enter để gửi · Shift + Enter xuống dòng</span></div><p class="fineprint">ChatAI có thể nhầm. Bản này chỉ mô phỏng hội thoại trực tuyến, không gọi mô hình hay máy chủ thật.</p>
           </div>
         </section>
+        <aside class="desk" id="desk" aria-label="Bàn làm việc">
+          <section class="desk-sec">
+            <h3>Ví ChatAI<small>VND</small></h3>
+            <div class="desk-wallet" id="deskWallet">Khách</div>
+            <p>DeepSeek tính 4.000 đ cho 1 triệu token. NVIDIA, Gemini, Groq, Cloudflare miễn phí.</p>
+            <button class="desk-btn" id="deskTopup" type="button">Số dư và nạp tiền</button>
+          </section>
+          <section class="desk-sec">
+            <h3>Lượt trả lời<small class="desk-live"><i></i><span id="deskState">Đang chờ</span></small></h3>
+            <dl class="desk-meter">
+              <dt>AI đang dùng</dt><dd id="deskModel">—</dd>
+              <dt>Thời gian</dt><dd id="deskTime">0,0 s</dd>
+              <dt>Token ước tính</dt><dd id="deskTokens">0</dd>
+            </dl>
+            <p class="desk-note">Token ước tính theo độ dài câu trả lời. Số chính xác do máy chủ tính khi trừ ví.</p>
+          </section>
+          <section class="desk-sec">
+            <h3>Tệp đang mở</h3>
+            <div class="desk-file" id="deskFile" hidden></div>
+            <p id="deskFileEmpty">Chưa có tệp. Đính kèm TXT, MD, CSV hoặc JSON để AI đọc.</p>
+          </section>
+        </aside>
       </div>
     </div>
     <div class="overlay" id="authOverlay" role="dialog" aria-modal="true" aria-labelledby="authTitle" hidden>
