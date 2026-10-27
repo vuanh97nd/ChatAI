@@ -411,3 +411,7 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
 .desk-zalo-text small{font:500 12px "JetBrains Mono",monospace;opacity:.9}
 .desk-zalo-go{font-size:12.5px;font-weight:700;opacity:.95}
 @media(min-width:1201px){.zalo-fab{display:none!important}.desk{padding-top:16px!important}}
+/* Mobile: "Gần đây" cao 3 mục, kéo cuộn bên trong */
+@media(max-width:820px){
+  .sidebar .conversation-list{flex:none!important;max-height:228px!important;overflow-y:auto!important;overscroll-behavior:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch;mask-image:linear-gradient(to bottom,#000 85%,transparent)}
+}
