@@ -376,3 +376,20 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .zalo-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#0068ff;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:-.02em;flex:none}
 .zalo-side>span:last-child{display:grid;font-size:13px;font-weight:700;line-height:1.25}
 .zalo-side small{font:500 11.5px "JetBrains Mono",monospace;color:var(--muted)}
+
+/* Nút Zalo nổi góc phải dưới */
+.zalo-fab{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));z-index:80;display:flex;align-items:center;gap:0;padding:6px;border-radius:999px;background:#0068ff;color:#fff;text-decoration:none;box-shadow:0 10px 28px -8px #0068ffaa;transition:gap .2s,padding .2s}
+.zalo-fab-icon{position:relative;display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#fff;color:#0068ff;font-size:12px;font-weight:900;letter-spacing:-.03em}
+.zalo-fab-icon::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid #0068ff66;animation:zaloPulse 2s infinite}
+@keyframes zaloPulse{0%{transform:scale(.9);opacity:1}100%{transform:scale(1.35);opacity:0}}
+.zalo-fab-text{display:grid;max-width:0;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:700;line-height:1.2;transition:max-width .25s}
+.zalo-fab-text small{font:500 11px "JetBrains Mono",monospace;opacity:.85}
+.zalo-fab:hover,.zalo-fab:focus-visible{gap:10px;padding-right:16px}
+.zalo-fab:hover .zalo-fab-text,.zalo-fab:focus-visible .zalo-fab-text{max-width:200px}
+@media(max-width:820px){.zalo-fab{bottom:calc(150px + env(safe-area-inset-bottom));right:12px;padding:4px}.zalo-fab-icon{width:40px;height:40px;font-size:11px}}
+body:has(.overlay:not([hidden])) .zalo-fab{display:none}
+@media(prefers-reduced-motion:reduce){.zalo-fab-icon::after{animation:none}}
+@media(max-width:1200px){.zalo-fab{bottom:calc(178px + env(safe-area-inset-bottom))}}
+@media(max-width:820px){.zalo-fab{bottom:calc(196px + env(safe-area-inset-bottom))}}
+@media(max-width:1200px){.zalo-fab{bottom:calc(192px + env(safe-area-inset-bottom))}}
+@media(max-width:820px){.zalo-fab{display:none!important}}
