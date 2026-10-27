@@ -484,6 +484,10 @@ async function liveReply(text, history, operation) {
     if (!raw) return;
     const value = JSON.parse(raw);
     if (event === "error") throw new Error(value.message || "Lỗi mô hình.");
+    if (event === "meta" && value.live_status && !value.live_status.ok) {
+      const note = Object.assign(document.createElement("p"), { className: "live-fail", textContent: "Chưa tra được " + ({ weather: "thời tiết", gold: "giá vàng", news: "tin tức" }[value.live_status.kind] || "dữ liệu") + " lúc này (" + value.live_status.error + "). Câu trả lời dưới đây không có số liệu trực tiếp." });
+      target.body.insertBefore(note, target.p);
+    }
     if (event === "live") { target.body.insertBefore(liveCardNode(value), target.p); scrollThread(); }
     if (event === "delta" && value.text) {
       full += value.text;

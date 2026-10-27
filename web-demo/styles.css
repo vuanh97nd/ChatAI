@@ -242,3 +242,4 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .live-news a:hover{color:var(--accent);text-decoration:underline}
 .live-src{display:inline-block;margin-top:10px;font-size:12px;color:var(--accent);text-decoration:none}
 .live-bar span{grid-row:1;grid-column:1}.live-bar b{grid-row:1;grid-column:2}.live-bar i{grid-row:2}
+.live-fail{margin:0 0 10px;padding:9px 12px;border-radius:10px;background:color-mix(in srgb,#c2410c 9%,transparent);color:#c2410c;font-size:12.5px;line-height:1.5}
