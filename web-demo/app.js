@@ -2026,3 +2026,15 @@ async function runCodeShell(code, shell, autoFollow) {
   for (let i = 0; i < 100 && streaming; i++) await new Promise((res) => setTimeout(res, 100));
   sendMessage(msg);
 }
+
+// Tác giả và hỗ trợ Zalo trong mục Trợ giúp. Điền SUPPORT_ZALO (chỉ chữ số) để hiện nút nhắn và sao chép.
+const SUPPORT_ZALO = "0869233097";
+(function supportContact() {
+  const digits = SUPPORT_ZALO.replace(/\D/g, "");
+  if (!digits) return;
+  const pretty = digits.replace(/^(\d{4})(\d{3})(\d+)$/, "$1 $2 $3");
+  document.querySelector("#zaloNumber").textContent = pretty;
+  const link = document.querySelector("#zaloLink"); link.href = "https://zalo.me/" + digits; link.hidden = false;
+  const copy = document.querySelector("#zaloCopy"); copy.hidden = false;
+  copy.addEventListener("click", () => navigator.clipboard?.writeText(digits).then(() => toast("Đã sao chép số Zalo."), () => toast("Số Zalo: " + pretty)));
+})();

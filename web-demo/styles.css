@@ -358,3 +358,21 @@ body.is-generating .desk-live i{background:var(--meter);animation:deskPulse 1s i
 .code-output.is-error .code-output-bar{color:#c2410c}
 .code-output pre{margin:0;padding:4px 12px 10px;white-space:pre-wrap;font:12.5px/1.5 "JetBrains Mono",monospace;color:var(--text);max-height:320px;overflow:auto}
 .code-actions .code-run{width:auto!important;min-width:0!important;padding:0 10px!important;white-space:nowrap;display:inline-flex;align-items:center}
+
+/* Tác giả & Zalo */
+.help-author{display:grid;grid-template-columns:52px minmax(0,1fr);gap:14px;margin:0 16px 12px;padding:16px;border-radius:14px;background:linear-gradient(135deg,var(--accent-soft),transparent 70%),var(--panel);border:1px solid var(--line)}
+.help-author-avatar{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:17px;letter-spacing:.02em}
+.help-author-label{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.help-author h3{margin:2px 0 4px;font-size:17px;font-weight:800}
+.help-author p{margin:0 0 10px;font-size:13px;color:var(--muted);line-height:1.5}
+.help-zalo{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+.help-zalo b{font-family:"JetBrains Mono",monospace}
+.help-zalo-btn{display:inline-flex;align-items:center;min-height:32px;padding:0 14px;border-radius:9px;background:#0068ff;color:#fff;font-weight:700;text-decoration:none}
+.help-zalo-copy{min-height:32px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);font-weight:600;cursor:pointer}
+
+/* Nút Zalo hỗ trợ ở thanh bên */
+.zalo-side{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:12px;border:1px solid color-mix(in srgb,#0068ff 30%,transparent);background:color-mix(in srgb,#0068ff 8%,var(--panel));color:var(--text);text-decoration:none}
+.zalo-side:hover{border-color:#0068ff}
+.zalo-mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#0068ff;color:#fff;font-size:10.5px;font-weight:800;letter-spacing:-.02em;flex:none}
+.zalo-side>span:last-child{display:grid;font-size:13px;font-weight:700;line-height:1.25}
+.zalo-side small{font:500 11.5px "JetBrains Mono",monospace;color:var(--muted)}
