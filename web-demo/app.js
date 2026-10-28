@@ -2081,7 +2081,7 @@ function sessionExpired() {
 
 // "Gần đây": điện thoại hiện 5 hội thoại; máy tính hiện vừa đủ chiều cao còn trống. Còn nữa thì có "Xem tất cả".
 var recentExpanded = false;
-const RECENT_LIMIT = 5;
+const RECENT_LIMIT = 4;
 const renderConversationsBase = renderConversations;
 function recentLimit(list, rows) {
   if (matchMedia("(max-width: 820px)").matches) return RECENT_LIMIT;
