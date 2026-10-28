@@ -433,3 +433,16 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
   .sidebar{overflow-y:auto!important;scrollbar-width:thin}
   .sidebar .conversation-list{min-height:176px!important}
 }
+
+/* Nút Hội thoại mới màu xanh nước biển */
+.new-chat{background:#1d6fe8!important;border-color:#1d6fe8!important;color:#fff!important}
+.new-chat svg{color:#fff!important}
+.new-chat:hover{background:#155ccc!important;opacity:1!important}
+/* Điện thoại: thanh bên vừa màn hình, chỉ "Gần đây" cuộn; Zalo trở xuống cố định */
+@media(max-width:820px){
+  .sidebar{overflow:hidden!important;display:flex!important;flex-direction:column!important}
+  .sidebar .conversation-list{flex:1 1 0!important;min-height:0!important;max-height:none!important;overflow-y:auto!important;overscroll-behavior:contain;mask-image:none!important}
+  .sidebar .recent-more{display:none!important}
+  .sidebar-foot{flex:none!important;margin-top:8px!important}
+  .sidebar .download-card{display:none!important}
+}
