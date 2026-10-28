@@ -2084,7 +2084,7 @@ var recentExpanded = false;
 const RECENT_LIMIT = 4;
 const renderConversationsBase = renderConversations;
 function recentLimit(list, rows) {
-  if (matchMedia("(max-width: 820px)").matches) { rows.forEach((r) => { r.hidden = false; }); return rows.length; }
+  rows.forEach((r) => { r.hidden = false; }); return rows.length; // máy tính và điện thoại: hiện hết, "Gần đây" tự cuộn
   rows.forEach((r) => { r.hidden = false; });
   const rowH = rows[0]?.getBoundingClientRect().height || 38;
   const room = list.clientHeight;

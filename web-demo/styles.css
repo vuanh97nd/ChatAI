@@ -446,3 +446,11 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
   .sidebar-foot{flex:none!important;margin-top:8px!important}
   .sidebar .download-card{display:none!important}
 }
+
+/* Máy tính: thanh bên vừa màn hình, chỉ "Gần đây" cuộn; Trợ giúp trở xuống cố định */
+@media(min-width:821px){
+  .sidebar{overflow:hidden!important}
+  .sidebar .conversation-list{flex:1 1 0!important;min-height:0!important;overflow-y:auto!important;scrollbar-width:thin}
+  .sidebar .recent-more{display:none!important}
+  .sidebar-foot{flex:none!important}
+}
