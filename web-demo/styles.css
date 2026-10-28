@@ -422,3 +422,14 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
 .recent-more:hover{background:var(--accent-soft)}
 .recent-more::after{content:"›";font-size:16px;transform:rotate(90deg)}
 @media(min-width:821px){.zalo-side{display:none!important}}
+
+/* Máy tính: danh sách vừa chỗ trống, không cuộn trừ khi bấm Xem tất cả */
+@media(min-width:821px){
+  .sidebar .conversation-list{flex:1 1 0!important;min-height:0!important;overflow:hidden!important}
+  .sidebar .conversation-list.is-expanded{overflow-y:auto!important;scrollbar-width:thin}
+  .sidebar .conversation-list .recent-more{position:sticky;bottom:0;background:var(--side)}
+}
+@media(min-width:821px){
+  .sidebar{overflow-y:auto!important;scrollbar-width:thin}
+  .sidebar .conversation-list{min-height:176px!important}
+}

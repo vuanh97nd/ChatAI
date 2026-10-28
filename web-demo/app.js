@@ -2079,19 +2079,38 @@ function sessionExpired() {
   toast("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
 }
 
-// "Gần đây" (chỉ điện thoại): hiện 5 hội thoại, nút "Xem tất cả" để mở hết; đang tìm kiếm thì hiện toàn bộ kết quả.
+// "Gần đây": điện thoại hiện 5 hội thoại; máy tính hiện vừa đủ chiều cao còn trống. Còn nữa thì có "Xem tất cả".
 var recentExpanded = false;
 const RECENT_LIMIT = 5;
 const renderConversationsBase = renderConversations;
+function recentLimit(list, rows) {
+  if (matchMedia("(max-width: 820px)").matches) return RECENT_LIMIT;
+  rows.forEach((r) => { r.hidden = false; });
+  const rowH = rows[0]?.getBoundingClientRect().height || 38;
+  const room = list.clientHeight;
+  if (rows.length * rowH <= room) return rows.length;
+  return Math.max(0, Math.floor((room - 38) / rowH));
+}
 renderConversations = function (filter = "") {
   renderConversationsBase(filter);
   const list = els.list, rows = [...list.children].filter((el) => el.classList.contains("conversation-row"));
   list.querySelector(":scope > .recent-more")?.remove();
-  const searching = String(filter || "").trim() !== "" || !matchMedia("(max-width: 820px)").matches;
-  rows.forEach((row, i) => { row.hidden = !searching && !recentExpanded && i >= RECENT_LIMIT && !row.querySelector(".conversation-item.active"); });
-  if (searching || rows.length <= RECENT_LIMIT) return;
-  const more = Object.assign(document.createElement("button"), { type: "button", className: "recent-more", textContent: recentExpanded ? "Thu gọn" : "Xem tất cả (" + rows.length + ")" });
-  more.addEventListener("click", () => { recentExpanded = !recentExpanded; renderConversations(els.search.value); });
-  list.append(more);
+  list.classList.toggle("is-expanded", recentExpanded);
+  if (String(filter || "").trim() !== "" || recentExpanded) {
+    rows.forEach((r) => { r.hidden = false; });
+    if (recentExpanded && rows.length > RECENT_LIMIT) list.append(recentButton("Thu gọn"));
+    return;
+  }
+  const limit = recentLimit(list, rows);
+  rows.forEach((row, i) => { row.hidden = i >= limit && !row.querySelector(".conversation-item.active"); });
+  if (rows.length > limit) list.append(recentButton("Xem tất cả (" + rows.length + ")"));
 };
+function recentButton(label) {
+  const more = Object.assign(document.createElement("button"), { type: "button", className: "recent-more", textContent: label });
+  more.addEventListener("click", () => { recentExpanded = !recentExpanded; renderConversations(els.search.value); if (!recentExpanded) els.list.scrollTop = 0; });
+  return more;
+}
+// Máy tính: tính lại số dòng khi đổi cỡ cửa sổ.
+let recentFitTimer = 0;
+new ResizeObserver(() => { clearTimeout(recentFitTimer); recentFitTimer = setTimeout(() => { if (!recentExpanded) renderConversations(els.search.value); }, 80); }).observe(els.list);
 matchMedia("(max-width: 820px)").addEventListener("change", () => renderConversations(els.search.value));
