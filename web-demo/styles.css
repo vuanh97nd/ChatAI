@@ -415,3 +415,9 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
 @media(max-width:820px){
   .sidebar .conversation-list{flex:none!important;max-height:138px!important;overflow-y:auto!important;overscroll-behavior:contain;scrollbar-width:thin;-webkit-overflow-scrolling:touch;mask-image:linear-gradient(to bottom,#000 85%,transparent)}
 }
+
+/* Gần đây: 5 mục + Xem tất cả, không cuộn riêng */
+@media(max-width:820px){.sidebar .conversation-list{max-height:none!important;overflow:visible!important;mask-image:none!important}}
+.recent-more{display:flex;align-items:center;gap:6px;width:100%;min-height:34px;margin-top:2px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--accent);font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.recent-more:hover{background:var(--accent-soft)}
+.recent-more::after{content:"›";font-size:16px;transform:rotate(90deg)}

@@ -2078,3 +2078,20 @@ function sessionExpired() {
   document.querySelector("#logoutButton").click();
   toast("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
 }
+
+// "Gần đây" (chỉ điện thoại): hiện 5 hội thoại, nút "Xem tất cả" để mở hết; đang tìm kiếm thì hiện toàn bộ kết quả.
+var recentExpanded = false;
+const RECENT_LIMIT = 5;
+const renderConversationsBase = renderConversations;
+renderConversations = function (filter = "") {
+  renderConversationsBase(filter);
+  const list = els.list, rows = [...list.children].filter((el) => el.classList.contains("conversation-row"));
+  list.querySelector(":scope > .recent-more")?.remove();
+  const searching = String(filter || "").trim() !== "" || !matchMedia("(max-width: 820px)").matches;
+  rows.forEach((row, i) => { row.hidden = !searching && !recentExpanded && i >= RECENT_LIMIT && !row.querySelector(".conversation-item.active"); });
+  if (searching || rows.length <= RECENT_LIMIT) return;
+  const more = Object.assign(document.createElement("button"), { type: "button", className: "recent-more", textContent: recentExpanded ? "Thu gọn" : "Xem tất cả (" + rows.length + ")" });
+  more.addEventListener("click", () => { recentExpanded = !recentExpanded; renderConversations(els.search.value); });
+  list.append(more);
+};
+matchMedia("(max-width: 820px)").addEventListener("change", () => renderConversations(els.search.value));
