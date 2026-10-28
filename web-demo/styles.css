@@ -483,3 +483,15 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
   .sidebar-foot .zalo-side{grid-column:2!important;grid-row:2!important}
   .sidebar-foot .account-row{grid-row:3!important}
 }
+
+/* Hàng cuối thanh bên (điện thoại): Trợ giúp | Hỗ trợ | Tải app, dàn đều vừa khít */
+.apk-side{display:none}
+@media(max-width:820px){
+  .sidebar-foot{grid-template-columns:repeat(3,auto)!important;justify-content:space-between!important;column-gap:4px!important}
+  .sidebar-foot .help-button{grid-column:1!important;grid-row:2!important;padding:6px 8px!important;min-height:36px}
+  .sidebar-foot .zalo-side{grid-column:2!important;grid-row:2!important;justify-self:center!important}
+  .sidebar-foot .apk-side{grid-column:3!important;grid-row:2!important;display:flex;align-items:center;gap:5px;min-height:36px;padding:4px 8px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:500;text-decoration:none}
+  .sidebar-foot .apk-side:hover,.sidebar-foot .zalo-side:hover{background:var(--hover)}
+  .sidebar-foot .account-row{grid-column:1/-1!important;grid-row:3!important}
+}
+@media(max-width:820px){.sidebar-foot .help-button,.sidebar-foot .zalo-side,.sidebar-foot .apk-side,.sidebar-foot .help-button span,.sidebar-foot .zalo-side span,.sidebar-foot .apk-side span{white-space:nowrap!important}.sidebar-foot .help-button,.sidebar-foot .apk-side,.sidebar-foot .zalo-side{padding-left:4px!important;padding-right:4px!important;gap:5px!important;font-size:12.5px!important}.sidebar-foot .zalo-side>span:last-child::before{font-size:12.5px!important}.sidebar-foot .help-button svg{width:15px;height:15px}}
