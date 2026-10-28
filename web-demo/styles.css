@@ -421,3 +421,4 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
 .recent-more{display:flex;align-items:center;gap:6px;width:100%;min-height:34px;margin-top:2px;padding:0 11px;border:0;border-radius:8px;background:none;color:var(--accent);font-size:13px;font-weight:600;text-align:left;cursor:pointer}
 .recent-more:hover{background:var(--accent-soft)}
 .recent-more::after{content:"›";font-size:16px;transform:rotate(90deg)}
+@media(min-width:821px){.zalo-side{display:none!important}}
