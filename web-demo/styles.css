@@ -477,3 +477,9 @@ body:has(.overlay:not([hidden])) .zalo-fab{display:none}
   .sidebar-foot .zalo-side>span:last-child::before{content:"Hỗ trợ";font-size:13px;font-weight:500;color:var(--muted)}
   .sidebar-foot .account-row{grid-row:4!important}
 }
+@media(max-width:820px){
+  .sidebar-foot{grid-template-columns:auto auto minmax(0,1fr)!important;column-gap:6px!important}
+  .sidebar-foot .help-button{grid-column:1!important;grid-row:2!important;width:auto!important}
+  .sidebar-foot .zalo-side{grid-column:2!important;grid-row:2!important}
+  .sidebar-foot .account-row{grid-row:3!important}
+}
